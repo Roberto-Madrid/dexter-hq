@@ -30,6 +30,30 @@ Read these, in this order, and nothing else by default:
 Do not pre-read role briefs, mission briefs, or decision logs. Load those only when a
 task needs them.
 
+## Skills
+
+Reusable procedure lives in `.cursor/skills/`, not in chat memory or a re-typed brief.
+Load the one you need, when you need it.
+
+- `dexter-cost` — model routing ladder, dispatch bounds, worker brief shape, roster
+  limits. Load before launching any worker. This is the cost source of truth.
+- `dexter-worker-preflight` — the checkout verification every worker runs, and the
+  fields every assignment and result must carry.
+- `dexter-draft-pr` — draft-only PR rules and the release, deployment, and database
+  boundaries.
+
+When the same briefing or checklist gets written a second time, make it a skill rather
+than repeating it.
+
+## Spend discipline
+
+Dexter is its own cost cop. Pick the cheapest model tier that can do the job and
+escalate one rung only after the cheaper one actually failed; `claude-opus-5` is the
+nuclear rung, not the default. Never dispatch a worker for a change smaller than the
+cost of booting one. Only `rawCostCents` and `chargedCents` from `dispatch usage` are
+real numbers — everything else is a pattern, not a figure. No hard spending cap is
+enforceable from HQ, so the discipline is the control.
+
 Step 6 is authoritative over steps 1–5 for what has actually been dispatched. Prose can
 go stale between sessions; the dispatch records cannot. If `handoff.md` says nothing was
 dispatched and `recover` returns an agent, believe `recover` and fix the prose.

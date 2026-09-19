@@ -14,8 +14,14 @@
         "repository": "Roberto-Madrid/dexter-hq",
         "canonical_url": "https://github.com/Roberto-Madrid/dexter-hq",
         "access": "read_write",
-        "allowed_branch_patterns": ["bootstrap/*", "cursor/*", "hq/*"],
-        "protected_branches": ["main"],
+        "allowed_branch_patterns": [
+          "bootstrap/*",
+          "cursor/*",
+          "hq/*"
+        ],
+        "protected_branches": [
+          "main"
+        ],
         "merge_to_protected": "integrator_only_with_owner_authorization"
       },
       {
@@ -26,15 +32,19 @@
         "historical_alias_note": "Renamed; GitHub still redirects the old name. The plan predates the rename. Always dispatch against dexter-barber.",
         "access": "read_only_during_bootstrap",
         "access_note": "Application probes stay read-only until BARBER-RECOVERY is activated. Activation raises this to development read_write on feature branches only.",
-        "allowed_branch_patterns": ["cursor/*"],
-        "protected_branches": ["main"],
+        "allowed_branch_patterns": [
+          "cursor/*"
+        ],
+        "protected_branches": [
+          "main"
+        ],
         "merge_to_protected": "forbidden",
         "hosting_boundary": "leave_unchanged"
       }
     ]
   },
   "client_contract": {
-    "note": "tools/dispatch reads this document directly. It derives its flat configuration contract (apiKeyEnv, apiBase, recordsDir, repositoryAllowlist, missions, allowedModelIds, maxConcurrentAgents, autoCreatePR, timeouts) from the canonical fields here; see adaptCanonicalPolicy in tools/dispatch/src/policy.js. Do not add the flat keys to this file — for a document with kind \"dispatch-policy\" the derived value wins, so a hand-added flat key would be silently ignored and the two shapes would drift."
+    "note": "tools/dispatch reads this document directly. It derives its flat configuration contract (apiKeyEnv, apiBase, recordsDir, repositoryAllowlist, missions, allowedModelIds, maxConcurrentAgents, autoCreatePR, timeouts) from the canonical fields here; see adaptCanonicalPolicy in tools/dispatch/src/policy.js. Do not add the flat keys to this file \u2014 for a document with kind \"dispatch-policy\" the derived value wins, so a hand-added flat key would be silently ignored and the two shapes would drift."
   },
   "api": {
     "base_url": "https://api.cursor.com",
@@ -54,13 +64,18 @@
   "missions": {
     "hq-bootstrap-preflight": {
       "description": "Read-only preflight evidence from a target repository: remote identity, working directory, dirty state, and actual HEAD versus the assigned base commit. Produces a report only.",
-      "repository_ids": ["barber", "hq"],
+      "repository_ids": [
+        "barber",
+        "hq"
+      ],
       "write_access": "none",
       "enforcement_note": "Read-only is instructed in the task prompt and is NOT enforced by this client or by the API. A dispatched agent runs with whatever write access its own environment grants it. Treat this field as intent, not as a control."
     },
     "barber-recovery": {
       "description": "Barber application recovery. Not activated during bootstrap.",
-      "repository_ids": ["barber"],
+      "repository_ids": [
+        "barber"
+      ],
       "activated": false,
       "activation_requires": "an explicit owner decision; until then the barber repository stays read_only_during_bootstrap"
     }
@@ -71,7 +86,7 @@
       "discovered": true,
       "discovered_at": "2026-09-19T04:56:00Z",
       "discovery_method": "GET the Cloud Agents API model-listing endpoint with DEXTER_CURSOR_API_KEY; verify the live schema at https://cursor.com/docs/cloud-agent/api/endpoints before relying on it.",
-      "discovery_evidence": "bootstrap/evidence/live-dispatch-proofs.md — `dispatch discover --no-repos` against https://api.cursor.com/v1/models, 38 items returned.",
+      "discovery_evidence": "bootstrap/evidence/live-dispatch-proofs.md \u2014 `dispatch discover --no-repos` against https://api.cursor.com/v1/models, 38 items returned.",
       "id_shape_note": "The API returns a bare `id` plus a separate `params`/`parameters` array (for example id \"claude-opus-5\" with effort/thinking/context parameters). The composite kebab-case slugs used for in-session subagents, such as \"claude-opus-5-thinking-high\", are NOT valid API model IDs and must never be sent.",
       "available_model_ids": [
         "default",
@@ -119,13 +134,34 @@
       "note": "Roles map to discovery results, not to fixed aliases. Each requested_model_id below appears in available_model_ids. A null effective model always means unknown, never a default.",
       "first_party_interpretation": "prefer_first_party_models is read as: prefer models Cursor serves under its own name (default/Auto, composer-2.5, grok-4.x) for bounded mechanical work, and reserve frontier vendor models for judgment-heavy roles. This is an interpretation recorded here, not a platform-enforced distinction.",
       "roles": {
-        "hq": { "requested_model_id": "claude-opus-5", "criteria": "reliable scope, delegation, and judgment decisions" },
-        "project_lead": { "requested_model_id": "claude-opus-5", "criteria": "planning, contracts, and integration coordination" },
-        "designer": { "requested_model_id": "claude-sonnet-5", "criteria": "visual and interaction specification" },
-        "builder": { "requested_model_id": "composer-2.5", "criteria": "bounded implementation; select on actual task performance and cost" },
-        "integrator": { "requested_model_id": "claude-sonnet-5", "criteria": "conflict resolution and combined-runtime verification" },
-        "verifier": { "requested_model_id": "composer-2.5", "criteria": "independent review; may share the builder's model" },
-        "escalation": { "requested_model_id": "claude-opus-5", "criteria": "stronger reasoning, used selectively for one concrete hard architecture or debugging failure" }
+        "hq": {
+          "requested_model_id": "claude-opus-5",
+          "criteria": "reliable scope, delegation, and judgment decisions"
+        },
+        "project_lead": {
+          "requested_model_id": "claude-opus-5",
+          "criteria": "planning, contracts, and integration coordination"
+        },
+        "designer": {
+          "requested_model_id": "claude-sonnet-5",
+          "criteria": "visual and interaction specification"
+        },
+        "builder": {
+          "requested_model_id": "composer-2.5",
+          "criteria": "Bounded implementation. Start at default_ship and escalate one tier only on real failure."
+        },
+        "integrator": {
+          "requested_model_id": "claude-sonnet-5",
+          "criteria": "conflict resolution and combined-runtime verification"
+        },
+        "verifier": {
+          "requested_model_id": "claude-sonnet-5",
+          "criteria": "independent review; may share the builder's model"
+        },
+        "escalation": {
+          "requested_model_id": "claude-opus-5",
+          "criteria": "stronger reasoning, used selectively for one concrete hard architecture or debugging failure"
+        }
       }
     },
     "preferences": {
@@ -137,8 +173,35 @@
     },
     "telemetry": {
       "record_requested_and_effective_separately": true,
-      "null_means": "unknown — telemetry did not report it. Never interpret null as the requested model having taken effect.",
+      "null_means": "unknown \u2014 telemetry did not report it. Never interpret null as the requested model having taken effect.",
       "effective_model_evidence_required": "Cite where effective-model evidence came from. If runtime telemetry does not expose it, mark it unavailable."
+    },
+    "escalation_ladder": {
+      "rule": "Pick the tier at launch without asking the owner. Escalate exactly one tier, and only after the cheaper tier actually failed. Record the tier used and why.",
+      "tiers": [
+        {
+          "tier": "default_ship",
+          "model_id": "composer-2.5",
+          "when": "Clear work, few files, styling, layout, copy, config."
+        },
+        {
+          "tier": "tricky_logic",
+          "model_id": "grok-4.6",
+          "when": "State, auth, concurrency, data ownership, migrations."
+        },
+        {
+          "tier": "hard_gate",
+          "model_id": "claude-sonnet-5",
+          "when": "The cheaper tier failed, or the work is security-sensitive."
+        },
+        {
+          "tier": "nuclear",
+          "model_id": "claude-opus-5",
+          "when": "Sonnet failed, or the owner asks. Not a normal rung."
+        }
+      ],
+      "opus_note": "Reaching for Opus by default is the most expensive available habit. Coordination and judgment roles may sit higher than implementation roles; that is the exception, not licence.",
+      "native_launch_warning": "Workers launched through the native agent tool rather than tools/dispatch bypass this ladder and silently inherit the coordinator's model. Route dispatches through the client so this policy is actually applied."
     }
   },
   "concurrency_limits": {
@@ -176,7 +239,14 @@
     "replacement_framework_to_mask_missing_permission": false
   },
   "state_handling": {
-    "distinct_api_states": ["queued", "running", "completed", "failed", "cancelled", "unknown"],
+    "distinct_api_states": [
+      "queued",
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+      "unknown"
+    ],
     "http_200_is_not_completion": true,
     "persist_intent_before_launch": true,
     "persist_returned_ids_immediately": true
@@ -185,7 +255,7 @@
     "paid_overage_enabled": false,
     "paid_overage_rule": "Never enable paid overage, paid provisioning, external model billing, or a paid fallback. Exhausting the included allowance is a stop condition, not a reason to spend.",
     "billing_inspected": false,
-    "billing_inspected_note": "Account balances, the overage toggle, and hard spending caps could not be inspected from this run. Absence of a hard cap is a labelled limitation; operational concurrency limits are not dollar caps. Platform billing controls spend — prompts do not.",
+    "billing_inspected_note": "Account balances, the overage toggle, and hard spending caps could not be inspected from this run. Absence of a hard cap is a labelled limitation; operational concurrency limits are not dollar caps. Platform billing controls spend \u2014 prompts do not.",
     "reuse_completed_experiments": true,
     "reuse_note": "Do not re-run an already-recorded demonstration unchanged merely for ceremony."
   },
@@ -213,5 +283,15 @@
     "a dispatch slot remains within concurrency limits",
     "owned paths do not overlap another in-flight worker",
     "required credential is present without being printed"
-  ]
+  ],
+  "cost_discipline": {
+    "source_of_truth": ".cursor/skills/dexter-cost/SKILL.md",
+    "never_invent_cost": "Only rawCostCents and chargedCents from dispatch usage are real numbers. Anything unmeasured is a pattern, not a figure.",
+    "no_worker_for_trivial_change": "A cold VM boot plus context load costs more than a one-line edit. Do it in the existing checkout instead.",
+    "no_duplicate_work": "Never edit in the checkout and then redo the same patch in a worker.",
+    "wakes_cost_not_idleness": "Idle agents cost nothing; wakes cost. Fix habits before cutting roster.",
+    "roster_limit": "At most one implementer, one reviewer or gate, one QA, and one database owner per product. Widen an existing role rather than adding an overlapping one.",
+    "reviewer_timing": "Do not wake a reviewer or QA before a draft exists.",
+    "retirement": "Propose retirement candidates; the owner deletes. HQ never deletes an agent."
+  }
 }
