@@ -4,6 +4,13 @@ import { looksLikeSecret } from './redact.js';
 
 const SHA40 = /^[0-9a-f]{40}$/i;
 
+/**
+ * A long path with digits in it trips the high-entropy heuristic, and refusing
+ * to run over a filename protects nothing. An exact match against the
+ * configured credential is still checked first, so a secret cannot hide here.
+ */
+const PATH_LIKE = /^[\w./~@-]*[/.][\w./~@-]*$/;
+
 /** Refuses to run at all if a credential-shaped value was passed on the command line. */
 export function assertNoSecretInArgv(argv, envVarName, env = process.env) {
   const configured = env?.[envVarName];
@@ -20,7 +27,7 @@ export function assertNoSecretInArgv(argv, envVarName, env = process.env) {
         `Refusing to run: "${arg.split('=')[0]}" is not a supported option. The credential is read from ${envVarName} only.`,
       );
     }
-    if (looksLikeSecret(arg)) {
+    if (!PATH_LIKE.test(arg) && looksLikeSecret(arg)) {
       throw new ValidationError(
         'Refusing to run: a command-line argument looks like a credential. Pass secrets via the environment only.',
       );

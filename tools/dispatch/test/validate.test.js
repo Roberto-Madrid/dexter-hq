@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateLaunch } from '../src/validate.js';
+import { assertNoSecretInArgv, validateLaunch } from '../src/validate.js';
 import { normalizeRepoUrl } from '../src/policy.js';
 import { BASE_SHA, HQ_REPO_URL, POLICY_FIXTURE, REPO_URL } from './helpers/harness.js';
 
@@ -97,4 +97,20 @@ test('autoCreatePR cannot be turned on against a policy that keeps it off', () =
 test('all failing preconditions are reported together', () => {
   const problems = problemsFrom({ repoUrl: 'https://github.com/x/y', missionId: 'nope', expectedBaseCommit: 'zzz' });
   assert.equal(problems.split(' | ').length >= 3, true);
+});
+
+test('a long file path is not mistaken for a credential', () => {
+  const argv = ['--prompt-file', 'bootstrap/missions/hq-preflight-001-followup-2.md'];
+  assert.doesNotThrow(() => assertNoSecretInArgv(argv, 'DEXTER_CURSOR_API_KEY', {}));
+});
+
+test('a path-shaped argument still cannot smuggle the configured credential', () => {
+  const secret = 'key_aB3xK9pQ7zR2mN5tW8vY1cD4eF6gH0jL';
+  const argv = ['--prompt-file', `notes/${secret}.md`];
+  assert.throws(() => assertNoSecretInArgv(argv, 'DEXTER_CURSOR_API_KEY', { DEXTER_CURSOR_API_KEY: secret }));
+});
+
+test('an opaque high-entropy argument is still refused', () => {
+  const argv = ['--foo', 'aB3xK9pQ7zR2mN5tW8vY1cD4eF6gH0jL3kM7nP9q'];
+  assert.throws(() => assertNoSecretInArgv(argv, 'DEXTER_CURSOR_API_KEY', {}));
 });

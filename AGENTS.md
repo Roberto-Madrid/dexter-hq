@@ -23,9 +23,16 @@ Read these, in this order, and nothing else by default:
 3. The active mission's `state.json` (path from `portfolio.json`).
 4. `handoff.md` — what the previous session left unfinished.
 5. `config/dispatch-policy.json` — allowlist, models, concurrency, retries.
+6. `dispatch recover` — replays `.dexter/dispatch/` to list every agent HQ has
+   dispatched, with its task id, pinned base commit, and status. Works offline with no
+   API key.
 
 Do not pre-read role briefs, mission briefs, or decision logs. Load those only when a
 task needs them.
+
+Step 6 is authoritative over steps 1–5 for what has actually been dispatched. Prose can
+go stale between sessions; the dispatch records cannot. If `handoff.md` says nothing was
+dispatched and `recover` returns an agent, believe `recover` and fix the prose.
 
 ## Reference archive — do not auto-load
 

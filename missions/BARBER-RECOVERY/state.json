@@ -98,15 +98,21 @@
   "blockers": [
     {
       "id": "bootstrap-incomplete",
-      "description": "Bootstrap acceptance has not passed; cross-repository dispatch is unproven.",
-      "result": "blocked",
-      "evidence": "bootstrap/acceptance.md"
+      "description": "Cross-repository dispatch, exact-commit pinning, result retrieval, follow-up, and fresh-session recovery are now proven against the live API. Bootstrap no longer blocks this mission.",
+      "result": "passed",
+      "evidence": "bootstrap/acceptance.md; bootstrap/evidence/live-dispatch-proofs.md; bootstrap/evidence/fresh-session-recovery.md"
     },
     {
       "id": "api-key-not-reaching-runs",
-      "description": "DEXTER_CURSOR_API_KEY is configured but is not injected into agent runs, so HQ cannot dispatch this mission.",
+      "description": "Resolved. The owner attached the existing secret to the cloud environment and GET /v1/me returns HTTP 200 in runs created afterwards.",
+      "result": "passed",
+      "evidence": "bootstrap/evidence/live-api-verification.md"
+    },
+    {
+      "id": "owner-activation-required",
+      "description": "This mission is prepared but deliberately not activated. Activation requires the explicit owner prompt in master plan section 20. This is a gate, not a defect.",
       "result": "blocked",
-      "evidence": "handoff.md; presence check in run bc-7c2ba0a5-660e-56c3-a728-5af2a12816c8, value never read"
+      "evidence": "reference/Dexter_HQ_Plan_v2.1.md section 20"
     }
   ],
   "last_handoff": "handoff.md"

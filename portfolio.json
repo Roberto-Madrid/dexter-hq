@@ -54,14 +54,14 @@
     "cursor_api_key": {
       "env_var": "DEXTER_CURSOR_API_KEY",
       "source_of_name": "dexter-barber/.cursor/dispatch.json (pre-existing, field cursor.apiKeyEnv)",
-      "state": "configured-but-not-reaching-runs",
-      "state_meaning": "The secret is configured by the owner and its variable name is known. It is NOT injected into agent runs in this environment. This is a propagation gap, not a missing-entirely credential — do not ask the owner to create another key.",
-      "verified_absent_in_run": true,
-      "verified_at": "2026-09-19T04:32:00Z",
-      "evidence": "Presence test for DEXTER_CURSOR_API_KEY in Cloud Agent run bc-7c2ba0a5-660e-56c3-a728-5af2a12816c8 reported ABSENT; value never read or printed.",
-      "api_authentication": "not_tested",
-      "api_authentication_reason": "The key does not reach agent runs, so no read-only authentication, repository, or model discovery call could be made.",
-      "owner_action_needed": "Attach the existing DEXTER_CURSOR_API_KEY secret to this cloud environment so it is injected into agent runs. Do not send the value in chat."
+      "state": "attached-and-authenticating",
+      "state_meaning": "The owner attached the existing secret to the cloud environment and it now reaches agent runs. A secret reaches only runs created AFTER attachment; an older run will not have it and must delegate live calls to a newer run.",
+      "verified_at": "2026-09-19T04:51:00Z",
+      "evidence": "GET /v1/me returned HTTP 200 in Cloud Agent run bc-a629fd9e-32e5-52fe-8a42-01fa24e93be5; value never read or printed.",
+      "api_authentication": "passed",
+      "scope": "user",
+      "scope_note": "Resolves to the owner's individual account, not a service account, so all agent usage bills to the owner's plan.",
+      "owner_action_needed": null
     }
   },
   "repositories": [
@@ -169,27 +169,34 @@
         }
       ],
       "last_known_status": {
-        "observed_at": "2026-09-19T04:33:00Z",
-        "observed_by": "bootstrap/hq-files worker",
+        "observed_at": "2026-09-19T05:15:00Z",
+        "observed_by": "hq",
         "evidence": [
-          "git rev-parse origin/main in this repository",
-          "cursor-cloud environment-info for run bc-7c2ba0a5-660e-56c3-a728-5af2a12816c8"
+          "bootstrap/acceptance.md",
+          "bootstrap/capabilities.md",
+          "bootstrap/evidence/live-api-verification.md",
+          "bootstrap/evidence/live-dispatch-proofs.md",
+          "bootstrap/evidence/fresh-session-recovery.md",
+          ".dexter/dispatch/records/hq-preflight-001.json"
         ],
         "main_tip_commit": "53fac961c485b8ff6799b838a062f50905af0682",
         "base_commit_for_this_work": "53fac961c485b8ff6799b838a062f50905af0682",
-        "delivery_state": "in_progress",
+        "delivery_state": "integrated_awaiting_owner_merge",
         "checks": {
           "operating_files_present_on_main": "not_tested",
-          "dispatch_client_authenticates": "blocked",
-          "cross_repository_dispatch_proven": "blocked",
-          "expected_sha_preflight_proven_on_app_worker": "not_tested",
-          "fresh_session_recovery_proven": "not_tested",
-          "isolated_concurrent_write_integration_proven": "not_tested",
+          "dispatch_client_authenticates": "passed",
+          "cross_repository_dispatch_proven": "passed",
+          "expected_sha_preflight_proven_on_app_worker": "passed",
+          "fresh_session_recovery_proven": "passed",
+          "isolated_concurrent_write_integration_proven": "passed",
+          "stale_checkout_correction_path_proven": "not_tested",
+          "live_agent_busy_handling_proven": "not_tested",
+          "cancel_live_run_proven": "not_tested",
           "continuous_unattended_operation_proven": "not_tested"
         },
         "confidence": "high",
-        "confidence_reason": "Directly observed in this repository and this run.",
-        "note": "Operating files are written on branch bootstrap/hq-files and are NOT on main. Nothing here claims a capability; per-item bootstrap acceptance status is in bootstrap/acceptance.md."
+        "confidence_reason": "Each passed check cites a recorded agent id, commit, or cost observed against the live API.",
+        "note": "Work is integrated on branch bootstrap/integration and is NOT on main; merging to main needs owner authorization per config/dispatch-policy.json. 'operating_files_present_on_main' stays not_tested until that merge happens."
       }
     }
   ],
