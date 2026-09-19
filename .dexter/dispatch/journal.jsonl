@@ -1,0 +1,5 @@
+{"at":"2026-09-19T04:59:41.744Z","taskId":"hq-preflight-001","event":"intent_persisted","clientAgentId":"bc-82f15814-538b-4106-b939-fa1e7e7b0453"}
+{"at":"2026-09-19T04:59:47.620Z","taskId":"hq-preflight-001","event":"launched","state":"launched","agentId":"bc-82f15814-538b-4106-b939-fa1e7e7b0453","runId":"run-6f7f0123-ed8e-417b-aa1e-7c07b43af70f"}
+{"at":"2026-09-19T05:00:20.801Z","taskId":"hq-preflight-001","event":"status_observed","state":"launched","agentId":"bc-82f15814-538b-4106-b939-fa1e7e7b0453","runId":"run-6f7f0123-ed8e-417b-aa1e-7c07b43af70f"}
+{"at":"2026-09-19T05:01:41.369Z","taskId":"hq-preflight-001","event":"followup_submitted","state":"launched","agentId":"bc-82f15814-538b-4106-b939-fa1e7e7b0453","runId":"run-683a8d33-85bd-4831-96c9-a9fe14ced912"}
+{"at":"2026-09-19T05:01:49.182Z","taskId":"hq-preflight-001","event":"status_observed","state":"launched","agentId":"bc-82f15814-538b-4106-b939-fa1e7e7b0453","runId":"run-683a8d33-85bd-4831-96c9-a9fe14ced912"}

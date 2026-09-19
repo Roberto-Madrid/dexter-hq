@@ -1,0 +1,24 @@
+{
+  "taskId": "hq-preflight-001",
+  "clientAgentId": "bc-82f15814-538b-4106-b939-fa1e7e7b0453",
+  "agentName": "hq-bootstrap-preflight [task:hq-preflight-001]",
+  "missionId": "hq-bootstrap-preflight",
+  "repoUrl": "https://github.com/Roberto-Madrid/dexter-barber",
+  "startingRef": "9ddad27bc056e1715118dda8b04962108659d31b",
+  "expectedBaseCommit": "9ddad27bc056e1715118dda8b04962108659d31b",
+  "requestedModelId": "composer-2.5",
+  "autoCreatePR": false,
+  "apiBase": "https://api.cursor.com",
+  "state": "launched",
+  "createdAt": "2026-09-19T04:59:41.739Z",
+  "agentId": "bc-82f15814-538b-4106-b939-fa1e7e7b0453",
+  "runId": "run-683a8d33-85bd-4831-96c9-a9fe14ced912",
+  "updatedAt": "2026-09-19T05:01:49.180Z",
+  "agentUrl": "https://cursor.com/agents/bc-82f15814-538b-4106-b939-fa1e7e7b0453",
+  "lastKnownRunStatus": "FINISHED",
+  "lastKnownRunState": "completed",
+  "resume": {
+    "at": "2026-09-19T05:01:49.179Z",
+    "reason": "observed"
+  }
+}
