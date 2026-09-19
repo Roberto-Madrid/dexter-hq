@@ -40,9 +40,12 @@ export async function result(ctx, options) {
     runState,
     durationMs: run?.durationMs ?? null,
     resultText: runState.terminal ? (run?.result ?? null) : null,
-    // Per the live docs, git state is per-agent, not per-run.
+    // Per the live docs, git state is per-agent, not per-run. Observed live:
+    // an entry appears for the branch name assigned to the agent even when the
+    // agent pushed nothing, so a non-empty list is not evidence of a push.
     branches: run?.git?.branches ?? [],
     branchScope: 'agent',
+    branchesMeaning: 'branch name assigned to the agent; presence does not confirm the branch was pushed — verify against the remote',
     artifacts,
     note: runState.terminal ? null : `Run is ${runState.state}; no final result exists yet.`,
   };

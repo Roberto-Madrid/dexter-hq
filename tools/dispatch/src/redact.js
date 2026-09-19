@@ -49,7 +49,16 @@ export function looksLikeSecret(token) {
   return (hasLower || hasUpper) && hasDigit && (hasUpper || token.length >= 48);
 }
 
-export function redactString(input) {
+/**
+ * Fields whose values are operational identifiers, never credentials. A
+ * generated branch name is long, mixed-case and contains digits, so the
+ * unprefixed high-entropy heuristic swallows it — and a masked branch name
+ * costs real information (you cannot find the branch) while protecting
+ * nothing. Known secret shapes are still masked inside these values.
+ */
+const IDENTIFIER_KEY = /^(branch|branchName|baseBranch|ref|startingRef|prUrl|agentUrl|url|repoUrl)$/;
+
+export function redactString(input, { allowOpaque = false } = {}) {
   if (typeof input !== 'string' || input.length === 0) return input;
   let out = input;
   for (const literal of literals) {
@@ -58,7 +67,7 @@ export function redactString(input) {
   out = out.replace(URL_USERINFO, (_m, scheme) => `${scheme}${REDACTED}@`);
   out = out.replace(AUTH_SCHEME, (_m, scheme) => `${scheme} ${REDACTED}`);
   for (const re of PREFIXED) out = out.replace(re, REDACTED);
-  out = out.replace(OPAQUE, (token) => (looksLikeSecret(token) ? REDACTED : token));
+  if (!allowOpaque) out = out.replace(OPAQUE, (token) => (looksLikeSecret(token) ? REDACTED : token));
   return out;
 }
 
@@ -74,7 +83,13 @@ export function redact(value, seen = new WeakSet()) {
   }
   const out = {};
   for (const [key, val] of Object.entries(value)) {
-    out[key] = SENSITIVE_KEY.test(key) ? REDACTED : redact(val, seen);
+    if (SENSITIVE_KEY.test(key)) {
+      out[key] = REDACTED;
+    } else if (IDENTIFIER_KEY.test(key) && typeof val === 'string') {
+      out[key] = redactString(val, { allowOpaque: true });
+    } else {
+      out[key] = redact(val, seen);
+    }
   }
   return out;
 }

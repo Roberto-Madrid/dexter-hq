@@ -65,3 +65,27 @@ test('redaction survives circular structures', () => {
   a.self = a;
   assert.equal(redact(a).self, '[Circular]');
 });
+
+test('an identifier field keeps its value but still loses an embedded secret', () => {
+  resetSecrets();
+  registerSecret(FAKE_KEY);
+
+  // Observed live: this branch name was masked to "cursor/[REDACTED]" by the
+  // unprefixed high-entropy heuristic, which protected nothing and hid the
+  // only handle the operator had on the agent's branch.
+  const branch = 'cursor/hq-bootstrap-preflight-task-hq-preflight-001-69d8';
+  const masked = redact({
+    branch,
+    url: 'https://cursor.com/agents/bc-82f15814-538b-4106-b939-fa1e7e7b0453',
+    repoUrl: 'github.com/Roberto-Madrid/dexter-barber',
+  });
+
+  assert.equal(masked.branch, branch);
+  assert.equal(masked.url, 'https://cursor.com/agents/bc-82f15814-538b-4106-b939-fa1e7e7b0453');
+  assert.equal(masked.repoUrl, 'github.com/Roberto-Madrid/dexter-barber');
+
+  // Credential shapes are still masked inside an identifier-valued field.
+  assert.equal(redact({ url: `https://x-access-token:${FAKE_KEY}@github.com/o/r` }).url,
+    'https://[REDACTED]@github.com/o/r');
+  assert.equal(redact({ branch: `feature/${FAKE_KEY}` }).branch, 'feature/[REDACTED]');
+});
