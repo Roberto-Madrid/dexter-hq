@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "kind": "dispatch-policy",
+  "generated_at": "2026-09-19T04:34:00Z",
+  "generated_by": "bootstrap/hq-files worker",
+  "plan_reference": "reference/Dexter_HQ_Plan_v2.1.md sections 5, 9, 13",
+  "enforcement_note": "This file is an operational policy, not a security sandbox. An allowlist in an editable file does not hard-restrict anything. Real restriction comes from platform access controls and from which credentials exist where. Residual access is documented in bootstrap/.",
+  "repository_allowlist": {
+    "mode": "deny_by_default",
+    "rule": "Dispatch only to a repository listed here. Never silently retarget to another repository, branch, or environment.",
+    "entries": [
+      {
+        "id": "hq",
+        "repository": "Roberto-Madrid/dexter-hq",
+        "canonical_url": "https://github.com/Roberto-Madrid/dexter-hq",
+        "access": "read_write",
+        "allowed_branch_patterns": ["bootstrap/*", "cursor/*", "hq/*"],
+        "protected_branches": ["main"],
+        "merge_to_protected": "integrator_only_with_owner_authorization"
+      },
+      {
+        "id": "barber",
+        "repository": "Roberto-Madrid/dexter-barber",
+        "canonical_url": "https://github.com/Roberto-Madrid/dexter-barber",
+        "historical_alias": "Roberto-Madrid/Dexter",
+        "historical_alias_note": "Renamed; GitHub still redirects the old name. The plan predates the rename. Always dispatch against dexter-barber.",
+        "access": "read_only_during_bootstrap",
+        "access_note": "Application probes stay read-only until BARBER-RECOVERY is activated. Activation raises this to development read_write on feature branches only.",
+        "allowed_branch_patterns": ["cursor/*"],
+        "protected_branches": ["main"],
+        "merge_to_protected": "forbidden",
+        "hosting_boundary": "leave_unchanged"
+      }
+    ]
+  },
+  "model_policy": {
+    "rule": "Record DISCOVERED model IDs only. Never hard-code an alias from memory or from documentation prose. Until discovery runs against the live API, every model ID is unknown and must be represented as null.",
+    "discovery": {
+      "discovered": false,
+      "discovered_at": null,
+      "discovery_method": "GET the Cloud Agents API model-listing endpoint with DEXTER_CURSOR_API_KEY; verify the live schema at https://cursor.com/docs/cloud-agent/api/endpoints before relying on it.",
+      "blocked_reason": "DEXTER_CURSOR_API_KEY is configured by the owner but is not injected into agent runs in this environment, so no discovery call could be made. Verified absent 2026-09-19T04:32:00Z without reading its value.",
+      "available_model_ids": [],
+      "available_model_ids_note": "PLACEHOLDER — intentionally empty. Populate ONLY from a live discovery response and set discovered to true with a timestamp. Do not seed this list from the plan, from another repository's notes, or from model knowledge."
+    },
+    "selection": {
+      "note": "Roles map to discovery results, not to fixed aliases. requested_model_id stays null until discovery has run; a null effective model always means unknown, never a default.",
+      "roles": {
+        "hq": { "requested_model_id": null, "criteria": "reliable scope, delegation, and judgment decisions" },
+        "project_lead": { "requested_model_id": null, "criteria": "planning, contracts, and integration coordination" },
+        "designer": { "requested_model_id": null, "criteria": "visual and interaction specification" },
+        "builder": { "requested_model_id": null, "criteria": "bounded implementation; select on actual task performance and cost" },
+        "integrator": { "requested_model_id": null, "criteria": "conflict resolution and combined-runtime verification" },
+        "verifier": { "requested_model_id": null, "criteria": "independent review; may share the builder's model" },
+        "escalation": { "requested_model_id": null, "criteria": "stronger reasoning, used selectively for one concrete hard architecture or debugging failure" }
+      }
+    },
+    "preferences": {
+      "prefer_first_party_models": true,
+      "auto_model_as_baseline": false,
+      "fallback_to_unauthorized_model": false,
+      "fallback_to_hq_implementation": false,
+      "on_preferred_model_unavailable": "Substitute another discovered model of the same first-party family and record the substitution. If none fits, checkpoint and ask the owner. Never substitute a paid or third-party model to proceed."
+    },
+    "telemetry": {
+      "record_requested_and_effective_separately": true,
+      "null_means": "unknown — telemetry did not report it. Never interpret null as the requested model having taken effect.",
+      "effective_model_evidence_required": "Cite where effective-model evidence came from. If runtime telemetry does not expose it, mark it unavailable."
+    }
+  },
+  "concurrency_limits": {
+    "active_product_missions": 1,
+    "project_leads_per_mission": 1,
+    "concurrent_implementation_workers": 2,
+    "counts_nested_workers": true,
+    "unbounded_recursive_delegation": false,
+    "parallelize_only_independent_tasks": true,
+    "require_isolated_checkouts": true,
+    "verify_where_each_writer_runs": true,
+    "single_owner_roles": {
+      "migration_owner": 1,
+      "integration_branch": 1,
+      "integrated_dev_server_owner": 1,
+      "global_ledger_writer": "one writer per ledger: workers return results, the lead updates project execution state, HQ updates portfolio state"
+    },
+    "raising_limits_requires": "an owner decision recorded in the mission's decisions.md; concurrency limits are operational, not spending caps"
+  },
+  "retry_limits": {
+    "max_launch_attempts_per_task": 1,
+    "launch_retry_rule": "If a creation request times out, the outcome is AMBIGUOUS. Reconcile with a supported lookup before any retry. A second POST can create a duplicate worker; server-side idempotency is not assumed. Use a client task identifier in metadata or a supported name field.",
+    "max_repair_cycles_per_defect": 1,
+    "repair_cycle_rule": "One related repair cycle, then reassess the approach rather than retrying the same approach repeatedly.",
+    "max_followups_per_agent_when_busy": 0,
+    "busy_rule": "Never hammer a busy agent with repeated follow-ups. Wait for a supported availability signal.",
+    "polling": {
+      "bounded": true,
+      "backoff": "exponential",
+      "timeout_required": true,
+      "resume_record_required": true,
+      "webhooks": "not assumed to exist"
+    },
+    "endless_retry": false,
+    "replacement_framework_to_mask_missing_permission": false
+  },
+  "state_handling": {
+    "distinct_api_states": ["queued", "running", "completed", "failed", "cancelled", "unknown"],
+    "http_200_is_not_completion": true,
+    "persist_intent_before_launch": true,
+    "persist_returned_ids_immediately": true
+  },
+  "budget": {
+    "paid_overage_enabled": false,
+    "paid_overage_rule": "Never enable paid overage, paid provisioning, external model billing, or a paid fallback. Exhausting the included allowance is a stop condition, not a reason to spend.",
+    "billing_inspected": false,
+    "billing_inspected_note": "Account balances, the overage toggle, and hard spending caps could not be inspected from this run. Absence of a hard cap is a labelled limitation; operational concurrency limits are not dollar caps. Platform billing controls spend — prompts do not.",
+    "reuse_completed_experiments": true,
+    "reuse_note": "Do not re-run an already-recorded demonstration unchanged merely for ceremony."
+  },
+  "credentials": {
+    "cursor_api_key_env": "DEXTER_CURSOR_API_KEY",
+    "secret_values_in_repository": "forbidden",
+    "rules": [
+      "Read the key only from the verified cloud secret mechanism.",
+      "Never place a secret in Git, prompts, command arguments, transcripts, child environments, logs, or result files.",
+      "Redact request headers and secret values in all error output.",
+      "Confirm a secret exists and authenticates; never print or echo its value.",
+      "Keep unnecessary production credentials out of HQ and out of workers."
+    ]
+  },
+  "pull_requests": {
+    "auto_create_pr_during_bootstrap": false,
+    "draft_pr_default_for_product_missions": true,
+    "note": "Product missions explicitly control draft PR behavior. Bootstrap workers push branches and do not open PRs; one integrator combines them."
+  },
+  "validation_before_dispatch": [
+    "repository is on the allowlist",
+    "mission ID and scope revision are present",
+    "expected base SHA resolves in the target repository",
+    "requested model is a discovered ID, or explicitly null with discovery marked incomplete",
+    "a dispatch slot remains within concurrency limits",
+    "owned paths do not overlap another in-flight worker",
+    "required credential is present without being printed"
+  ]
+}
