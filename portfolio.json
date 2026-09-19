@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "kind": "portfolio",
+  "generated_at": "2026-09-19T04:33:00Z",
+  "generated_by": "bootstrap/hq-files worker",
+  "plan_reference": {
+    "path": "reference/Dexter_HQ_Plan_v2.1.md",
+    "revision": "2.1",
+    "commit": "53fac961c485b8ff6799b838a062f50905af0682",
+    "usage": "reference-only; excluded from automatic instruction discovery"
+  },
+  "truth_model": {
+    "is_projection": true,
+    "statement": "This file is a PROJECTION of status, not competing truth. Authoritative execution truth lives in each product repository (mission state, evidence, git history) and in the hosting and database providers. When this file and an authoritative source disagree, the authoritative source wins and this file must be corrected.",
+    "authoritative_sources": [
+      "product repository mission state.json and evidence directories",
+      "product repository git history",
+      "product repository .cursor/dispatch.json for hosting and database association",
+      "Vercel and Supabase dashboards for live deployment and database truth",
+      "owner acceptance recorded by HQ"
+    ],
+    "staleness_rule": "Any last_known_status whose observed_at predates the referenced repository tip must be treated as unverified and re-checked before it informs a decision.",
+    "ownership_rule": "HQ owns business scope and writes this file. The project lead owns project execution state. Workers return results and write neither."
+  },
+  "status_vocabulary": {
+    "check_result": ["passed", "failed", "blocked", "not_tested"],
+    "delivery_state": [
+      "not_started",
+      "in_progress",
+      "blocked",
+      "deployed-but-unaccepted",
+      "accepted",
+      "released"
+    ],
+    "notes": "'not_tested' is the default; absence of a recorded result is never 'passed'. 'deployed-but-unaccepted' means a build is reachable but has not passed independent verification and owner acceptance. Deployment, verification, and acceptance are recorded independently and may disagree."
+  },
+  "environment": {
+    "note": "Verified facts about the shared Cursor cloud environment, recorded rather than guessed. Do not propose recreating this environment.",
+    "environment_public_id": "16a2c703-b3e1-11f1-bb68-864e54d14197",
+    "source": "Repository",
+    "recorded_via": "REPO_FILE_OBSERVED",
+    "managed_by_file": "dexter-barber/.cursor/environment.json",
+    "already_includes_both_repos": true,
+    "repos": [
+      "github.com/roberto-madrid/dexter-barber",
+      "github.com/roberto-madrid/dexter-hq"
+    ],
+    "action_required": "none — environment exists and already covers both repositories",
+    "observed_at": "2026-09-19T04:32:00Z",
+    "evidence": "cursor-cloud environment-info from Cloud Agent run bc-7c2ba0a5-660e-56c3-a728-5af2a12816c8"
+  },
+  "credentials": {
+    "note": "Variable names only. No secret value is recorded anywhere in this repository.",
+    "cursor_api_key": {
+      "env_var": "DEXTER_CURSOR_API_KEY",
+      "source_of_name": "dexter-barber/.cursor/dispatch.json (pre-existing, field cursor.apiKeyEnv)",
+      "state": "configured-but-not-reaching-runs",
+      "state_meaning": "The secret is configured by the owner and its variable name is known. It is NOT injected into agent runs in this environment. This is a propagation gap, not a missing-entirely credential — do not ask the owner to create another key.",
+      "verified_absent_in_run": true,
+      "verified_at": "2026-09-19T04:32:00Z",
+      "evidence": "Presence test for DEXTER_CURSOR_API_KEY in Cloud Agent run bc-7c2ba0a5-660e-56c3-a728-5af2a12816c8 reported ABSENT; value never read or printed.",
+      "api_authentication": "not_tested",
+      "api_authentication_reason": "The key does not reach agent runs, so no read-only authentication, repository, or model discovery call could be made.",
+      "owner_action_needed": "Attach the existing DEXTER_CURSOR_API_KEY secret to this cloud environment so it is injected into agent runs. Do not send the value in chat."
+    }
+  },
+  "repositories": [
+    {
+      "id": "barber",
+      "name": "Dexter Barber",
+      "role": "product",
+      "repository": "Roberto-Madrid/dexter-barber",
+      "canonical_url": "https://github.com/Roberto-Madrid/dexter-barber",
+      "default_branch": "main",
+      "hq_may_edit": false,
+      "historical_aliases": [
+        {
+          "name": "Roberto-Madrid/Dexter",
+          "status": "historical alias only; the repository was renamed and GitHub still redirects the old name",
+          "appears_in": "reference/Dexter_HQ_Plan_v2.1.md sections 4 and 16, which predate the rename",
+          "correct_current_value": "Roberto-Madrid/dexter-barber"
+        }
+      ],
+      "mission_pointers": [
+        {
+          "mission_id": "M001-dexter-demonstrators",
+          "owner": "product_repository",
+          "state_path": "missions/M001-dexter-demonstrators/state.json",
+          "brief_path": "missions/M001-dexter-demonstrators/brief.md",
+          "handoff_path": "missions/M001-dexter-demonstrators/handoff.md",
+          "evidence_path": "missions/M001-dexter-demonstrators/evidence"
+        },
+        {
+          "mission_id": "BARBER-RECOVERY",
+          "owner": "hq",
+          "brief_path": "missions/BARBER-RECOVERY/brief.md",
+          "state_path": "missions/BARBER-RECOVERY/state.json",
+          "decisions_path": "missions/BARBER-RECOVERY/decisions.md",
+          "dispatch_state": "prepared-not-dispatched",
+          "note": "Prepared from master plan section 16. NOT activated and NOT dispatched. Activation requires the explicit owner prompt in plan section 20 after bootstrap acceptance."
+        }
+      ],
+      "hosting": {
+        "source": "dexter-barber/.cursor/dispatch.json (pre-existing)",
+        "observed_at": "2026-09-19T04:32:00Z",
+        "leave_unchanged": true,
+        "boundary": "HQ must not change, redeploy, reconfigure, or take offline this Vercel project or this Supabase project. Identifiers are recorded for reference and correlation only. Any change requires explicit owner authorization under a dispatched mission.",
+        "vercel_project_id": "prj_yFeb9XnErOYVXO3SSu4IfYBTu7JZ",
+        "vercel_project_name": "dexter.",
+        "reported_domains": [
+          "dexter-mu-mauve.vercel.app",
+          "dexter-dexter-b9aa.vercel.app",
+          "dexter-git-main-dexter-b9aa.vercel.app"
+        ],
+        "supabase_project_ref": "uzmvhoejpqhgsffpqdnf",
+        "supabase_note": "Single shared hosted project. Separate VMs and branches do NOT isolate it. Use one migration owner and isolated development data; never run competing seeds, resets, or migrations against it.",
+        "domains_reachable": "not_tested",
+        "domains_reachable_reason": "No HTTP probe was performed by this worker. A responding URL would not prove completeness in any case."
+      },
+      "last_known_status": {
+        "observed_at": "2026-09-19T04:32:00Z",
+        "observed_by": "bootstrap/hq-files worker, read-only inspection of local checkout",
+        "evidence": [
+          "git log on local checkout of Roberto-Madrid/dexter-barber",
+          "missions/M001-dexter-demonstrators/state.json in that repository",
+          "dexter-barber/.cursor/dispatch.json"
+        ],
+        "main_tip_commit": "9ddad27bc056e1715118dda8b04962108659d31b",
+        "main_tip_committed_at": "2026-09-19T04:08:58Z",
+        "active_mission": "M001-dexter-demonstrators",
+        "active_mission_status": "running",
+        "active_mission_current_task": "review",
+        "last_verified_commit_claimed_by_mission": "c8850166dfcf244de6600b620f66ed09ddf3fa23",
+        "delivery_state": "deployed-but-unaccepted",
+        "delivery_state_basis": "Mission state records design approved and implementation tasks done with the integrated verify-and-review task still in progress, deployment_authorized false, and seven device checks outstanding. No HQ-recorded owner acceptance exists.",
+        "checks": {
+          "independent_verification": "not_tested",
+          "owner_acceptance": "not_tested",
+          "device_pwa_checks": "not_tested",
+          "google_oauth_provider": "not_tested",
+          "push_delivery": "not_tested",
+          "release_authorization": "blocked"
+        },
+        "open_device_checks_count": 7,
+        "open_device_checks_source": "device_checks_pending in the mission state file",
+        "deployment_authorized": false,
+        "confidence": "medium",
+        "confidence_reason": "Derived from repository files only. No deployment URL, CI run, database query, or provider dashboard was inspected by this worker."
+      }
+    },
+    {
+      "id": "hq",
+      "name": "Dexter HQ",
+      "role": "headquarters",
+      "repository": "Roberto-Madrid/dexter-hq",
+      "canonical_url": "https://github.com/Roberto-Madrid/dexter-hq",
+      "default_branch": "main",
+      "hq_may_edit": true,
+      "mission_pointers": [
+        {
+          "mission_id": "HQ-BOOTSTRAP",
+          "owner": "hq",
+          "brief_path": "reference/Dexter_HQ_Plan_v2.1.md",
+          "brief_section": "6",
+          "state_path": null,
+          "acceptance_checklist_path": "bootstrap/acceptance.md",
+          "dispatch_state": "in_progress",
+          "note": "Bootstrap is tracked by bootstrap/ and handoff.md rather than a mission directory. bootstrap/capabilities.md and tools/dispatch/** are authored on separate branches by other workers and are outside this projection."
+        }
+      ],
+      "last_known_status": {
+        "observed_at": "2026-09-19T04:33:00Z",
+        "observed_by": "bootstrap/hq-files worker",
+        "evidence": [
+          "git rev-parse origin/main in this repository",
+          "cursor-cloud environment-info for run bc-7c2ba0a5-660e-56c3-a728-5af2a12816c8"
+        ],
+        "main_tip_commit": "53fac961c485b8ff6799b838a062f50905af0682",
+        "base_commit_for_this_work": "53fac961c485b8ff6799b838a062f50905af0682",
+        "delivery_state": "in_progress",
+        "checks": {
+          "operating_files_present_on_main": "not_tested",
+          "dispatch_client_authenticates": "blocked",
+          "cross_repository_dispatch_proven": "blocked",
+          "expected_sha_preflight_proven_on_app_worker": "not_tested",
+          "fresh_session_recovery_proven": "not_tested",
+          "isolated_concurrent_write_integration_proven": "not_tested",
+          "continuous_unattended_operation_proven": "not_tested"
+        },
+        "confidence": "high",
+        "confidence_reason": "Directly observed in this repository and this run.",
+        "note": "Operating files are written on branch bootstrap/hq-files and are NOT on main. Nothing here claims a capability; per-item bootstrap acceptance status is in bootstrap/acceptance.md."
+      }
+    }
+  ],
+  "excluded_from_hq_write_scope": [
+    "Roberto-Madrid/dexter-barber application code, tests, migrations, hosting, and database",
+    "Vercel project prj_yFeb9XnErOYVXO3SSu4IfYBTu7JZ",
+    "Supabase project uzmvhoejpqhgsffpqdnf",
+    "any repository not present in the config/dispatch-policy.json allowlist"
+  ]
+}
