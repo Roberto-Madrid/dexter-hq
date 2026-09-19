@@ -42,6 +42,74 @@ export function normalizeRepoUrl(url) {
   return `${parsed.hostname.toLowerCase()}${path.toLowerCase()}`;
 }
 
+/**
+ * HQ's `config/dispatch-policy.json` is authored in a nested, documented form
+ * (`kind: "dispatch-policy"`) that carries governance context this client does
+ * not need. The flat keys below are the client's contract; they are derived
+ * from the canonical document rather than duplicated inside it, so the two
+ * shapes cannot drift apart.
+ */
+export function isCanonicalPolicy(raw) {
+  return Boolean(raw) && typeof raw === 'object' && raw.kind === 'dispatch-policy';
+}
+
+function canonicalRepoUrls(raw) {
+  const entries = raw.repository_allowlist?.entries;
+  if (!Array.isArray(entries)) return [];
+  return entries.map((e) => e?.canonical_url ?? e?.repository).filter((u) => typeof u === 'string' && u !== '');
+}
+
+function canonicalMissions(raw) {
+  const missions = raw.missions;
+  if (!missions || typeof missions !== 'object' || Array.isArray(missions)) return {};
+  const byId = new Map();
+  for (const entry of raw.repository_allowlist?.entries ?? []) {
+    if (entry?.id) byId.set(entry.id, entry.canonical_url ?? entry.repository);
+  }
+  const out = {};
+  for (const [id, mission] of Object.entries(missions)) {
+    const fromIds = (mission?.repository_ids ?? []).map((rid) => byId.get(rid)).filter(Boolean);
+    const explicit = (mission?.repositories ?? []).filter((u) => typeof u === 'string' && u !== '');
+    out[id] = { description: mission?.description ?? null, repositories: [...fromIds, ...explicit] };
+  }
+  return out;
+}
+
+export function adaptCanonicalPolicy(raw) {
+  const flat = {};
+  const apiKeyEnv = raw.credentials?.cursor_api_key_env;
+  if (typeof apiKeyEnv === 'string') flat.apiKeyEnv = apiKeyEnv;
+
+  const apiBase = raw.api?.base_url;
+  if (typeof apiBase === 'string') flat.apiBase = apiBase;
+
+  const recordsDir = raw.dispatch_records?.directory;
+  if (typeof recordsDir === 'string') flat.recordsDir = recordsDir;
+
+  const repos = canonicalRepoUrls(raw);
+  if (repos.length > 0) flat.repositoryAllowlist = repos;
+
+  const missions = canonicalMissions(raw);
+  if (Object.keys(missions).length > 0) flat.missions = missions;
+
+  const modelIds = raw.model_policy?.discovery?.available_model_ids;
+  if (Array.isArray(modelIds) && modelIds.length > 0) flat.allowedModelIds = modelIds;
+
+  const concurrent = raw.concurrency_limits?.concurrent_implementation_workers;
+  if (typeof concurrent === 'number') flat.maxConcurrentAgents = concurrent;
+
+  // Bootstrap keeps automatic PR creation off; the canonical field is the switch.
+  const autoPr = raw.pull_requests?.auto_create_pr_during_bootstrap;
+  if (typeof autoPr === 'boolean') flat.autoCreatePR = autoPr;
+
+  const requestMs = raw.timeouts?.request_ms;
+  if (typeof requestMs === 'number') flat.requestTimeoutMs = requestMs;
+  const pollMs = raw.timeouts?.poll_ms;
+  if (typeof pollMs === 'number') flat.pollTimeoutMs = pollMs;
+
+  return flat;
+}
+
 function assertType(value, kind, field, errors) {
   if (value === undefined) return;
   const actual = Array.isArray(value) ? 'array' : typeof value;
@@ -94,8 +162,13 @@ export function loadPolicy({ path = DEFAULT_POLICY_PATH, cwd = process.cwd(), re
   } catch (err) {
     throw new PolicyError(`Dispatch policy at "${absolute}" is not valid JSON: ${err.message}`);
   }
-  validatePolicyShape(raw, absolute);
-  return { policy: { ...DEFAULT_POLICY, ...raw }, source: absolute, present: true };
+  // Derived values win: `missions` exists in both shapes, and the canonical
+  // nested form carries its repository restriction under `repository_ids`.
+  // Letting the raw block through would drop that restriction silently.
+  const derived = isCanonicalPolicy(raw) ? adaptCanonicalPolicy(raw) : {};
+  const merged = { ...raw, ...derived };
+  validatePolicyShape(merged, absolute);
+  return { policy: { ...DEFAULT_POLICY, ...merged }, source: absolute, present: true, canonical: isCanonicalPolicy(raw) };
 }
 
 /** Fails loudly when a command genuinely needs the file another owner writes. */

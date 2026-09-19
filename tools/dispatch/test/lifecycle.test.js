@@ -302,7 +302,7 @@ test('cancelling a terminal run reports run_not_cancellable instead of failing',
   assert.equal(payload.runState.state, 'completed');
 });
 
-test('usage reports real token counts and refuses to estimate cost', async () => {
+test('usage reports real token counts and refuses to estimate an absent cost', async () => {
   const { cwd } = makeWorkspace();
   seedRecord(cwd);
   const io = captureStreams();
@@ -324,7 +324,38 @@ test('usage reports real token counts and refuses to estimate cost', async () =>
   assert.equal(payload.tokens.available, true);
   assert.equal(payload.tokens.totalUsage.totalTokens, 76390);
   assert.equal(payload.cost.status, 'unknown');
-  assert.equal(payload.cost.value, null);
+  assert.equal(payload.cost.rawCostCents, null);
+  assert.equal(payload.cost.chargedCents, null);
   assert.equal(payload.allowanceRemaining.status, 'unknown');
   assert.equal(payload.effectiveModel.status, 'unknown');
+});
+
+test('usage surfaces the undocumented cost object when the live response carries it', async () => {
+  const { cwd } = makeWorkspace();
+  seedRecord(cwd);
+  const io = captureStreams();
+  const { fetchImpl } = createMockFetch({
+    [`GET /v1/agents/${AGENT_ID}`]: { status: 200, body: agentFixture({ status: 'IDLE' }) },
+    [`GET /v1/agents/${AGENT_ID}/usage`]: {
+      status: 200,
+      body: {
+        totalUsage: { totalTokens: 76390 },
+        cost: { rawCostCents: 1234, chargedCents: 0 },
+        runs: [{ id: RUN_ID, usage: { totalTokens: 76390 }, cost: { rawCostCents: 1234, chargedCents: 0 } }],
+      },
+    },
+  });
+
+  const code = await run(['usage', '--task-id', 'task-001'], { cwd, env: envWithKey(), fetchImpl, ...io, sleep: noSleep });
+
+  assert.equal(code, EXIT.OK);
+  const payload = io.json();
+  assert.equal(payload.cost.status, 'reported');
+  assert.equal(payload.cost.rawCostCents, 1234);
+  assert.equal(payload.cost.chargedCents, 0);
+  assert.equal(payload.cost.source, 'usage.cost');
+  assert.equal(payload.perRunCosts[0].runId, RUN_ID);
+  assert.equal(payload.perRunCosts[0].rawCostCents, 1234);
+  // Allowance genuinely has no v1 representation, so it stays unknown.
+  assert.equal(payload.allowanceRemaining.status, 'unknown');
 });

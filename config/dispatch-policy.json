@@ -33,26 +33,99 @@
       }
     ]
   },
+  "client_contract": {
+    "note": "tools/dispatch reads this document directly. It derives its flat configuration contract (apiKeyEnv, apiBase, recordsDir, repositoryAllowlist, missions, allowedModelIds, maxConcurrentAgents, autoCreatePR, timeouts) from the canonical fields here; see adaptCanonicalPolicy in tools/dispatch/src/policy.js. Do not add the flat keys to this file — for a document with kind \"dispatch-policy\" the derived value wins, so a hand-added flat key would be silently ignored and the two shapes would drift."
+  },
+  "api": {
+    "base_url": "https://api.cursor.com",
+    "version": "v1",
+    "stability": "public beta; endpoints and schemas may change before general availability"
+  },
+  "dispatch_records": {
+    "directory": ".dexter/dispatch",
+    "committed": true,
+    "committed_reason": "Durable agent/run IDs must survive the session that created them. A future HQ session with no access to the originating conversation recovers in-flight work by running `dispatch recover` from the repository root against these records.",
+    "contains_secrets": false
+  },
+  "timeouts": {
+    "request_ms": 30000,
+    "poll_ms": 900000
+  },
+  "missions": {
+    "hq-bootstrap-preflight": {
+      "description": "Read-only preflight evidence from a target repository: remote identity, working directory, dirty state, and actual HEAD versus the assigned base commit. Produces a report only.",
+      "repository_ids": ["barber", "hq"],
+      "write_access": "none",
+      "enforcement_note": "Read-only is instructed in the task prompt and is NOT enforced by this client or by the API. A dispatched agent runs with whatever write access its own environment grants it. Treat this field as intent, not as a control."
+    },
+    "barber-recovery": {
+      "description": "Barber application recovery. Not activated during bootstrap.",
+      "repository_ids": ["barber"],
+      "activated": false,
+      "activation_requires": "an explicit owner decision; until then the barber repository stays read_only_during_bootstrap"
+    }
+  },
   "model_policy": {
     "rule": "Record DISCOVERED model IDs only. Never hard-code an alias from memory or from documentation prose. Until discovery runs against the live API, every model ID is unknown and must be represented as null.",
     "discovery": {
-      "discovered": false,
-      "discovered_at": null,
+      "discovered": true,
+      "discovered_at": "2026-09-19T04:56:00Z",
       "discovery_method": "GET the Cloud Agents API model-listing endpoint with DEXTER_CURSOR_API_KEY; verify the live schema at https://cursor.com/docs/cloud-agent/api/endpoints before relying on it.",
-      "blocked_reason": "DEXTER_CURSOR_API_KEY is configured by the owner but is not injected into agent runs in this environment, so no discovery call could be made. Verified absent 2026-09-19T04:32:00Z without reading its value.",
-      "available_model_ids": [],
-      "available_model_ids_note": "PLACEHOLDER — intentionally empty. Populate ONLY from a live discovery response and set discovered to true with a timestamp. Do not seed this list from the plan, from another repository's notes, or from model knowledge."
+      "discovery_evidence": "bootstrap/evidence/live-dispatch-proofs.md — `dispatch discover --no-repos` against https://api.cursor.com/v1/models, 38 items returned.",
+      "id_shape_note": "The API returns a bare `id` plus a separate `params`/`parameters` array (for example id \"claude-opus-5\" with effort/thinking/context parameters). The composite kebab-case slugs used for in-session subagents, such as \"claude-opus-5-thinking-high\", are NOT valid API model IDs and must never be sent.",
+      "available_model_ids": [
+        "default",
+        "grok-4.6",
+        "composer-2.5",
+        "claude-opus-5",
+        "claude-opus-4-8",
+        "gpt-5.6-sol",
+        "gpt-5.5",
+        "claude-fable-5-1",
+        "claude-fable-5",
+        "grok-4.5",
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "muse-spark-1.3",
+        "gpt-5.6-terra",
+        "claude-sonnet-5",
+        "claude-sonnet-4-6",
+        "gpt-5.3-codex",
+        "claude-opus-4-7",
+        "gpt-5.4",
+        "claude-opus-4-6",
+        "claude-opus-4-5",
+        "gpt-5.2",
+        "gpt-5.6-luna",
+        "gemini-3.6-flash",
+        "gemini-3.1-pro",
+        "gpt-5.4-mini",
+        "gpt-5.4-nano",
+        "claude-haiku-4-5",
+        "claude-sonnet-4-5",
+        "gpt-5.1",
+        "gemini-3-flash",
+        "gemini-3.5-flash",
+        "claude-sonnet-4",
+        "gpt-5-mini",
+        "gemini-2.5-flash",
+        "kimi-k3",
+        "kimi-k2.7-code",
+        "glm-5.2"
+      ],
+      "available_model_ids_note": "Populated verbatim from the live discovery response on 2026-09-19, in the order the API returned them. Re-run discovery rather than editing this list by hand."
     },
     "selection": {
-      "note": "Roles map to discovery results, not to fixed aliases. requested_model_id stays null until discovery has run; a null effective model always means unknown, never a default.",
+      "note": "Roles map to discovery results, not to fixed aliases. Each requested_model_id below appears in available_model_ids. A null effective model always means unknown, never a default.",
+      "first_party_interpretation": "prefer_first_party_models is read as: prefer models Cursor serves under its own name (default/Auto, composer-2.5, grok-4.x) for bounded mechanical work, and reserve frontier vendor models for judgment-heavy roles. This is an interpretation recorded here, not a platform-enforced distinction.",
       "roles": {
-        "hq": { "requested_model_id": null, "criteria": "reliable scope, delegation, and judgment decisions" },
-        "project_lead": { "requested_model_id": null, "criteria": "planning, contracts, and integration coordination" },
-        "designer": { "requested_model_id": null, "criteria": "visual and interaction specification" },
-        "builder": { "requested_model_id": null, "criteria": "bounded implementation; select on actual task performance and cost" },
-        "integrator": { "requested_model_id": null, "criteria": "conflict resolution and combined-runtime verification" },
-        "verifier": { "requested_model_id": null, "criteria": "independent review; may share the builder's model" },
-        "escalation": { "requested_model_id": null, "criteria": "stronger reasoning, used selectively for one concrete hard architecture or debugging failure" }
+        "hq": { "requested_model_id": "claude-opus-5", "criteria": "reliable scope, delegation, and judgment decisions" },
+        "project_lead": { "requested_model_id": "claude-opus-5", "criteria": "planning, contracts, and integration coordination" },
+        "designer": { "requested_model_id": "claude-sonnet-5", "criteria": "visual and interaction specification" },
+        "builder": { "requested_model_id": "composer-2.5", "criteria": "bounded implementation; select on actual task performance and cost" },
+        "integrator": { "requested_model_id": "claude-sonnet-5", "criteria": "conflict resolution and combined-runtime verification" },
+        "verifier": { "requested_model_id": "composer-2.5", "criteria": "independent review; may share the builder's model" },
+        "escalation": { "requested_model_id": "claude-opus-5", "criteria": "stronger reasoning, used selectively for one concrete hard architecture or debugging failure" }
       }
     },
     "preferences": {
