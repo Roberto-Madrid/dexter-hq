@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "kind": "mission-state",
+  "mission_id": "BARBER-RECOVERY",
+  "status": "prepared",
+  "dispatch_state": "prepared-not-dispatched",
+  "activated": false,
+  "activation_requires": "explicit owner prompt per reference/Dexter_HQ_Plan_v2.1.md section 20, after bootstrap acceptance passes (bootstrap/acceptance.md)",
+  "statement": "This mission has been PREPARED ONLY. No agent has been dispatched, no worker has run, no code has been touched. Writing this file is not dispatch.",
+  "prepared_at": "2026-09-19T04:37:00Z",
+  "prepared_by": "bootstrap/hq-files worker",
+  "brief_path": "missions/BARBER-RECOVERY/brief.md",
+  "decisions_path": "missions/BARBER-RECOVERY/decisions.md",
+  "scope_revision": 1,
+  "brief_source": "reference/Dexter_HQ_Plan_v2.1.md section 16",
+  "target": {
+    "repository": "Roberto-Madrid/dexter-barber",
+    "canonical_url": "https://github.com/Roberto-Madrid/dexter-barber",
+    "historical_alias": "Roberto-Madrid/Dexter",
+    "base_sha": null,
+    "base_sha_note": "Intentionally null. Resolve the intended base afresh at activation; never reuse a SHA recorded in the plan or here.",
+    "target_branch_policy": "cursor/* feature branches only; no merge to main"
+  },
+  "project_lead": {
+    "agent_id": null,
+    "run_id": null,
+    "requested_model_id": null,
+    "effective_model_id": null,
+    "model_note": "null means unknown. No dispatch occurred and model discovery has not run."
+  },
+  "tasks": [],
+  "tasks_note": "Empty by design. Task decomposition is the project lead's responsibility after activation.",
+  "results": [],
+  "status_vocabulary": {
+    "check_result": ["passed", "failed", "blocked", "not_tested"],
+    "delivery_state": [
+      "not_started",
+      "in_progress",
+      "blocked",
+      "deployed-but-unaccepted",
+      "accepted",
+      "released"
+    ],
+    "default_check_result": "not_tested"
+  },
+  "delivery_state": "not_started",
+  "acceptance_checks": [
+    { "id": "booking_success", "description": "A customer can successfully book an appointment", "result": "not_tested", "evidence": null },
+    { "id": "double_booking_rejected", "description": "Double-booking is rejected", "result": "not_tested", "evidence": null },
+    { "id": "staff_booking_ownership", "description": "A staff-created appointment is owned by the customer, not the staff auth.uid()", "result": "not_tested", "evidence": null },
+    { "id": "persistence", "description": "Bookings persist and are re-readable from a fresh session", "result": "not_tested", "evidence": null },
+    { "id": "permissions", "description": "Authorization holds when checked from the wrong account", "result": "not_tested", "evidence": null },
+    { "id": "reschedule_atomicity", "description": "Rescheduling is atomic", "result": "not_tested", "evidence": null },
+    { "id": "cancellation", "description": "Cancellation works and meets the agreed notification requirement", "result": "not_tested", "evidence": null },
+    { "id": "multiple_appointments", "description": "Multiple appointments display per the agreed behavior", "result": "not_tested", "evidence": null },
+    { "id": "announcements_visible", "description": "Announcements are visible in the app without push", "result": "not_tested", "evidence": null },
+    { "id": "consent_rules", "description": "Applicable push-consent rules are enforced", "result": "not_tested", "evidence": null },
+    { "id": "google_oauth", "description": "Google OAuth is a verified working provider, not just a visible button", "result": "not_tested", "evidence": null },
+    { "id": "push_delivery", "description": "Push is actually delivered, not merely enqueued", "result": "not_tested", "evidence": null },
+    { "id": "installed_iphone_behavior", "description": "Installed-iPhone PWA behavior on a real device", "result": "not_tested", "evidence": null },
+    { "id": "mission_records_reconciled", "description": "Mission records describe the current scope and hosting", "result": "not_tested", "evidence": null }
+  ],
+  "independent_verification": { "result": "not_tested", "tested_sha": null, "evidence": null },
+  "owner_acceptance": { "result": "not_tested", "reviewed_sha": null, "accepted_at": null, "evidence": null },
+  "deployment": {
+    "authorized": false,
+    "target": "none — hosting is leaveUnchanged during this mission",
+    "deployed_sha": null,
+    "deployed_at": null,
+    "outcome": "not_tested",
+    "reported_production_url": "https://dexter-mu-mauve.vercel.app",
+    "reported_production_url_note": "Reported by the owner and recorded in dexter-barber/.cursor/dispatch.json. Not probed or verified by HQ. A responding URL is not completion.",
+    "note": "Deployed and unaccepted can coexist. Deployment, verification, and acceptance are recorded independently."
+  },
+  "permissions_at_activation": {
+    "development_edits": true,
+    "isolated_tests": true,
+    "feature_branch_push": true,
+    "draft_pr": true,
+    "merge_to_default_branch": false,
+    "production_migration": false,
+    "production_deployment": false,
+    "hosting_changes": false,
+    "purchases": false,
+    "client_outreach": false,
+    "destructive_operations": false
+  },
+  "constraints": {
+    "concurrent_implementation_workers_max": 2,
+    "migration_owners": 1,
+    "paid_overage_enabled": false,
+    "hosting": { "leave_unchanged": true, "vercel_project_id": "prj_yFeb9XnErOYVXO3SSu4IfYBTu7JZ" },
+    "database": {
+      "supabase_project_ref": "uzmvhoejpqhgsffpqdnf",
+      "isolation_note": "Single shared hosted project. Separate VMs and branches do not isolate it. Use isolated development data or serialize database changes."
+    }
+  },
+  "blockers": [
+    {
+      "id": "bootstrap-incomplete",
+      "description": "Cross-repository dispatch, exact-commit pinning, result retrieval, follow-up, and fresh-session recovery are now proven against the live API. Bootstrap no longer blocks this mission.",
+      "result": "passed",
+      "evidence": "bootstrap/acceptance.md; bootstrap/evidence/live-dispatch-proofs.md; bootstrap/evidence/fresh-session-recovery.md"
+    },
+    {
+      "id": "api-key-not-reaching-runs",
+      "description": "Resolved. The owner attached the existing secret to the cloud environment and GET /v1/me returns HTTP 200 in runs created afterwards.",
+      "result": "passed",
+      "evidence": "bootstrap/evidence/live-api-verification.md"
+    },
+    {
+      "id": "owner-activation-required",
+      "description": "This mission is prepared but deliberately not activated. Activation requires the explicit owner prompt in master plan section 20. This is a gate, not a defect.",
+      "result": "blocked",
+      "evidence": "reference/Dexter_HQ_Plan_v2.1.md section 20"
+    }
+  ],
+  "last_handoff": "handoff.md"
+}
