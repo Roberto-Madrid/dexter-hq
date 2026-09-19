@@ -42,6 +42,62 @@ function recordPath(cwd, taskId = 'task-001') {
   return join(cwd, '.dexter', 'dispatch', 'records', `${taskId}.json`);
 }
 
+test('dispatch slots count only agents this client launched, not the whole account', async () => {
+  const { cwd, promptFile } = makeWorkspace();
+  const io = captureStreams();
+
+  // The key's owner always has at least one ACTIVE agent while dispatching:
+  // the HQ session issuing the command. Neither of these carries the
+  // [task:<id>] marker, so neither occupies a dispatch slot.
+  const { fetchImpl } = createMockFetch({
+    'GET /v1/models': MODELS_RESPONSE,
+    'GET /v1/agents': {
+      status: 200,
+      body: {
+        items: [
+          agentFixture({ id: 'bc-hq-session', name: 'Run live dispatch acceptance proofs', status: 'ACTIVE' }),
+          agentFixture({ id: 'bc-unrelated', name: 'QA smoke on another project', status: 'ACTIVE' }),
+        ],
+      },
+    },
+    'POST /v1/agents': (call) => ({
+      status: 200,
+      body: { agent: agentFixture({ id: call.body.agentId }), run: runFixture({ agentId: call.body.agentId }) },
+    }),
+  });
+
+  const code = await run(LAUNCH_ARGS(promptFile), { cwd, env: envWithKey(), fetchImpl, ...io, sleep: noSleep });
+
+  assert.equal(code, EXIT.OK);
+  const payload = io.json();
+  assert.equal(payload.slots.used, 0);
+  assert.equal(payload.slots.activeAgentsAccountWide, 2);
+});
+
+test('an active agent launched by this client does consume a dispatch slot', async () => {
+  const { cwd, promptFile } = makeWorkspace();
+  const io = captureStreams();
+
+  const { fetchImpl, calls } = createMockFetch({
+    'GET /v1/models': MODELS_RESPONSE,
+    'GET /v1/agents': {
+      status: 200,
+      body: {
+        items: [
+          agentFixture({ id: 'bc-a', name: 'barber-recovery [task:earlier-a]', status: 'ACTIVE' }),
+          agentFixture({ id: 'bc-b', name: 'barber-recovery [task:earlier-b]', status: 'ACTIVE' }),
+        ],
+      },
+    },
+  });
+
+  const code = await run(LAUNCH_ARGS(promptFile), { cwd, env: envWithKey(), fetchImpl, ...io, sleep: noSleep });
+
+  assert.equal(code, EXIT.VALIDATION);
+  assert.match(io.json().details.problems[0], /2\/2 dispatch slots already in use/);
+  assert.equal(countCalls(calls, 'POST /v1/agents'), 0, 'no agent may be created when the limit is reached');
+});
+
 test('launch persists intent before the create POST and ids immediately after', async () => {
   const { cwd, promptFile } = makeWorkspace();
   const io = captureStreams();

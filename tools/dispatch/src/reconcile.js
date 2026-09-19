@@ -11,6 +11,15 @@ export function agentNameMatchesTask(name, taskId) {
 }
 
 /**
+ * True for an agent this client dispatched. The marker is the only signal the
+ * API exposes for provenance — `GET /v1/agents` returns every agent the key's
+ * owner has, including their own interactive sessions and unrelated projects.
+ */
+export function isDispatchAgentName(name) {
+  return typeof name === 'string' && /\[task:[^\]]+\]/.test(name);
+}
+
+/**
  * Resolves an ambiguous POST /v1/agents outcome using supported lookups only.
  * Never re-POSTs: a blind retry can create a duplicate worker.
  *

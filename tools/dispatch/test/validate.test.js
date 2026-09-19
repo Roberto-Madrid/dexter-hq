@@ -30,7 +30,8 @@ test('a fully specified launch passes validation', () => {
   assert.equal(plan.expectedBaseCommit, BASE_SHA.toLowerCase());
   assert.deepEqual(plan.requestedModel, { id: 'composer-2' });
   assert.equal(plan.autoCreatePR, false);
-  assert.deepEqual(plan.slots, { used: 0, limit: 2 });
+  assert.equal(plan.slots.used, 0);
+  assert.equal(plan.slots.limit, 2);
 });
 
 test('repository must be on the allowlist', () => {

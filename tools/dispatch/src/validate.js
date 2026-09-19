@@ -41,6 +41,7 @@ export function validateLaunch({
   modelId,
   discoveredModelIds,
   activeAgentCount,
+  activeAgentsAccountWide = null,
   autoCreatePR,
   allowBranchRef = false,
 }) {
@@ -115,7 +116,7 @@ export function validateLaunch({
   } else if (activeAgentCount === null || activeAgentCount === undefined) {
     problems.push('concurrency: active agent count is unknown; refusing to launch blind against the dispatch limit');
   } else if (activeAgentCount >= limit) {
-    problems.push(`concurrency: ${activeAgentCount}/${limit} dispatch slots already in use`);
+    problems.push(`concurrency: ${activeAgentCount}/${limit} dispatch slots already in use by agents this client launched`);
   }
 
   if (autoCreatePR === true && policy.autoCreatePR !== true) {
@@ -134,6 +135,11 @@ export function validateLaunch({
     expectedBaseCommit: String(expectedBaseCommit).toLowerCase(),
     requestedModel: effectiveModelRequest,
     autoCreatePR: autoCreatePR === true,
-    slots: { used: activeAgentCount, limit },
+    slots: {
+      used: activeAgentCount,
+      limit,
+      scope: 'agents launched by this client, identified by the [task:<id>] name marker',
+      activeAgentsAccountWide,
+    },
   };
 }
