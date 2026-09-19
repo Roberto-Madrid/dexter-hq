@@ -60,7 +60,7 @@ Commands
   followup     Submit one bounded follow-up, only while the agent is IDLE
   recover      Rebuild known agent/run ids from durable local records (offline by default)
   cancel       Cancel the active run of an owned agent
-  usage        Report token usage; cost and allowance are reported as unknown
+  usage        Report token usage and reported cost; allowance stays unknown
 
 Common options
   --task-id <id>            Durable client task id (preferred handle for every command)

@@ -27,7 +27,7 @@ dispatch result       # terminal run result, pushed branches, artifact reference
 dispatch followup     # one bounded follow-up, only while the agent is IDLE
 dispatch recover      # rebuild agent/run ids from durable local records (offline by default)
 dispatch cancel       # cancel the active run of an owned agent
-dispatch usage        # token usage; cost and allowance reported as unknown
+dispatch usage        # token usage and reported cost in cents; allowance stays unknown
 ```
 
 Run `dispatch help` for the full option list. Every command writes a single JSON document
@@ -78,6 +78,30 @@ The client **reads** `config/dispatch-policy.json` and never writes it — that 
 elsewhere. It is read defensively: a missing file is tolerated by `auth-check`, `discover`
 and `recover` (built-in defaults apply), and `launch` fails loudly with the expected path.
 Override the location with `--policy <path>`.
+
+### Two shapes, one source of truth
+
+HQ authors the policy as a nested governance document (`"kind": "dispatch-policy"`) that
+carries rationale, enforcement notes and provenance the client has no use for. The flat
+table below is the client's internal contract. When the file is the canonical document,
+`adaptCanonicalPolicy` in `src/policy.js` **derives** every flat key from it:
+
+| Flat key | Derived from |
+| --- | --- |
+| `apiKeyEnv` | `credentials.cursor_api_key_env` |
+| `apiBase` | `api.base_url` |
+| `recordsDir` | `dispatch_records.directory` |
+| `repositoryAllowlist` | `repository_allowlist.entries[].canonical_url` |
+| `missions` | `missions{}`, with `repository_ids` resolved against the allowlist entry ids |
+| `allowedModelIds` | `model_policy.discovery.available_model_ids` |
+| `maxConcurrentAgents` | `concurrency_limits.concurrent_implementation_workers` |
+| `autoCreatePR` | `pull_requests.auto_create_pr_during_bootstrap` |
+| `requestTimeoutMs` / `pollTimeoutMs` | `timeouts.request_ms` / `timeouts.poll_ms` |
+
+Derived values win over same-named raw keys, because `missions` exists in both shapes and
+the canonical form carries the repository restriction under `repository_ids`. Do not add
+flat keys to a canonical document: they will be ignored and the two shapes will drift.
+A file that is *not* the canonical document is read as the flat schema directly.
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -130,9 +154,14 @@ An intent record is written **before** the create request and the returned ids a
 `recover` rebuilds every known agent and run id from these files alone, in a fresh process,
 with no credential and no network access.
 
-Records contain no secrets, but they are operational state rather than source. Whoever owns
-the repository root should add `.dexter/` to `.gitignore`; this tool does not write outside
-`tools/dispatch/`.
+Records contain no secrets, but they are operational state rather than source.
+
+HQ **commits** `.dexter/dispatch/` deliberately (`dispatch_records.committed: true` in the
+policy): a durable agent id is worthless if it only exists on the disk of the session that
+created it. Committing the records is what lets a later HQ session with no access to the
+originating conversation run `dispatch recover` from the repository root and pick the work
+back up. A consumer of this client that does not need cross-session recovery should
+`.gitignore` `.dexter/` instead. This tool writes nothing outside `recordsDir`.
 
 ## Ambiguity, concurrency, and state handling
 
@@ -195,8 +224,8 @@ CANCELLED, or EXPIRED").
   seconds or HTTP date); otherwise exponential backoff applies.
 - **Effective/resolved model is not returned** by any documented response. Reported as
   `null` / `unknown`, never inferred from the request.
-- **Cost, spend and remaining allowance are not exposed** anywhere in v1. `usage` reports
-  token counts only and returns `status: "unknown"` for cost and allowance.
+- **Remaining allowance is not exposed** anywhere in v1; `usage` reports it as `unknown`.
+  Cost, however, *is* returned — see "Corrections from live use" below.
 - **No concurrency-limit endpoint exists.** Remaining dispatch slots are computed by
   counting `ACTIVE` agents from `GET /v1/agents` against the policy's
   `maxConcurrentAgents`. That is a client-side control, not a server-enforced cap.
@@ -208,8 +237,32 @@ CANCELLED, or EXPIRED").
   SHA and resolves it when the run starts. `launch` therefore requires a full 40-character
   `--base-commit`, refuses a moving branch ref unless `--allow-branch-ref` is passed, and
   records the expected commit durably so integration can check it afterwards.
-- **No live authenticated call has been made from this environment.** `DEXTER_CURSOR_API_KEY`
-  is not injected into agent runs here, so every behaviour below is verified against mocks.
+### Corrections from live use
+
+`DEXTER_CURSOR_API_KEY` was later attached to the HQ environment and the client was
+exercised end to end against the live API on 2026-09-19. Full evidence, including real ids
+and SHAs, is in `bootstrap/evidence/live-dispatch-proofs.md`. What the live run changed:
+
+- **Cost is returned, contrary to the note above.** `GET /v1/agents/{id}/usage` carries an
+  undocumented `cost` object — `{ rawCostCents, chargedCents }` — both at the top level and
+  per run. `usage` now reports it with `status: "reported"` and names the field it came
+  from, and still reports `unknown` when the field is absent. It is never estimated.
+- **Dispatch slots counted the wrong population.** `GET /v1/agents` returns every agent
+  belonging to the key's owner, including their interactive sessions and unrelated
+  projects. Counting all ACTIVE agents made the limit unsatisfiable by construction, since
+  the HQ session issuing `launch` is itself ACTIVE. Only agents carrying this client's
+  `[task:<id>]` name marker consume a slot; the account-wide total is reported alongside.
+- **A branch in `git.branches` does not mean anything was pushed.** A finished run that
+  wrote nothing still reported an entry for the branch name assigned to the agent, and that
+  branch did not exist on the remote. `result` now labels this via `branchesMeaning`.
+- **Generated branch names were being redacted as high-entropy secrets.** Identifier-valued
+  keys (`branch`, `url`, `ref`, and friends) now skip the unprefixed-token heuristic while
+  still masking known credential shapes.
+- **A client-supplied `agentId` is honoured.** The returned `agent.id` equalled the
+  `bc-<uuid>` sent on create, so the ambiguity design rests on observed behaviour.
+- **Model ids are bare.** Discovery returned 38 ids of the form `claude-opus-5` plus a
+  separate parameter list. Composite slugs such as `claude-opus-5-thinking-high` are
+  in-session subagent names and are **not** valid API model ids.
 
 ## Tests
 
