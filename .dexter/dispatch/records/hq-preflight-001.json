@@ -13,12 +13,12 @@
   "createdAt": "2026-09-19T04:59:41.739Z",
   "agentId": "bc-82f15814-538b-4106-b939-fa1e7e7b0453",
   "runId": "run-96ba5f82-dc6a-44a6-8a2e-d3eeea5aa1ba",
-  "updatedAt": "2026-09-19T05:09:37.520Z",
+  "updatedAt": "2026-09-19T05:13:11.495Z",
   "agentUrl": "https://cursor.com/agents/bc-82f15814-538b-4106-b939-fa1e7e7b0453",
   "lastKnownRunStatus": "FINISHED",
   "lastKnownRunState": "completed",
   "resume": {
-    "at": "2026-09-19T05:09:37.520Z",
+    "at": "2026-09-19T05:13:11.494Z",
     "reason": "observed"
   }
 }
