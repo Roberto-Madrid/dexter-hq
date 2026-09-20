@@ -41,6 +41,8 @@ Load the one you need, when you need it.
   fields every assignment and result must carry.
 - `dexter-draft-pr` — PR and release boundaries. Open PRs **ready**, not draft,
   unless the owner says otherwise. Never self-merge.
+- `dexter-i18n-visual` — EN/ES: screenshot every tab in Spanish before calling
+  copy done; new services/products must auto-translate, not a seed-id map.
 
 When the same briefing or checklist gets written a second time, make it a skill rather
 than repeating it.
