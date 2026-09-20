@@ -272,8 +272,9 @@
   },
   "pull_requests": {
     "auto_create_pr_during_bootstrap": false,
-    "draft_pr_default_for_product_missions": true,
-    "note": "Product missions explicitly control draft PR behavior. Bootstrap workers push branches and do not open PRs; one integrator combines them."
+    "draft_pr_default_for_product_missions": false,
+    "open_pr_ready_for_review": true,
+    "note": "Owner instruction 2026-09-20: all product PRs open ready for review, not draft. Workers still never merge. HQ or the owner merges."
   },
   "validation_before_dispatch": [
     "repository is on the allowlist",
@@ -291,7 +292,7 @@
     "no_duplicate_work": "Never edit in the checkout and then redo the same patch in a worker.",
     "wakes_cost_not_idleness": "Idle agents cost nothing; wakes cost. Fix habits before cutting roster.",
     "roster_limit": "At most one implementer, one reviewer or gate, one QA, and one database owner per product. Widen an existing role rather than adding an overlapping one.",
-    "reviewer_timing": "Do not wake a reviewer or QA before a draft exists.",
+    "reviewer_timing": "Do not wake a reviewer or QA before a PR exists.",
     "retirement": "Propose retirement candidates; the owner deletes. HQ never deletes an agent."
   }
 }

@@ -76,7 +76,7 @@
     "development_edits": true,
     "isolated_tests": true,
     "feature_branch_push": true,
-    "draft_pr": true,
+    "draft_pr": false,
     "merge_to_default_branch": false,
     "production_migration": false,
     "production_deployment": false,

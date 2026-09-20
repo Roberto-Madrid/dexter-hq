@@ -39,8 +39,8 @@ Load the one you need, when you need it.
   limits. Load before launching any worker. This is the cost source of truth.
 - `dexter-worker-preflight` — the checkout verification every worker runs, and the
   fields every assignment and result must carry.
-- `dexter-draft-pr` — draft-only PR rules and the release, deployment, and database
-  boundaries.
+- `dexter-draft-pr` — PR and release boundaries. Open PRs **ready**, not draft,
+  unless the owner says otherwise. Never self-merge.
 
 When the same briefing or checklist gets written a second time, make it a skill rather
 than repeating it.

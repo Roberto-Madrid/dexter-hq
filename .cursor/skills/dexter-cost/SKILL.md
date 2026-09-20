@@ -52,15 +52,15 @@ Idle agents cost nothing. **Wakes** cost. Kill habits before killing roster.
 3. Load product context once. Never read `node_modules`. No unbounded greps.
    Cap command output.
 4. Targeted checks while working; the full gate once, at the end.
-5. Draft PR only. Stop when done.
-6. One implementer owns a surface until its draft exists.
+5. Open the PR ready for review, not as a draft. Stop when done. Never merge.
+6. One implementer owns a surface until its PR exists.
 
 ## Roster limits
 
 At most one implementer, one reviewer or gate, one QA, and one database owner
 per product. Add another only if it genuinely does not overlap and gets used.
 If a role would overlap an existing one, widen that role instead of spawning a
-new agent. Do not wake the reviewer or QA before a draft exists.
+new agent. Do not wake the reviewer or QA before a PR exists.
 
 Retiring an agent is the owner's call. Propose candidates; never delete.
 

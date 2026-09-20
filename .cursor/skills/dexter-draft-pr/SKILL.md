@@ -1,21 +1,20 @@
 ---
 name: dexter-draft-pr
-description: Draft-only pull request and release boundaries for Dexter workers. Use whenever a worker is about to push, open a PR, merge, deploy, or touch production data.
+description: Pull request and release boundaries for Dexter workers. Use whenever a worker is about to push, open a PR, merge, deploy, or touch production data.
 ---
 
-# Draft-only handoff
+# PR handoff
 
-Shippers open drafts. Nothing else.
+Shippers open **ready (non-draft)** PRs. The owner asked for this on 2026-09-20.
+Do not open drafts unless the owner says so for a specific task.
 
 ## Always
 
 - Push your own branch. Never push to `main`.
-- Open the PR as a **draft**. Never mark it ready for review, never merge it,
-  never approve your own work.
+- Open the PR as **ready for review** (`gh pr create`, not `--draft`).
+- Never merge it. Never approve your own work. HQ or the owner merges.
 - English commit messages and PR bodies. Say what changed and what is still
   incomplete.
-- Hand off to the reviewer only once the draft exists. Do not wake a reviewer
-  or QA before there is something to look at.
 
 ## Never, without explicit owner authorization
 
@@ -30,7 +29,8 @@ Shippers open drafts. Nothing else.
 
 A builder may not verify its own work. Verification is a separate agent with a
 fresh look at behaviour, authorization, persistence, and visuals against the
-accepted scope.
+accepted scope. Visual checks of the actual screens are required when the
+change is user-visible.
 
 Record these separately and let them disagree: deployed, verified, and
 accepted. A live URL is not completion. A screenshot is not proof of
