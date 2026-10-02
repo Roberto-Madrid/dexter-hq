@@ -35,19 +35,21 @@
     "notes": "'not_tested' is the default; absence of a recorded result is never 'passed'. 'deployed-but-unaccepted' means a build is reachable but has not passed independent verification and owner acceptance. Deployment, verification, and acceptance are recorded independently and may disagree."
   },
   "environment": {
-    "note": "Verified facts about the shared Cursor cloud environment, recorded rather than guessed. Do not propose recreating this environment.",
+    "note": "Verified facts about the shared Cursor cloud environment, recorded rather than guessed. Do not propose recreating this environment. The same environment id is shared across barber, HQ, and (once the owner adds it) workers.",
     "environment_public_id": "16a2c703-b3e1-11f1-bb68-864e54d14197",
     "source": "Repository",
     "recorded_via": "REPO_FILE_OBSERVED",
     "managed_by_file": "dexter-barber/.cursor/environment.json",
     "already_includes_both_repos": true,
+    "workers_repo_in_cursor_environment": false,
     "repos": [
       "github.com/roberto-madrid/dexter-barber",
-      "github.com/roberto-madrid/dexter-hq"
+      "github.com/roberto-madrid/dexter-hq",
+      "github.com/roberto-madrid/dexter-workers"
     ],
-    "action_required": "none — environment exists and already covers both repositories",
-    "observed_at": "2026-09-19T04:32:00Z",
-    "evidence": "cursor-cloud environment-info from Cloud Agent run bc-7c2ba0a5-660e-56c3-a728-5af2a12816c8"
+    "action_required": "Owner: in the Cursor dashboard, add github.com/Roberto-Madrid/dexter-workers to existing environment 16a2c703-b3e1-11f1-bb68-864e54d14197. Do not recreate the environment.",
+    "observed_at": "2026-10-02T22:35:00Z",
+    "evidence": "cursor-cloud environment-info from Cloud Agent run bc-7c2ba0a5-660e-56c3-a728-5af2a12816c8; workers repo added to this projection on 2026-10-02. GitHub create from the registering worker failed with createRepository (integration)."
   },
   "credentials": {
     "note": "Variable names only. No secret value is recorded anywhere in this repository.",
@@ -198,12 +200,41 @@
         "confidence_reason": "Each passed check cites a recorded agent id, commit, or cost observed against the live API.",
         "note": "Work is integrated on branch bootstrap/integration and is NOT on main; merging to main needs owner authorization per config/dispatch-policy.json. 'operating_files_present_on_main' stays not_tested until that merge happens."
       }
+    },
+    {
+      "id": "workers",
+      "name": "Dexter Workers",
+      "role": "dispatch_target",
+      "repository": "Roberto-Madrid/dexter-workers",
+      "canonical_url": "https://github.com/Roberto-Madrid/dexter-workers",
+      "default_branch": "main",
+      "hq_may_edit": false,
+      "note": "HQ-dispatched worker repository. Not the product. Owners coordinate from dexter-hq. Do not copy the barber app here.",
+      "github_create": {
+        "attempted_at": "2026-10-02T22:36:00Z",
+        "succeeded": false,
+        "error": "GraphQL: Resource not accessible by integration (createRepository)",
+        "owner_action": "Create private repository Roberto-Madrid/dexter-workers on GitHub (match dexter-hq visibility), seed a short README stating this is an HQ dispatch target and not the product."
+      },
+      "mission_pointers": [],
+      "last_known_status": {
+        "observed_at": "2026-10-02T22:36:00Z",
+        "observed_by": "hq",
+        "delivery_state": "blocked",
+        "checks": {
+          "github_repository_exists": "failed",
+          "cursor_environment_includes_repo": "not_tested"
+        },
+        "confidence": "high",
+        "confidence_reason": "gh repo view returned not found; gh repo create returned createRepository integration denial."
+      }
     }
   ],
   "excluded_from_hq_write_scope": [
     "Roberto-Madrid/dexter-barber application code, tests, migrations, hosting, and database",
     "Vercel project prj_yFeb9XnErOYVXO3SSu4IfYBTu7JZ",
     "Supabase project uzmvhoejpqhgsffpqdnf",
+    "Roberto-Madrid/dexter-workers implementation from HQ sessions (dispatch only)",
     "any repository not present in the config/dispatch-policy.json allowlist"
   ]
 }
