@@ -4,7 +4,7 @@ Entry point for a fresh HQ session. Read `AGENTS.md`, `portfolio.json`, the acti
 mission state, this file, `config/dispatch-policy.json`, then run `dispatch recover`.
 Trust recover over this file if they disagree.
 
-**Written:** 2026-10-02T22:36:00Z
+**Written:** 2026-10-02T23:05:00Z
 
 ## Where things stand
 
@@ -34,11 +34,12 @@ To run HQ on a laptop instead of in the cloud, follow `docs/LOCAL_BOOT.md`.
 - `DEXTER_CURSOR_API_KEY` is attached to environment
   `16a2c703-b3e1-11f1-bb68-864e54d14197` and authenticates.
 - Intended third repo: `https://github.com/Roberto-Madrid/dexter-workers`
-  (private, HQ dispatch target, not the product). GitHub create from a
-  worker failed: `GraphQL: Resource not accessible by integration
-  (createRepository)`. Owner must create that private repo on GitHub, then
-  add it to the **existing** Cursor environment
-  `16a2c703-b3e1-11f1-bb68-864e54d14197`. Do not recreate the environment.
+  (private, HQ dispatch target, not the product). Live Cursor env
+  `16a2c703-b3e1-11f1-bb68-864e54d14197` still lists only barber + hq.
+  No API/MCP can attach it. Remaining owner click: that environment's
+  dashboard page → add the workers GitHub URL to the existing repo list.
+  Do not recreate the environment. This agent's GitHub token 404s the
+  private repo.
 
 ## Do not
 
