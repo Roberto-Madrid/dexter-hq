@@ -1,0 +1,36 @@
+dispatch <command> [options]
+
+Commands
+  auth-check   Verify the API credential is attached and accepted (never prints it)
+  discover     List model ids (GET /v1/models) and permitted repositories (GET /v1/repositories)
+  launch       Create an agent for an approved mission at an explicit base commit
+  status       Read agent + run state; --wait polls with backoff and a hard timeout
+  result       Read the terminal run result, pushed branches, and artifact references
+  followup     Submit one bounded follow-up, only while the agent is IDLE
+  recover      Rebuild known agent/run ids from durable local records (offline by default)
+  cancel       Cancel the active run of an owned agent
+  usage        Report token usage and reported cost; allowance stays unknown
+
+Common options
+  --task-id <id>            Durable client task id (preferred handle for every command)
+  --agent-id <bc-...>       Explicit agent id instead of a task record
+  --run-id <run-...>        Explicit run id
+  --policy <path>           Dispatch policy path (default: config/dispatch-policy.json)
+  --records-dir <path>      Durable record directory (default: policy recordsDir)
+  --api-base <url>          Override the API base URL
+  --log-level <level>       silent | error | warn | info | debug
+
+launch options
+  --mission <id>            Mission id defined in the policy missions map
+  --repo <url>              Repository URL; must be in the policy allowlist
+  --starting-ref <ref>      Branch or commit SHA passed to the API as repos[0].startingRef
+  --base-commit <sha40>     Expected base commit, recorded durably
+  --model <id>              Model id from discovery; omit to use the account default
+  --prompt-file <path>      File containing the approved task text (never passed via argv)
+  --allow-branch-ref        Permit a moving branch ref as --starting-ref
+  --auto-create-pr          Only honoured when the policy sets autoCreatePR: true
+  --work-on-current-branch  Push to startingRef instead of a generated cursor/ branch
+
+The credential is read from the environment variable named by the policy's
+"apiKeyEnv" (default DEXTER_CURSOR_API_KEY). It is never accepted as an argument.
+EXIT:0

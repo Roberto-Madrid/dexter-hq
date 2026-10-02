@@ -1,0 +1,32 @@
+{
+  "command": "recover",
+  "ok": true,
+  "offline": true,
+  "recordsDir": "/agent/repos/dexter-hq/.dexter/dispatch/records",
+  "count": 1,
+  "needsReconciliation": [],
+  "tasks": [
+    {
+      "taskId": "hq-preflight-001",
+      "state": "launched",
+      "clientAgentId": "bc-82f15814-538b-4106-b939-fa1e7e7b0453",
+      "agentId": "bc-82f15814-538b-4106-b939-fa1e7e7b0453",
+      "runId": "run-96ba5f82-dc6a-44a6-8a2e-d3eeea5aa1ba",
+      "agentUrl": "https://cursor.com/agents/bc-82f15814-538b-4106-b939-fa1e7e7b0453",
+      "missionId": "hq-bootstrap-preflight",
+      "repository": "https://github.com/Roberto-Madrid/dexter-barber",
+      "startingRef": "9ddad27bc056e1715118dda8b04962108659d31b",
+      "expectedBaseCommit": "9ddad27bc056e1715118dda8b04962108659d31b",
+      "lastKnownRunState": {
+        "raw": "FINISHED",
+        "state": "completed",
+        "terminal": true,
+        "reason": null,
+        "recognized": true
+      },
+      "createdAt": "2026-09-19T04:59:41.739Z",
+      "refreshed": false
+    }
+  ]
+}
+EXIT:0

@@ -1,0 +1,3 @@
+- G0: git cannot hold branch `v5` and `v5/G0-bootstrap` at once; story branch is `v5-G0-bootstrap`.
+- G0: `config/dispatch-policy.json` branch patterns omit `v5*`; left unedited because this story does not own the file.
+- G0: `README.md` still says the dispatch client is not installed; left for G7.

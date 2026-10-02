@@ -1,0 +1,375 @@
+
+> @dexter-hq/dispatch@0.1.0 test
+> node --test test/*.test.js
+
+TAP version 13
+# Subtest: auth-check degrades with an actionable message when the secret is absent
+ok 1 - auth-check degrades with an actionable message when the secret is absent
+  ---
+  duration_ms: 5.781339
+  ...
+# Subtest: auth-check reports identity without emitting the credential anywhere
+ok 2 - auth-check reports identity without emitting the credential anywhere
+  ---
+  duration_ms: 20.587667
+  ...
+# Subtest: a rejected credential is reported as an auth failure, not a crash, and is redacted
+ok 3 - a rejected credential is reported as an auth failure, not a crash, and is redacted
+  ---
+  duration_ms: 1.356061
+  ...
+# Subtest: online commands refuse to run without a credential instead of crashing
+ok 4 - online commands refuse to run without a credential instead of crashing
+  ---
+  duration_ms: 3.269241
+  ...
+# Subtest: a credential passed on the command line aborts the run
+ok 5 - a credential passed on the command line aborts the run
+  ---
+  duration_ms: 1.090185
+  ...
+# Subtest: discover returns model ids from the API and flags allowlisted repositories
+ok 6 - discover returns model ids from the API and flags allowlisted repositories
+  ---
+  duration_ms: 21.81678
+  ...
+# Subtest: repository discovery being rate limited degrades to unavailable, not failure
+ok 7 - repository discovery being rate limited degrades to unavailable, not failure
+  ---
+  duration_ms: 3.298204
+  ...
+# Subtest: rate-limited GETs back off and retry, honouring Retry-After
+ok 8 - rate-limited GETs back off and retry, honouring Retry-After
+  ---
+  duration_ms: 37.939885
+  ...
+# Subtest: transient 5xx GETs retry with exponential backoff and then give up
+ok 9 - transient 5xx GETs retry with exponential backoff and then give up
+  ---
+  duration_ms: 3.175376
+  ...
+# Subtest: creates are never retried, even on a transient failure
+ok 10 - creates are never retried, even on a transient failure
+  ---
+  duration_ms: 0.725699
+  ...
+# Subtest: a timed-out create is flagged ambiguous; a timed-out GET is not
+ok 11 - a timed-out create is flagged ambiguous; a timed-out GET is not
+  ---
+  duration_ms: 101.646939
+  ...
+# Subtest: HTTP status codes map to distinct failure kinds
+ok 12 - HTTP status codes map to distinct failure kinds
+  ---
+  duration_ms: 5.465052
+  ...
+# Subtest: an echoed credential in an error body is redacted before it reaches the caller
+ok 13 - an echoed credential in an error body is redacted before it reaches the caller
+  ---
+  duration_ms: 0.779565
+  ...
+# Subtest: the Authorization header is sent but never appears in the recorded error details
+ok 14 - the Authorization header is sent but never appears in the recorded error details
+  ---
+  duration_ms: 0.785776
+  ...
+# Subtest: dispatch slots count only agents this client launched, not the whole account
+ok 15 - dispatch slots count only agents this client launched, not the whole account
+  ---
+  duration_ms: 30.274847
+  ...
+# Subtest: an active agent launched by this client does consume a dispatch slot
+ok 16 - an active agent launched by this client does consume a dispatch slot
+  ---
+  duration_ms: 2.052046
+  ...
+# Subtest: launch persists intent before the create POST and ids immediately after
+ok 17 - launch persists intent before the create POST and ids immediately after
+  ---
+  duration_ms: 11.624913
+  ...
+# Subtest: an ambiguous create is reconciled by lookup, never by a second POST
+ok 18 - an ambiguous create is reconciled by lookup, never by a second POST
+  ---
+  duration_ms: 62.806098
+  ...
+# Subtest: an ambiguous create with no matching agent fails loudly and records not_created
+ok 19 - an ambiguous create with no matching agent fails loudly and records not_created
+  ---
+  duration_ms: 59.177886
+  ...
+# Subtest: agent_id_conflict is resolved by lookup through the task marker in the agent name
+ok 20 - agent_id_conflict is resolved by lookup through the task marker in the agent name
+  ---
+  duration_ms: 11.048908
+  ...
+# Subtest: a duplicate task id is refused before any network call
+ok 21 - a duplicate task id is refused before any network call
+  ---
+  duration_ms: 5.757202
+  ...
+# Subtest: validation failures stop before the create and leave no record behind
+ok 22 - validation failures stop before the create and leave no record behind
+  ---
+  duration_ms: 2.595224
+  ...
+# Subtest: launch refuses to run when the dispatch policy file is absent
+ok 23 - launch refuses to run when the dispatch policy file is absent
+  ---
+  duration_ms: 1.194855
+  ...
+# Subtest: status reports a running agent and persists a resume record
+ok 24 - status reports a running agent and persists a resume record
+  ---
+  duration_ms: 33.418819
+  ...
+# Subtest: status --wait polls with backoff until the run is terminal
+ok 25 - status --wait polls with backoff until the run is terminal
+  ---
+  duration_ms: 6.553956
+  ...
+# Subtest: status --wait stops at the hard timeout and leaves a resume record
+ok 26 - status --wait stops at the hard timeout and leaves a resume record
+  ---
+  duration_ms: 5.651039
+  ...
+# Subtest: result returns the terminal reply, branches and artifacts
+ok 27 - result returns the terminal reply, branches and artifacts
+  ---
+  duration_ms: 3.406041
+  ...
+# Subtest: result on a non-terminal run returns no text and says why
+ok 28 - result on a non-terminal run returns no text and says why
+  ---
+  duration_ms: 2.228395
+  ...
+# Subtest: an unrecognised run status surfaces as unknown rather than success
+ok 29 - an unrecognised run status surfaces as unknown rather than success
+  ---
+  duration_ms: 2.936034
+  ...
+# Subtest: followup is withheld while the agent is ACTIVE — no POST is sent
+ok 30 - followup is withheld while the agent is ACTIVE — no POST is sent
+  ---
+  duration_ms: 1.641236
+  ...
+# Subtest: a 409 agent_busy on followup is reported once and never retried
+ok 31 - a 409 agent_busy on followup is reported once and never retried
+  ---
+  duration_ms: 2.532129
+  ...
+# Subtest: followup on an IDLE agent submits exactly one bounded run
+ok 32 - followup on an IDLE agent submits exactly one bounded run
+  ---
+  duration_ms: 4.285739
+  ...
+# Subtest: cancel maps a cancelled run and closes the record
+ok 33 - cancel maps a cancelled run and closes the record
+  ---
+  duration_ms: 3.418626
+  ...
+# Subtest: cancelling a terminal run reports run_not_cancellable instead of failing
+ok 34 - cancelling a terminal run reports run_not_cancellable instead of failing
+  ---
+  duration_ms: 1.692659
+  ...
+# Subtest: usage reports real token counts and refuses to estimate an absent cost
+ok 35 - usage reports real token counts and refuses to estimate an absent cost
+  ---
+  duration_ms: 1.643428
+  ...
+# Subtest: usage surfaces the undocumented cost object when the live response carries it
+ok 36 - usage surfaces the undocumented cost object when the live response carries it
+  ---
+  duration_ms: 1.982109
+  ...
+# Subtest: the canonical HQ policy document is recognised and translated
+ok 37 - the canonical HQ policy document is recognised and translated
+  ---
+  duration_ms: 1.279638
+  ...
+# Subtest: loading the canonical document produces a usable allowlist instead of an empty one
+ok 38 - loading the canonical document produces a usable allowlist instead of an empty one
+  ---
+  duration_ms: 0.895159
+  ...
+# Subtest: a mission keeps its repository restriction through the translation
+ok 39 - a mission keeps its repository restriction through the translation
+  ---
+  duration_ms: 2.95841
+  ...
+# Subtest: allowlist matching ignores the owner-casing difference between the API and git remotes
+ok 40 - allowlist matching ignores the owner-casing difference between the API and git remotes
+  ---
+  duration_ms: 0.688016
+  ...
+# Subtest: a fresh process with no prior conversation rebuilds ids from disk alone
+ok 41 - a fresh process with no prior conversation rebuilds ids from disk alone
+  ---
+  duration_ms: 52.844311
+  ...
+# Subtest: recover --refresh reconciles an ambiguous record without re-creating anything
+ok 42 - recover --refresh reconciles an ambiguous record without re-creating anything
+  ---
+  duration_ms: 31.827278
+  ...
+# Subtest: recover works offline with no credential present
+ok 43 - recover works offline with no credential present
+  ---
+  duration_ms: 1.728021
+  ...
+# Subtest: recover reports an empty store rather than failing
+ok 44 - recover reports an empty store rather than failing
+  ---
+  duration_ms: 1.062696
+  ...
+# Subtest: registered credential value never survives redaction
+ok 45 - registered credential value never survives redaction
+  ---
+  duration_ms: 1.157523
+  ...
+# Subtest: prefixed credential shapes are redacted even when never registered
+ok 46 - prefixed credential shapes are redacted even when never registered
+  ---
+  duration_ms: 0.271412
+  ...
+# Subtest: credentials embedded in remote URLs are redacted
+ok 47 - credentials embedded in remote URLs are redacted
+  ---
+  duration_ms: 0.119721
+  ...
+# Subtest: git SHAs and agent ids stay readable
+ok 48 - git SHAs and agent ids stay readable
+  ---
+  duration_ms: 0.206627
+  ...
+# Subtest: sensitive object keys are masked wholesale
+ok 49 - sensitive object keys are masked wholesale
+  ---
+  duration_ms: 0.513693
+  ...
+# Subtest: DispatchError redacts both message and details
+ok 50 - DispatchError redacts both message and details
+  ---
+  duration_ms: 0.34263
+  ...
+# Subtest: redaction survives circular structures
+ok 51 - redaction survives circular structures
+  ---
+  duration_ms: 0.190315
+  ...
+# Subtest: an identifier field keeps its value but still loses an embedded secret
+ok 52 - an identifier field keeps its value but still loses an embedded secret
+  ---
+  duration_ms: 0.166513
+  ...
+# Subtest: every documented run status maps to a distinct canonical state
+ok 53 - every documented run status maps to a distinct canonical state
+  ---
+  duration_ms: 1.919547
+  ...
+# Subtest: unrecognised and missing run statuses become unknown, never guessed
+ok 54 - unrecognised and missing run statuses become unknown, never guessed
+  ---
+  duration_ms: 0.23589
+  ...
+# Subtest: run status matching is case-insensitive but preserves the canonical raw value
+ok 55 - run status matching is case-insensitive but preserves the canonical raw value
+  ---
+  duration_ms: 0.199251
+  ...
+# Subtest: agent statuses gate follow-up submission
+ok 56 - agent statuses gate follow-up submission
+  ---
+  duration_ms: 0.245667
+  ...
+# Subtest: a fully specified launch passes validation
+ok 57 - a fully specified launch passes validation
+  ---
+  duration_ms: 2.708584
+  ...
+# Subtest: repository must be on the allowlist
+ok 58 - repository must be on the allowlist
+  ---
+  duration_ms: 1.376351
+  ...
+# Subtest: the old repository name is not silently accepted
+ok 59 - the old repository name is not silently accepted
+  ---
+  duration_ms: 0.618149
+  ...
+# Subtest: repository matching ignores case, .git suffix and scheme noise
+ok 60 - repository matching ignores case, .git suffix and scheme noise
+  ---
+  duration_ms: 0.341231
+  ...
+# Subtest: mission must exist and must permit the repository
+ok 61 - mission must exist and must permit the repository
+  ---
+  duration_ms: 0.374343
+  ...
+# Subtest: base commit must be a full SHA and must agree with an explicit SHA ref
+ok 62 - base commit must be a full SHA and must agree with an explicit SHA ref
+  ---
+  duration_ms: 0.703165
+  ...
+# Subtest: a moving branch ref is refused unless explicitly allowed
+ok 63 - a moving branch ref is refused unless explicitly allowed
+  ---
+  duration_ms: 0.376251
+  ...
+# Subtest: model ids must come from discovery, not from a remembered alias
+ok 64 - model ids must come from discovery, not from a remembered alias
+  ---
+  duration_ms: 0.334104
+  ...
+# Subtest: a policy allowedModelIds list further narrows discovery
+ok 65 - a policy allowedModelIds list further narrows discovery
+  ---
+  duration_ms: 0.54174
+  ...
+# Subtest: omitting the model is allowed and reports a null requested model
+ok 66 - omitting the model is allowed and reports a null requested model
+  ---
+  duration_ms: 0.558615
+  ...
+# Subtest: dispatch slots are enforced and an unknown count blocks the launch
+ok 67 - dispatch slots are enforced and an unknown count blocks the launch
+  ---
+  duration_ms: 0.355974
+  ...
+# Subtest: autoCreatePR cannot be turned on against a policy that keeps it off
+ok 68 - autoCreatePR cannot be turned on against a policy that keeps it off
+  ---
+  duration_ms: 0.212772
+  ...
+# Subtest: all failing preconditions are reported together
+ok 69 - all failing preconditions are reported together
+  ---
+  duration_ms: 0.175869
+  ...
+# Subtest: a long file path is not mistaken for a credential
+ok 70 - a long file path is not mistaken for a credential
+  ---
+  duration_ms: 0.553614
+  ...
+# Subtest: a path-shaped argument still cannot smuggle the configured credential
+ok 71 - a path-shaped argument still cannot smuggle the configured credential
+  ---
+  duration_ms: 0.450006
+  ...
+# Subtest: an opaque high-entropy argument is still refused
+ok 72 - an opaque high-entropy argument is still refused
+  ---
+  duration_ms: 0.200374
+  ...
+1..72
+# tests 72
+# suites 0
+# pass 72
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 444.625355
+EXIT:0
