@@ -1,0 +1,82 @@
+{
+  "story": "G0",
+  "plan_version": 1,
+  "contract_tasks": [
+    {
+      "id": "G0-C1",
+      "owner": "lead",
+      "owns": ["legacy/pre-v5/AGENTS.md", "legacy/pre-v5/README.md"],
+      "done_command": "test -f legacy/pre-v5/AGENTS.md && git diff --name-status main -- AGENTS.md legacy/pre-v5/AGENTS.md",
+      "done_when": [
+        "previous root AGENTS.md is copied before rewrite",
+        "root path still exists so the story diff has no deletion"
+      ],
+      "note": "Git cannot store refs/heads/v5 and refs/heads/v5/G0-bootstrap together. Story branch is v5-G0-bootstrap. PRs still target v5. Recorded as a decision, not a weaker acceptance criterion."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "G0-L1",
+      "lane": "L1",
+      "role": "explore-then-analyst",
+      "tier": "fast-then-deep",
+      "owns": ["docs/AUDIT.md", ".agent-work/plans/migration-map.md"],
+      "reads": ["AGENTS.md", "tools/dispatch/package.json", "config/dispatch-policy.json", "portfolio.json", "handoff.md"],
+      "imitate": ["bootstrap/acceptance.md"],
+      "invariants": [
+        "do not delete or move paths before OA-1",
+        "do not print secret values",
+        "do not edit the barber app or its hosting ids"
+      ],
+      "depends_on": [],
+      "done_when": [
+        "every top-level path has what, works today, V5 target, action, and risk",
+        "install, build, and test commands that exist were run and their output saved",
+        "env names, external services, schema, deploy config, and live data references are listed"
+      ],
+      "done_command": "npm test",
+      "done_command_cwd": "tools/dispatch",
+      "proof": "72 pass, 0 fail in .agent-work/evidence/G0/dispatch-test.txt. No root build script exists; that absence is stated in the audit.",
+      "seams": []
+    },
+    {
+      "id": "G0-L2",
+      "lane": "L2",
+      "role": "writer-and-executor",
+      "tier": "fast-and-standard",
+      "owns": [
+        "DEXTER_V5_ACTION_PLAN.md",
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".cursor/rules/dexter.mdc",
+        "docs/MASTER_PLAN_V5.md",
+        "docs/CONSTITUTION.md",
+        "docs/adr/0001-v5-adoption.md",
+        "docs/adr/0002-v5-1-pools-role-sheet-ceo.md",
+        "docs/THIRD_PARTY.md",
+        "checklists/lazy-ladder.md",
+        "checklists/principles.md",
+        ".env.example",
+        ".github/pull_request_template.md",
+        ".gitignore"
+      ],
+      "reads": ["DEXTER_V5_ACTION_PLAN.md"],
+      "imitate": ["Appendix C of the action plan"],
+      "invariants": [
+        "AGENTS.md matches Appendix C.1",
+        "CLAUDE.md is only @AGENTS.md",
+        "docs/MASTER_PLAN_V5.md is Appendix A verbatim",
+        "checklists are original wording, not upstream source",
+        ".env.example has names only"
+      ],
+      "depends_on": ["G0-C1"],
+      "done_when": [
+        "every owned file exists",
+        "cursor rule is alwaysApply and points at AGENTS.md"
+      ],
+      "done_command": "test -f AGENTS.md && test -f CLAUDE.md && test -f .cursor/rules/dexter.mdc && test -f docs/MASTER_PLAN_V5.md && test -f docs/CONSTITUTION.md && test -f docs/THIRD_PARTY.md && test -f checklists/lazy-ladder.md && test -f checklists/principles.md && test -f .env.example && test -f .github/pull_request_template.md && test -f .gitignore && test -f DEXTER_V5_ACTION_PLAN.md && test -f docs/adr/0001-v5-adoption.md && test -f docs/adr/0002-v5-1-pools-role-sheet-ceo.md",
+      "proof": "file existence; MASTER_PLAN byte-compared to Appendix A of the committed action plan",
+      "seams": ["root AGENTS.md content changed; legacy/pre-v5/AGENTS.md holds the previous text"]
+    }
+  ]
+}
