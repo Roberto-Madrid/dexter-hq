@@ -40,6 +40,21 @@
         ],
         "merge_to_protected": "forbidden",
         "hosting_boundary": "leave_unchanged"
+      },
+      {
+        "id": "workers",
+        "repository": "Roberto-Madrid/dexter-workers",
+        "canonical_url": "https://github.com/Roberto-Madrid/dexter-workers",
+        "access": "read_write",
+        "access_note": "HQ-dispatched worker/dispatch target. Not the product application. Owners coordinate from dexter-hq. GitHub create from this worker failed (integration cannot createRepository); owner must create the private repo if it is still missing.",
+        "allowed_branch_patterns": [
+          "cursor/*",
+          "hq/*"
+        ],
+        "protected_branches": [
+          "main"
+        ],
+        "merge_to_protected": "integrator_only_with_owner_authorization"
       }
     ]
   },
