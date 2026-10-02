@@ -47,9 +47,20 @@
       "github.com/roberto-madrid/dexter-hq",
       "github.com/roberto-madrid/dexter-workers"
     ],
-    "action_required": "Owner: in the Cursor dashboard, add github.com/Roberto-Madrid/dexter-workers to existing environment 16a2c703-b3e1-11f1-bb68-864e54d14197. Do not recreate the environment.",
-    "observed_at": "2026-10-02T22:35:00Z",
-    "evidence": "cursor-cloud environment-info from Cloud Agent run bc-7c2ba0a5-660e-56c3-a728-5af2a12816c8; workers repo added to this projection on 2026-10-02. GitHub create from the registering worker failed with createRepository (integration)."
+    "repos_note": "HQ intended set. Live Cursor environment-info still lists only barber and hq. environment.json cannot declare workspace clones (schema has repositoryDependencies for GitHub-token access, not a repos array).",
+    "live_cursor_repos_observed": [
+      "github.com/roberto-madrid/dexter-barber",
+      "github.com/roberto-madrid/dexter-hq"
+    ],
+    "attach_api": {
+      "attempted": true,
+      "can_attach_without_dashboard": false,
+      "cursor_cloud_mcp": "no attach-repo tool; trigger-environment-build refs must already belong to this environment; environmentJson override is rejected for repo-file managed envs",
+      "public_api": "GET/PATCH/POST/PUT https://api.cursor.com/v1|v0/environments* returned 404 Route not found"
+    },
+    "action_required": "Exact remaining click: open https://cursor.com/dashboard/cloud-agents/environments/e/16a2c703-b3e1-11f1-bb68-864e54d14197 (existing Dexter environment only) and add https://github.com/Roberto-Madrid/dexter-workers to that environment's repository list. Do not create a second environment. If the picker still omits it, confirm the GitHub repo exists, then refresh the picker — this agent's GitHub token 404s the private repo even when the GitHub App has All repositories.",
+    "observed_at": "2026-10-02T23:05:00Z",
+    "evidence": "cursor-cloud environment-info on run bc-92c82a61-0232-503a-ad3d-e5b845635334: live repos barber+hq only. Public Cloud Agents API has no environments attach route. dexter-barber .cursor/environment.json will list repositoryDependencies github.com/Roberto-Madrid/dexter-workers plus a no-fail sibling clone script."
   },
   "credentials": {
     "note": "Variable names only. No secret value is recorded anywhere in this repository.",
@@ -214,19 +225,20 @@
         "attempted_at": "2026-10-02T22:36:00Z",
         "succeeded": false,
         "error": "GraphQL: Resource not accessible by integration (createRepository)",
-        "owner_action": "Create private repository Roberto-Madrid/dexter-workers on GitHub (match dexter-hq visibility), seed a short README stating this is an HQ dispatch target and not the product."
+        "owner_action": "If the private repository does not exist yet, create Roberto-Madrid/dexter-workers on GitHub (match dexter-hq visibility), seed a short README stating this is an HQ dispatch target and not the product. A 404 from this agent token is not proof the owner has not already created it."
       },
       "mission_pointers": [],
       "last_known_status": {
-        "observed_at": "2026-10-02T22:36:00Z",
+        "observed_at": "2026-10-02T23:05:00Z",
         "observed_by": "hq",
         "delivery_state": "blocked",
         "checks": {
-          "github_repository_exists": "failed",
-          "cursor_environment_includes_repo": "not_tested"
+          "github_repository_exists": "not_tested",
+          "github_repository_visible_to_this_agent": "failed",
+          "cursor_environment_includes_repo": "failed"
         },
         "confidence": "high",
-        "confidence_reason": "gh repo view returned not found; gh repo create returned createRepository integration denial."
+        "confidence_reason": "This run's environment-info lists only barber and hq. gh repo view and git ls-remote 404 from this token; that may be a private-repo visibility limit, not absence."
       }
     }
   ],
