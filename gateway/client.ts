@@ -95,7 +95,6 @@ export function runCeo(call: CeoCall, onEvent: (event: CeoEvent, atMs: number) =
     env,
     stdio: ["pipe", "pipe", "pipe"],
   });
-  child.stdin.end();
 
   let buffer = "";
   child.stdout.setEncoding("utf8");
