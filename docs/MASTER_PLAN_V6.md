@@ -217,13 +217,13 @@ Three honest trade-offs. The CEO's model is chosen by xAI, not your role sheet. 
 
 ## 9. Where the build stands, and who finishes it
 
-The V5 build reached the end of G3 in Cursor. A team of specialized Grok Bots, created by dreggbot, finishes it: the build team builds the connector and the control tower, redesigns the app, and only then dreggbot creates the CEO bot that runs everything. The process rules stay: the Lead Loop, ledger, and verification in `DEXTER_V5_ACTION_PLAN.md` §3, with story branches named `v5-<story>` because Git can't hold `v5` and `v5/<story>` together.
+The V5 build reached the end of G3 in Cursor. A team of specialized Grok Bots, created by dreggbot, finishes it: the build team builds the connector and the control tower, redesigns the app, and only then dreggbot creates the CEO bot that runs everything. The process rules stay: the Lead Loop, ledger, and verification in `DEXTER_V5_ACTION_PLAN.md` §3. The integration branch is `main`. `v5` and the story branches were merged into `main` and deleted.
 
 ### Where the build stands (Cursor handoff, October 3)
 
 Done, and kept:
 
-- **G0–G3 are merged on `v5`** in `dexter-hq`: owner login, the `dexter_hq` schema with row-level security and the event log, the kernel with CI green (including `supabase start`), the one-minute tick with its weekly purge, and status, cost, and list answers straight from the database.
+- **G0–G3 are on `main`** in `dexter-hq`: owner login, the `dexter_hq` schema with row-level security and the event log, the kernel with CI green (including `supabase start`), the one-minute tick with its weekly purge, and status, cost, and list answers straight from the database.
 - **Path B works on a Vercel preview** with Fluid compute on: Codex 0.160 bundled in the chat function, your ChatGPT login loaded from Vault and written back, GPT-6.1 Sol at medium, valid plan cards in 16–19 seconds, repo private.
 - **The other repos exist.** `dexter-workers` holds the worker workflows and the Codex reserve; `dexter-barber` is the first product repo, not built yet.
 
@@ -248,7 +248,7 @@ The HQ chat also keeps answering status questions from the database without a mo
 
 ### The build team
 
-dreggbot creates these bots from the templates in §10. They share one computer and its command-line credentials, so their specialization is enforced by instructions, not security; that is why `main` stays protected and only you can merge to it.
+dreggbot creates these bots from the templates in §10. They share one computer and its command-line credentials, so their specialization is enforced by instructions, not security. `main` is the only branch.
 
 | Bot | Owns | Works with | Holds |
 | --- | --- | --- | --- |
@@ -262,7 +262,7 @@ There is no separate build manager. HQ Dev leads the build the way the orchestra
 ### Stages
 
 1. **Stage 0: Prove and clean up** (HQ Dev and QA; Designer starts the gate in parallel).
-   - Point Vercel's production branch at `v5` until the Jarvis test, so one stable address works on your phone behind the app's owner login.
+   - Point Vercel's production branch at `main`, so one stable address works on your phone behind the app's owner login.
    - QA runs the live research test from your phone with the laptop closed.
    - Prove the V6 unknowns: a Grok Bot attaches the connector stub as a custom MCP server, or the HTTPS fallback is chosen; the connector launches, reads, and cancels a Cursor agent with HQ's key and resolves the Grok, Composer, and Claude Opus families; one Council seat runs through path B and returns a schema-valid verdict; one bot hands a task to another; a day of Grok Bot usage is measured; a bot wakes on a schedule, or its fallback is chosen.
    - Exit: every check passes or has a named fallback, and QA signs the evidence.
@@ -287,9 +287,9 @@ There is no separate build manager. HQ Dev leads the build the way the orchestra
 | When | You do |
 | --- | --- |
 | Now | Tell dreggbot to create HQ Dev, Designer, and QA from §10 |
-| Now | Create a fine-grained GitHub token for `dexter-hq` and `dexter-workers` (contents and pull requests read/write, Actions read, no admin) for HQ Dev, and protect `main` so only you can merge |
+| Now | Create a fine-grained GitHub token for `dexter-hq` and `dexter-workers` (contents and pull requests read/write, Actions read, no admin) for HQ Dev. `main` is the only branch; do not recreate `v5` |
 | Now | Check the `dexter-workers` secret names in GitHub's settings, since the API couldn't list them |
-| Stage 0 | Set Vercel's production branch to `v5` for now |
+| Stage 0 | Set Vercel's production branch to `main` |
 | Stage 0 | Connect `dexter-barber` to Vercel through GitHub, replacing OA-9's token and template repo |
 | Design gate | Pick a direction, or ask for one revision |
 | Stage 1 | Rotate the Cursor key once HQ Dev works through the connector; sign out of personal accounts on the bot computer |
@@ -301,7 +301,7 @@ There is no separate build manager. HQ Dev leads the build the way the orchestra
 
 ```text
 Create three bots for building Dexter HQ, using the instruction blocks below exactly: HQ Dev, Designer, and QA.
-Give each bot only the access its instructions name. Point each one at the build plan: docs/MASTER_PLAN_V6.md in Roberto-Madrid/dexter-hq, branch v5.
+Give each bot only the access its instructions name. Point each one at the build plan: docs/MASTER_PLAN_V6.md in Roberto-Madrid/dexter-hq, branch main.
 Do not create Dexter, Scout, or any venture lead yet. That happens in Stage 2, when HQ Dev tells you the connector is live.
 When you are done, list the bots you created and the access each one has.
 ```
@@ -309,7 +309,7 @@ When you are done, list the bots you created and the access each one has.
 ### HQ Dev
 
 ```text
-You are HQ Dev, the lead developer of Dexter HQ. You own Roberto-Madrid/dexter-hq (integration branch v5) and Roberto-Madrid/dexter-workers.
+You are HQ Dev, the lead developer of Dexter HQ. You own Roberto-Madrid/dexter-hq (branch main) and Roberto-Madrid/dexter-workers.
 What to build: docs/MASTER_PLAN_V6.md. How to work: DEXTER_V5_ACTION_PLAN.md §3 (Lead Loop, ledger in .agent-work/, verify and fix, at most 3 fix rounds).
 Start by reading .agent-work/handoffs/G3.md and the last 30 ledger lines. Then work through the stages in §9 of the V6 plan, starting with Stage 0.
 Never start a stage before QA passes the previous stage's exit.
@@ -319,7 +319,7 @@ How you work:
 - Do small units yourself. For parallel lanes, launch Cursor cloud agents: builder for features, quick_edit for small mechanical changes,
   Claude Opus for architecture or hard bugs when quota allows. Until the connector exists, use the Cursor key you were given;
   from Stage 1 on, use launch_agent only.
-- You own git: branches named v5-<story>, pull requests into v5, never main. Read every diff and re-run every done-command before merging.
+- You own git on `main`. Commit and push to `main`. Do not recreate `v5` or story branches. Read every diff and re-run every done-command before pushing.
 - UI work follows Designer's approved direction only. No UI code before it is approved.
 - Keep what works (path B, the tick, the kernel) unless the handoff records why it must change.
 - Never print or commit secrets.
