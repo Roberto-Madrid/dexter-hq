@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,19 +16,88 @@ import type { HqDeps } from "./deps.ts";
 import { MemoryStore } from "./memory.ts";
 import type { HqStore } from "./model.ts";
 import { bundledRoleSheet } from "./bundled-assets.ts";
-import { loadCodexLogin, storeCodexLogin } from "./codex-login.ts";
+import { AUTH_PATH, loadCodexLogin, storeCodexLogin } from "./codex-login.ts";
 import { readSnapshot, writeSnapshot } from "./snapshot-db.ts";
 import { createCursorCloud } from "../adapters/cursor-cloud.ts";
 import { createGhRunner } from "../adapters/gh-runner.ts";
 import { runCeo } from "../gateway/client.ts";
 import type { ChatResult } from "../kernel/contracts.ts";
 import type { PlanCard } from "../kernel/types.ts";
-import { readFileSync as readOut } from "node:fs";
 
 type Boot = { store: HqStore; deps: HqDeps; secret: string; ownerEmail: string };
 
+export type CeoTrace = {
+  stages: Record<string, number>;
+  model: string | null;
+  effort: string | null;
+  loginHashChanged: boolean;
+};
+
+const CHAT_MAX_SECONDS = 300;
 const bootKey = Symbol.for("dexter.hq.boot");
 let pathBBilling = false;
+let trace: CeoTrace = { stages: {}, model: null, effort: null, loginHashChanged: false };
+
+export function ceoOutputSchema(): {
+  type: "object";
+  additionalProperties: false;
+  required: string[];
+  properties: Record<string, { type?: string | string[]; items?: { type: string }; enum?: string[] }>;
+} {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "text",
+      "crew",
+      "personas",
+      "councilMode",
+      "tier",
+      "definitionOfDone",
+      "outOfScope",
+      "newScreen",
+      "outwardAction",
+    ],
+    properties: {
+      text: { type: "string" },
+      crew: { type: "string", enum: ["answer", "research", "change", "custom"] },
+      personas: { type: "array", items: { type: "string" } },
+      councilMode: { type: "string", enum: ["off", "quick", "standard", "adversarial"] },
+      tier: { type: "string", enum: ["T0", "T1", "T2", "T3"] },
+      definitionOfDone: { type: "string" },
+      outOfScope: { type: "string" },
+      newScreen: { type: ["boolean", "null"] },
+      outwardAction: { type: ["boolean", "null"] },
+    },
+  };
+}
+
+type RawCard = {
+  text?: string;
+  crew: string;
+  personas?: string[];
+  councilMode?: PlanCard["councilMode"];
+  tier?: PlanCard["tier"];
+  definitionOfDone?: string;
+  outOfScope?: string;
+  newScreen?: boolean | null;
+  outwardAction?: boolean | null;
+};
+
+function rawCard(value: unknown): RawCard {
+  if (!value || typeof value !== "object") throw new Error("card_missing");
+  const crew = (value as { crew?: unknown }).crew;
+  if (typeof crew !== "string" || !crew) throw new Error("card_missing");
+  return value as RawCard;
+}
+
+function loginDigest(): string | null {
+  try {
+    return createHash("sha256").update(readFileSync(AUTH_PATH)).digest("hex");
+  } catch {
+    return null;
+  }
+}
 
 function fillEnv(): void {
   try {
@@ -65,32 +134,20 @@ function pathB(sheetText: string): CeoClient {
       const dir = mkdtempSync(join(tmpdir(), "dexter-ceo-"));
       const output = join(dir, "out.json");
       const schema = join(dir, "card.json");
-      writeFileSync(
-        schema,
-        JSON.stringify({
-          type: "object",
-          additionalProperties: false,
-          required: ["text", "crew", "personas", "councilMode", "tier", "definitionOfDone", "outOfScope"],
-          properties: {
-            text: { type: "string" },
-            crew: { type: "string" },
-            personas: { type: "array", items: { type: "string" } },
-            councilMode: { type: "string" },
-            tier: { type: "string" },
-            definitionOfDone: { type: "string" },
-            outOfScope: { type: "string" },
-            newScreen: { type: "boolean" },
-            outwardAction: { type: "boolean" },
-          },
-        }),
-      );
+      writeFileSync(schema, JSON.stringify(ceoOutputSchema()));
       const dbUrl = process.env.SUPABASE_DB_URL ?? "";
       if (!dbUrl) throw new Error("codex_login_missing");
       const loginKind = await loadCodexLogin(dbUrl);
       if (loginKind !== "chatgpt") throw new Error(loginKind === "api_key" ? "codex_login_not_chatgpt" : "codex_login_unknown");
+      const started = Date.now();
+      const stages: Record<string, number> = {};
+      let streamModel: string | null = null;
+      let streamEffort: string | null = null;
+      const beforeLogin = loginDigest();
       let runError: unknown;
+      let parsed: RawCard | null = null;
       try {
-        await runCeo(
+        const card = await runCeo(
           {
             model,
             effort: "medium",
@@ -102,9 +159,19 @@ function pathB(sheetText: string): CeoClient {
             disableTools: true,
           },
           (event) => {
+            if (event.model) streamModel = event.model;
+            if (event.effort) streamEffort = event.effort;
             if (event.text) onDelta?.(event.text);
           },
+          {
+            deadline: started + (CHAT_MAX_SECONDS - 10) * 1000,
+            onStage(stage, ms) {
+              stages[stage] = ms;
+              console.log(JSON.stringify({ stage, ms }));
+            },
+          },
         );
+        parsed = rawCard(card);
       } catch (error) {
         runError = error;
       }
@@ -113,18 +180,17 @@ function pathB(sheetText: string): CeoClient {
       } catch (error) {
         if (!runError) runError = error;
       }
-      if (runError) throw runError;
-      const parsed = JSON.parse(readOut(output, "utf8")) as {
-        text?: string;
-        crew: string;
-        personas?: string[];
-        councilMode?: PlanCard["councilMode"];
-        tier?: PlanCard["tier"];
-        definitionOfDone?: string;
-        outOfScope?: string;
-        newScreen?: boolean;
-        outwardAction?: boolean;
+      stages.writeback = Date.now() - started;
+      console.log(JSON.stringify({ stage: "writeback", ms: stages.writeback }));
+      const afterLogin = loginDigest();
+      trace = {
+        stages,
+        model: streamModel,
+        effort: streamEffort,
+        loginHashChanged: beforeLogin !== null && afterLogin !== null && beforeLogin !== afterLogin,
       };
+      if (runError) throw runError;
+      if (!parsed) throw new Error("card_missing");
       const card: PlanCard = {
         crew: parsed.crew,
         personas: parsed.personas ?? ["dexter"],
@@ -233,13 +299,17 @@ async function withStore<T>(fn: (store: HqStore) => Promise<T>): Promise<T> {
   return result;
 }
 
-export async function postChat(text: string, onDelta?: (delta: string) => void): Promise<ChatResult & { billing?: "chatgpt-plan" }> {
+export async function postChat(
+  text: string,
+  onDelta?: (delta: string) => void,
+): Promise<ChatResult & { billing?: "chatgpt-plan"; trace: CeoTrace }> {
   const live = current();
   pathBBilling = false;
+  trace = { stages: {}, model: null, effort: null, loginHashChanged: false };
   const result = await withStore((store) => handleChat(store, live.deps, text, undefined, onDelta));
   const billing = pathBBilling && result.kind === "plan" ? ("chatgpt-plan" as const) : undefined;
   pathBBilling = false;
-  return billing ? { ...result, billing } : result;
+  return billing ? { ...result, billing, trace } : { ...result, trace };
 }
 
 export async function getBoard(): Promise<BoardSnapshot> {

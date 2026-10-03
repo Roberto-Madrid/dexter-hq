@@ -146,7 +146,7 @@ async function main() {
     let text = "";
     let usage: Record<string, number> | null = null;
     res.writeHead(200, { "content-type": "text/event-stream" });
-    const exitCode = await runCeo(
+    await runCeo(
       {
         model: resolved.model,
         effort: body.effort,
@@ -161,7 +161,9 @@ async function main() {
         if (event.usage) usage = event.usage;
         res.write(`data: ${JSON.stringify({ type: event.type, atMs })}\n\n`);
       },
+      { deadline: Date.now() + 290_000 },
     );
+    const exitCode = 0;
     if (!text) {
       try {
         text = readFileSync(outputPath, "utf8").trim();
