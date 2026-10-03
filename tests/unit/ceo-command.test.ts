@@ -20,6 +20,8 @@ describe("path B command", () => {
     expect(args).toContain("read-only");
     expect(env.HOME).toBe("/tmp");
     expect(env.CODEX_HOME).toBe("/tmp/.codex");
+    expect(env.TMPDIR).toBe("/tmp/dexter-codex-tmp");
+    expect(env.CODEX_HOME?.startsWith(`${env.TMPDIR}/`)).toBe(false);
     expect(env.OPENAI_API_KEY).toBeUndefined();
     const bin = commandPath("vendor/codex/codex");
     expect(bin.startsWith("/")).toBe(true);

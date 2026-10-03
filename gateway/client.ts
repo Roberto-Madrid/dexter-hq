@@ -3,7 +3,7 @@
  * already on disk. This file never reads, logs, or accepts that login.
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
@@ -25,6 +25,10 @@ export type CeoEvent = {
   text?: string;
   usage?: Record<string, number>;
 };
+
+// Codex refuses to create helper binaries when CODEX_HOME is inside the process
+// temp dir. HOME stays /tmp, and this sibling is not a parent of /tmp/.codex.
+const CODEX_TMPDIR = "/tmp/dexter-codex-tmp";
 
 const DISABLED_TOOLS = [
   "shell_tool",
@@ -68,6 +72,9 @@ export function ceoCommand(call: CeoCall): { args: string[]; env: NodeJS.Process
       PATH: process.env.PATH,
       HOME: home,
       CODEX_HOME: join(home, ".codex"),
+      TMPDIR: CODEX_TMPDIR,
+      TMP: CODEX_TMPDIR,
+      TEMP: CODEX_TMPDIR,
       USER: "dexter",
       LANG: process.env.LANG ?? "C.UTF-8",
     },
@@ -80,6 +87,7 @@ export function commandPath(bin: string): string {
 
 export function runCeo(call: CeoCall, onEvent: (event: CeoEvent, atMs: number) => void): Promise<number> {
   const { args, env } = ceoCommand(call);
+  mkdirSync(CODEX_TMPDIR, { recursive: true, mode: 0o700 });
 
   const started = Date.now();
   const child = spawn(commandPath(call.codexBin), args, {
