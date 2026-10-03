@@ -14,8 +14,9 @@ if (!existsSync(codexDest) || statSync(codexDest).size < 50_000_000) {
   const dir = join(tmpdir(), `codex-pkg-${process.pid}`);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  execFileSync("npm", ["pack", "@openai/codex-linux-x64@0.160.0", "--pack-destination", dir], { stdio: "inherit" });
-  execFileSync("tar", ["-xzf", join(dir, "openai-codex-linux-x64-0.160.0.tgz"), "-C", dir]);
+  const archive = join(dir, "codex.tgz");
+  execFileSync("curl", ["-fsSL", "-o", archive, "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0-linux-x64.tgz"]);
+  execFileSync("tar", ["-xzf", archive, "-C", dir]);
   place(codexDest);
   execFileSync("cp", [join(dir, "package/vendor/x86_64-unknown-linux-musl/bin/codex"), codexDest]);
   chmodSync(codexDest, 0o755);
