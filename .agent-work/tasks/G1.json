@@ -1,0 +1,59 @@
+{
+  "story": "G1",
+  "plan_version": 1,
+  "contract_tasks": [],
+  "tasks": [
+    {
+      "id": "G1-L1-1",
+      "lane": "L1",
+      "role": "executor",
+      "tier": "standard",
+      "owns": ["supabase/migrations/0000_extensions.sql", "supabase/migrations/0001_spike_tick.sql", "supabase/cron.sql", "supabase/functions/tick/index.ts"],
+      "done_when": ["cron heartbeats about 60s apart", "weekly purge removes a seeded old cron.job_run_details row"],
+      "done_command": "SQL snapshots in .agent-work/evidence/G1/tick-heartbeats.json and cron-purge.json",
+      "verdict": "verified"
+    },
+    {
+      "id": "G1-L2-1",
+      "lane": "L2",
+      "role": "executor",
+      "tier": "standard",
+      "owns": ["scripts/spikes/cursor-lifecycle.ts", "gateway/role-sheet.yaml"],
+      "done_when": ["client agentId", "duplicate rejected", "status read", "cancel terminal", "artifacts listed and downloaded", "per-run usage", "families resolved excluding Fast Max preview", "plan mode and no-repo succeed"],
+      "done_command": "node --experimental-strip-types scripts/spikes/cursor-lifecycle.ts",
+      "verdict": "needs-fix",
+      "note": "Artifact download failed once. Create returns HTTP 201 and the script required 200. Not retried after the gateway stop."
+    },
+    {
+      "id": "G1-L3-1",
+      "lane": "L3",
+      "role": "executor",
+      "tier": "standard",
+      "owns": ["workers/**", "scripts/spikes/gh-runner-lifecycle.ts"],
+      "done_when": ["C.7 workflow lifecycle and a schema-valid OpenCode dossier"],
+      "done_command": "not run",
+      "verdict": "not_started"
+    },
+    {
+      "id": "G1-L4-1",
+      "lane": "L4",
+      "role": "executor",
+      "tier": "standard",
+      "owns": ["gateway/client.ts", "gateway/rows.example.json", "gateway/role-sheet.yaml", "scripts/spikes/gateway-smoke.ts", "scripts/spikes/ceo-path.ts", "scripts/ceo-auth-store.ts"],
+      "done_when": ["GitHub Models completion, tool call, and schema-valid JSON", "CEO streams on latest GPT Sol at medium reasoning"],
+      "done_command": "not available; the GitHub Models inference API is retired",
+      "verdict": "failed",
+      "fix_rounds": 3
+    },
+    {
+      "id": "G1-L5-1",
+      "lane": "L5",
+      "role": "designer",
+      "tier": "standard",
+      "owns": ["workers/sketch/**", "scripts/spikes/sketch.ts"],
+      "done_when": ["no-repo wireframe screenshotted at 390x844 and 1440x900"],
+      "done_command": "not run",
+      "verdict": "not_started"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+version: 2
+approved_by: owner
+version_policy:
+  track: latest_stable
+  variant: standard
+  price_guard: no_increase
+  resolve: daily
+  upgrade_check:
+    saved_tasks_per_role: 5
+    must_pass_at_least: current_version
+  worker_upgrades: automatic_with_notice_and_rollback
+  ceo_upgrades: owner_tap
+  on_rule_failure: hold_and_ask
+ceo:
+  family: gpt-sol
+  reasoning_effort: medium
+  pool: chatgpt-plan
+  on_unavailable: hold_and_notify
+roles:
+  builder:    { family: grok, pool: cursor }
+  data:       { family: grok, pool: cursor }
+  contracts:  { family: grok, pool: cursor }
+  researcher: { family: grok, pool: cursor }
+  career:     { family: grok, pool: cursor }
+  web3:       { family: grok, pool: cursor }
+  qa_visual:  { family: grok, pool: cursor }
+  quick_edit: { family: composer, pool: cursor }
+  release:    { family: composer, pool: cursor }
+  designer:   { family: claude-opus, pool: cursor }
+  strategist: { family: claude-opus, pool: cursor }
+  architect:  { family: claude-opus, pool: cursor }
+  writer:     { family: claude-opus, pool: cursor }
+  venture:    { family: claude-opus, pool: cursor }
+  security:   { family: claude-opus, pool: cursor }
+  utility:    { family: github-models-free, pool: gh-runner }
+  reserve:    { family: codex-default, pool: codex, weekly_run_cap: 10 }
+council:
+  families: [claude-opus, gpt-sol, grok]
+quick_edit_rule:
+  max_changed_lines: 50
+  excluded_paths: [auth, payments, migrations, secrets]
+escalation:
+  quick_edit: [composer, grok]
+  builder: [grok, claude-opus]
+  after_failed_checks: 2
+new_family_bake_off:
+  saved_tasks_per_role: 5-10
+  apply: owner_approval

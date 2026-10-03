@@ -1,0 +1,8 @@
+{
+  "attempt": 3,
+  "http": 200,
+  "content_type": "text/plain",
+  "bytes": 4,
+  "is_json": false,
+  "body_prefix": "OK\r\n"
+}
