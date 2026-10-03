@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ceoCommand, commandPath } from "../../gateway/client.ts";
 import { loginKindFromText } from "../../hq/codex-login.ts";
-import { ceoOutputSchema } from "../../hq/server.ts";
+import { ceoOutputSchema, ceoPrompt, replyEchoesAsk } from "../../hq/server.ts";
 
 describe("path B command", () => {
   it("pins medium GPT Sol, disables tools, and sets HOME to /tmp", () => {
@@ -41,6 +41,15 @@ describe("path B command", () => {
     for (const property of Object.values(schema.properties)) {
       if (property.type === "object") expect(property).toHaveProperty("additionalProperties", false);
     }
+  });
+
+  it("rejects a reply that repeats the owner's message", () => {
+    expect(replyEchoesAsk("  Hey Dexter. Are you functional? ", "hey dexter. are you functional?")).toBe(true);
+    expect(replyEchoesAsk("I can answer. Nothing is running.", "Hey dexter. Are you functional?")).toBe(false);
+    const prompt = ceoPrompt("Hey dexter. Are you functional?");
+    expect(prompt).toContain("Hey dexter. Are you functional?");
+    expect(prompt.toLowerCase()).toContain("do not copy");
+    expect(prompt).not.toContain("Ask:");
   });
 
   it("tells a ChatGPT login from an API-key login", () => {

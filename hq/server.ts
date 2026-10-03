@@ -84,6 +84,20 @@ type RawCard = {
   outwardAction?: boolean | null;
 };
 
+export function ceoPrompt(ask: string): string {
+  return [
+    "You are Dexter, the coordinator.",
+    "Return only the schema.",
+    "The text field is the chat reply. State the decision: what you will do, and what done means.",
+    "Do not copy the owner's message. Do not answer with the same sentence.",
+    `Owner: ${ask}`,
+  ].join(" ");
+}
+
+export function replyEchoesAsk(reply: string, ask: string): boolean {
+  return reply.trim().toLowerCase() === ask.trim().toLowerCase();
+}
+
 function rawCard(value: unknown): RawCard {
   if (!value || typeof value !== "object") throw new Error("card_missing");
   const crew = (value as { crew?: unknown }).crew;
@@ -151,7 +165,7 @@ function pathB(sheetText: string): CeoClient {
           {
             model,
             effort: "medium",
-            prompt: `Reply as the coordinator. Return only the schema. Ask: ${text}`,
+            prompt: ceoPrompt(text),
             schemaPath: schema,
             outputPath: output,
             codexBin: "vendor/codex/codex",
@@ -191,6 +205,8 @@ function pathB(sheetText: string): CeoClient {
       };
       if (runError) throw runError;
       if (!parsed) throw new Error("card_missing");
+      const reply = parsed.text?.trim() || "Plan ready.";
+      if (replyEchoesAsk(reply, text)) throw new Error("reply_echo");
       const card: PlanCard = {
         crew: parsed.crew,
         personas: parsed.personas ?? ["dexter"],
@@ -205,7 +221,7 @@ function pathB(sheetText: string): CeoClient {
         requiresApproval: false,
       };
       pathBBilling = true;
-      return { text: parsed.text ?? "Plan ready.", card, model: sheet.ceo.family, effort: sheet.ceo.reasoningEffort };
+      return { text: reply, card, model: sheet.ceo.family, effort: sheet.ceo.reasoningEffort };
     },
   };
 }
