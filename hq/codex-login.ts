@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:
 import pg from "pg";
 import { pgConfig } from "./snapshot-db.ts";
 
-const AUTH_PATH = "/tmp/.codex/auth.json";
+export const AUTH_PATH = "/tmp/.codex/auth.json";
 const KEY_PATH = "/tmp/dexter-age.key";
 const CIPHER_PATH = "/tmp/dexter-auth.age";
 const PUBLIC_KEY_PATH = "workers/age.pub";

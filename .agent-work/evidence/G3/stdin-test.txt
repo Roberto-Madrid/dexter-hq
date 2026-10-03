@@ -1,0 +1,20 @@
+
+> test
+> vitest run tests/unit tests/security
+
+
+ RUN  v3.2.4 /tmp/dexter-hq-ceo
+
+ ✓ tests/unit/checks.test.ts (2 tests) 42ms
+ ✓ tests/unit/ceo-run.test.ts (4 tests) 209ms
+ ✓ tests/unit/g3.test.ts (12 tests) 46ms
+ ✓ tests/unit/kernel.test.ts (20 tests) 13ms
+ ✓ tests/security/injection.test.ts (2 tests) 4ms
+ ✓ tests/unit/snapshot-db.test.ts (2 tests) 3ms
+ ✓ tests/unit/ceo-command.test.ts (4 tests) 4ms
+
+ Test Files  7 passed (7)
+      Tests  46 passed (46)
+   Start at  17:45:12
+   Duration  735ms (transform 300ms, setup 0ms, collect 672ms, tests 320ms, environment 1ms, prepare 420ms)
+
