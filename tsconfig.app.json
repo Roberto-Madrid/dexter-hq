@@ -27,6 +27,7 @@
   },
   "include": [
     "app",
+    "hq/mcp.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],

@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /workspace
+
+ ✓ tests/unit/mcp.test.ts (1 test) 18ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  18:39:51
+   Duration  184ms (transform 35ms, setup 0ms, collect 33ms, tests 18ms, environment 0ms, prepare 46ms)
+
