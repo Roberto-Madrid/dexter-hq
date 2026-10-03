@@ -57,7 +57,7 @@ export type UiCard = {
 
 export function login(email: string, secure: boolean, now?: number): { ok: true; token: string; cookie: string } | { ok: false; status: number };
 export function emailFromCookie(header: string | null, now?: number): string | null;
-export function postChat(text: string): Promise<ChatResult>;
+export function postChat(text: string, onDelta?: (delta: string) => void): Promise<ChatResult & { billing?: "chatgpt-plan" }>;
 export function getBoard(): Promise<BoardSnapshot>;
 export function postStop(): Promise<{ reports: { id: string; runtime: string; state: string }[]; asOf: string }>;
 export function postTick(header: string | null): Promise<{ status: number; body?: unknown }>;

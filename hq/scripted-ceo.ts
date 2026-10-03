@@ -9,7 +9,7 @@ export type CeoDecision = {
 
 export type CeoClient = {
   calls: number;
-  decide(text: string): Promise<CeoDecision>;
+  decide(text: string, onDelta?: (delta: string) => void): Promise<CeoDecision>;
 };
 
 function card(partial: Pick<PlanCard, "crew" | "personas" | "councilMode" | "tier" | "definitionOfDone" | "outOfScope">): PlanCard {

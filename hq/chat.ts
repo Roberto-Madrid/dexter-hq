@@ -35,6 +35,7 @@ export async function handleChat(
   deps: HqDeps,
   text: string,
   crews = loadCrews(),
+  onDelta?: (delta: string) => void,
 ): Promise<ChatResult> {
   const kind = classifyQuestion(text);
   await store.addMessage("owner", text, null);
@@ -60,8 +61,12 @@ export async function handleChat(
   }
   let decision;
   try {
-    decision = await deps.ceo.decide(text);
-  } catch {
+    decision = await deps.ceo.decide(text, onDelta);
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : "ceo_unavailable";
+    const safe = raw.replace(/postgres(?:ql)?:\/\/\S+/gi, "[db]").replace(/eyJ[A-Za-z0-9_-]+/g, "[redacted]").slice(0, 180);
+    const code = safe.split(" ")[0]?.replace(/[^a-z0-9_]/gi, "") || "ceo_unavailable";
+    console.error(safe);
     const notice = "The decision path is unreachable. New plans are held.";
     await store.addMessage("dexter", notice, null);
     return {
@@ -69,7 +74,7 @@ export async function handleChat(
       text: notice,
       modelCalls: deps.ceo.calls - before,
       card: null,
-      notices: ["ceo_unavailable"],
+      notices: code === "ceo_unavailable" ? ["ceo_unavailable"] : ["ceo_unavailable", code],
       requestId: null,
       asOf: store.now(),
     };

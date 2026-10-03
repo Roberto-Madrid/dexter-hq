@@ -5,7 +5,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.app.json",
     "lint": "eslint kernel adapters hq gateway tests app",
-    "build": "node scripts/bundle-hq.mjs && next build",
+    "build": "node scripts/fetch-codex.mjs && node scripts/bundle-hq.mjs && next build",
     "test": "vitest run tests/unit tests/security",
     "test:integration": "node scripts/ensure-integration-db.mjs && vitest run tests/integration",
     "test:e2e": "node scripts/run-e2e.mjs",

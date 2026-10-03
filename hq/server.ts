@@ -16,6 +16,7 @@ import type { HqDeps } from "./deps.ts";
 import { MemoryStore } from "./memory.ts";
 import type { HqStore } from "./model.ts";
 import { bundledRoleSheet } from "./bundled-assets.ts";
+import { loadCodexLogin, storeCodexLogin } from "./codex-login.ts";
 import { readSnapshot, writeSnapshot } from "./snapshot-db.ts";
 import { createCursorCloud } from "../adapters/cursor-cloud.ts";
 import { createGhRunner } from "../adapters/gh-runner.ts";
@@ -27,6 +28,7 @@ import { readFileSync as readOut } from "node:fs";
 type Boot = { store: HqStore; deps: HqDeps; secret: string; ownerEmail: string };
 
 const bootKey = Symbol.for("dexter.hq.boot");
+let pathBBilling = false;
 
 function fillEnv(): void {
   try {
@@ -55,7 +57,7 @@ function pathB(sheetText: string): CeoClient {
     get calls() {
       return calls;
     },
-    async decide(text: string) {
+    async decide(text: string, onDelta?: (delta: string) => void) {
       calls += 1;
       const rawSheet = parse(sheetText) as { ceo?: { version?: string } };
       const model = rawSheet.ceo?.version;
@@ -82,17 +84,36 @@ function pathB(sheetText: string): CeoClient {
           },
         }),
       );
-      await runCeo(
-        {
-          model,
-          effort: "medium",
-          prompt: `Reply as the coordinator. Return only the schema. Ask: ${text}`,
-          schemaPath: schema,
-          outputPath: output,
-          codexBin: "codex",
-        },
-        () => undefined,
-      );
+      const dbUrl = process.env.SUPABASE_DB_URL ?? "";
+      if (!dbUrl) throw new Error("codex_login_missing");
+      const loginKind = await loadCodexLogin(dbUrl);
+      if (loginKind !== "chatgpt") throw new Error(loginKind === "api_key" ? "codex_login_not_chatgpt" : "codex_login_unknown");
+      let runError: unknown;
+      try {
+        await runCeo(
+          {
+            model,
+            effort: "medium",
+            prompt: `Reply as the coordinator. Return only the schema. Ask: ${text}`,
+            schemaPath: schema,
+            outputPath: output,
+            codexBin: "vendor/codex/codex",
+            home: "/tmp",
+            disableTools: true,
+          },
+          (event) => {
+            if (event.text) onDelta?.(event.text);
+          },
+        );
+      } catch (error) {
+        runError = error;
+      }
+      try {
+        await storeCodexLogin(dbUrl);
+      } catch (error) {
+        if (!runError) runError = error;
+      }
+      if (runError) throw runError;
       const parsed = JSON.parse(readOut(output, "utf8")) as {
         text?: string;
         crew: string;
@@ -117,6 +138,7 @@ function pathB(sheetText: string): CeoClient {
         requiresDesignApproval: false,
         requiresApproval: false,
       };
+      pathBBilling = true;
       return { text: parsed.text ?? "Plan ready.", card, model: sheet.ceo.family, effort: sheet.ceo.reasoningEffort };
     },
   };
@@ -211,9 +233,13 @@ async function withStore<T>(fn: (store: HqStore) => Promise<T>): Promise<T> {
   return result;
 }
 
-export async function postChat(text: string): Promise<ChatResult> {
+export async function postChat(text: string, onDelta?: (delta: string) => void): Promise<ChatResult & { billing?: "chatgpt-plan" }> {
   const live = current();
-  return withStore((store) => handleChat(store, live.deps, text));
+  pathBBilling = false;
+  const result = await withStore((store) => handleChat(store, live.deps, text, undefined, onDelta));
+  const billing = pathBBilling && result.kind === "plan" ? ("chatgpt-plan" as const) : undefined;
+  pathBBilling = false;
+  return billing ? { ...result, billing } : result;
 }
 
 export async function getBoard(): Promise<BoardSnapshot> {

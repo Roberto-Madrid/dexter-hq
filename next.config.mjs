@@ -10,6 +10,7 @@ const nextConfig = {
     "/": tracedAssets,
     "/api/*": tracedAssets,
     "/api/**": tracedAssets,
+    "/api/chat": [...tracedAssets, "./vendor/codex/codex", "./vendor/age/age", "./workers/age.pub"],
   },
 };
 

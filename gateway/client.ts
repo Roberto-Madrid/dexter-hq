@@ -16,6 +16,8 @@ export type CeoCall = {
   schemaPath?: string;
   outputPath: string;
   codexBin: string;
+  home?: string;
+  disableTools?: boolean;
 };
 
 export type CeoEvent = {
@@ -24,16 +26,20 @@ export type CeoEvent = {
   usage?: Record<string, number>;
 };
 
-function scrubbedEnv(): NodeJS.ProcessEnv {
-  return {
-    PATH: process.env.PATH,
-    HOME: process.env.HOME,
-    USER: process.env.USER,
-    LANG: process.env.LANG ?? "C.UTF-8",
-  };
-}
+const DISABLED_TOOLS = [
+  "shell_tool",
+  "search_tool",
+  "standalone_web_search",
+  "web_search_request",
+  "web_search_cached",
+  "computer_use",
+  "browser_use",
+  "browser_use_external",
+  "image_generation",
+];
 
-export function runCeo(call: CeoCall, onEvent: (event: CeoEvent, atMs: number) => void): Promise<number> {
+export function ceoCommand(call: CeoCall): { args: string[]; env: NodeJS.ProcessEnv } {
+  const home = call.home ?? process.env.HOME ?? "/tmp";
   const args = [
     "exec",
     "--json",
@@ -50,13 +56,31 @@ export function runCeo(call: CeoCall, onEvent: (event: CeoEvent, atMs: number) =
     "-o",
     call.outputPath,
   ];
+  if (call.disableTools) {
+    args.push("--ignore-user-config", "--ignore-rules");
+    for (const name of DISABLED_TOOLS) args.push("--disable", name);
+  }
   if (call.schemaPath) args.push("--output-schema", call.schemaPath);
   args.push(call.prompt);
+  return {
+    args,
+    env: {
+      PATH: process.env.PATH,
+      HOME: home,
+      CODEX_HOME: join(home, ".codex"),
+      USER: "dexter",
+      LANG: process.env.LANG ?? "C.UTF-8",
+    },
+  };
+}
+
+export function runCeo(call: CeoCall, onEvent: (event: CeoEvent, atMs: number) => void): Promise<number> {
+  const { args, env } = ceoCommand(call);
 
   const started = Date.now();
   const child = spawn(call.codexBin, args, {
     cwd: mkdtempSync(join(tmpdir(), "dexter-ceo-")),
-    env: scrubbedEnv(),
+    env,
     stdio: ["pipe", "pipe", "pipe"],
   });
   child.stdin.end();
