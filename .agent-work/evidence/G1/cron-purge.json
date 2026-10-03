@@ -1,0 +1,17 @@
+{
+  "jobname": "cron-history-purge",
+  "schedule": "0 4 * * 0",
+  "active": true,
+  "purge_command_matches": true,
+  "seed": {
+    "runid": 9000000003,
+    "command": "seed-old-row",
+    "end_time": "now() - 8 days",
+    "present_before_delete": 1
+  },
+  "delete_sql": "delete from cron.job_run_details where end_time < now() - interval '7 days'",
+  "deleted_old": 1,
+  "seed_deleted": 1,
+  "after_commit": {"seed_remaining": 0, "old_remaining": 0},
+  "verdict": "pass"
+}

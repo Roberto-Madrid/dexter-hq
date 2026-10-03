@@ -1,0 +1,12 @@
+name: change
+tier: T2
+council: quick
+personas: [builder, qa]
+tasks:
+  - persona: builder
+    role: builder
+    artifact: diff
+  - persona: qa
+    role: qa_visual
+    artifact: check
+    depends_on: builder

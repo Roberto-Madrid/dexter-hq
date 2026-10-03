@@ -1,0 +1,11 @@
+{
+  "name": "@dexter-hq/dispatch",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=20.11"
+  }
+}

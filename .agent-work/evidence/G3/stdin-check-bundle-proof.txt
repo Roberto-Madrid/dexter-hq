@@ -1,0 +1,9 @@
+Worktree `npm run check:bundle` printed: kernel bundle is stale: supabase/functions/_shared/kernel.js
+
+The fresh bundle differs only in esbuild path comments. The worktree `node_modules` is a symlink to /agent/repos/dexter-hq/node_modules, so comments say ../../agent/repos/dexter-hq/node_modules/... instead of node_modules/...
+
+`git diff --stat origin/v5 -- kernel supabase/functions/_shared/kernel.js scripts/bundle-kernel.mjs` is empty.
+
+On /agent/repos/dexter-hq at v5, with a real node_modules, `npm run check:bundle` printed: kernel bundle fresh.
+
+GitHub CI run 37140592376 on fd08858 passed the check job, which runs check:bundle. The committed kernel bundle was not regenerated.

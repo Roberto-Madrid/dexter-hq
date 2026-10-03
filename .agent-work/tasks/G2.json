@@ -1,0 +1,83 @@
+{
+  "story": "G2",
+  "plan_version": 1,
+  "contract_tasks": [
+    {
+      "id": "G2-C1",
+      "owner": "lead",
+      "owns": ["kernel/types.ts", "kernel/schemas.ts"],
+      "done_command": "npm run typecheck",
+      "done_when": ["types compile", "architect review saved to evidence"],
+      "verdict": "verified",
+      "evidence": [".agent-work/evidence/G2/typecheck.txt", ".agent-work/evidence/G2/architect-contract.md"]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "G2-L1-1",
+      "lane": "L1",
+      "role": "executor",
+      "tier": "deep",
+      "owns": [
+        "supabase/migrations/0001_core.sql",
+        "supabase/migrations/0002_events.sql",
+        "supabase/migrations/0003_claim.sql",
+        "supabase/migrations/0004_slots.sql",
+        "supabase/migrations/0005_role_sheet.sql"
+      ],
+      "depends_on": ["G2-C1"],
+      "done_when": [
+        "owner-only RLS on every owned table",
+        "events append-only",
+        "claim_ready_tasks uses skip locked and honors dependencies, stop, slot cap, and the design gate",
+        "transition_task rejects a stale generation and writes its event in the same transaction",
+        "reserve_pool_run enforces the weekly cap"
+      ],
+      "done_command": "npm run test:integration",
+      "verdict": "verified",
+      "evidence": [".agent-work/evidence/G2/test-integration.txt"]
+    },
+    {
+      "id": "G2-L2-1",
+      "lane": "L2",
+      "role": "executor",
+      "tier": "standard",
+      "owns": ["kernel/** except kernel/types.ts and kernel/schemas.ts"],
+      "depends_on": ["G2-C1"],
+      "invariants": ["no vendor names in kernel/", "client data never routes to a trains_on_prompts row"],
+      "done_when": [
+        "role resolution, quick-edit rule, escalation ladder, pool order, and hold-and-notify",
+        "plan-card design gate",
+        "preflight flags a seeded secret"
+      ],
+      "done_command": "npm run test",
+      "verdict": "verified",
+      "evidence": [".agent-work/evidence/G2/test.txt", ".agent-work/evidence/G2/check-vendor.txt"]
+    },
+    {
+      "id": "G2-L3-1",
+      "lane": "L3",
+      "role": "test-engineer",
+      "tier": "standard",
+      "owns": [
+        "tests/**",
+        "adapters/fake.ts",
+        "vitest.config.ts",
+        "scripts/check-vendor-neutral.sh",
+        "scripts/check-briefs.sh",
+        "scripts/check-bundle-fresh.sh",
+        "scripts/bundle-kernel.mjs",
+        ".github/workflows/ci.yml"
+      ],
+      "depends_on": ["G2-C1", "G2-L1-1", "G2-L2-1"],
+      "done_when": [
+        "unit and integration suites",
+        "fake runtime makes no network call",
+        "vendor, brief, bundle, and secret checks exist"
+      ],
+      "done_command": "npm run test",
+      "verdict": "verified",
+      "evidence": [".agent-work/evidence/G2/check-bundle.txt", ".agent-work/evidence/G2/scan-secrets.txt"]
+    }
+  ]
+}

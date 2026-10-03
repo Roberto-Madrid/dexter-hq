@@ -1,0 +1,7 @@
+{
+  "jobs": [
+    {"jobid": 1, "jobname": "spike-tick", "schedule": "* * * * *", "active": true},
+    {"jobid": 2, "jobname": "cron-history-purge", "schedule": "0 4 * * 0", "active": true, "purge_command_matches": true}
+  ],
+  "note": "The tick job command was not exported. It reads the vault secret at runtime."
+}

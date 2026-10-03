@@ -1,0 +1,4 @@
+(node:30088) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"checker":{"id":37088726440,"conclusion":"failure","shot":false},"cancel":{"id":37088728206,"http":202,"polls":["queued","in_progress"],"conclusion":"cancelled"},"codex":{"id":37088761702,"conclusion":"success","dossier":true,"login_persisted":true,"login_bytes":4036,"log_secret_hits":0},"artifact_names":["login-codex-murr5yvq","result-codex-murr5yvq"]}
+EXIT:1

@@ -1,0 +1,21 @@
+# V5 build scratch (DEXTER_V5_ACTION_PLAN.md §3.1). Ledger, tasks, handoffs, and evidence stay tracked.
+.agent-work/tmp/
+
+# Secret values. Names live in .env.example only.
+.env
+.env.local
+.env.*.local
+
+# Tooling caches. Not part of the product.
+node_modules/
+.next/
+tsconfig.tsbuildinfo
+tsconfig.app.tsbuildinfo
+playwright-report/
+test-results/
+app/generated/*.js
+.omc/
+.omx/
+vendor/
+supabase/.temp/
+supabase/.branches/

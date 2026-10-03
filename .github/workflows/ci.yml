@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [v5, v5-G2-kernel, v5-G3-hq]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run check:vendor
+      - run: npm run check:briefs
+      - run: npm run check:bundle
+      - run: npm run scan:secrets
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.48.3
+      - run: npm ci
+      - run: supabase start
+      - run: supabase status -o env > supabase.env
+      - run: |
+          set -a
+          # shellcheck disable=SC1091
+          source supabase.env
+          set +a
+          if [ -n "${DB_URL:-}" ]; then
+            export SUPABASE_DB_URL="$DB_URL"
+          elif [ -n "${DATABASE_URL:-}" ]; then
+            export SUPABASE_DB_URL="$DATABASE_URL"
+          else
+            echo "supabase status did not provide a database url name" >&2
+            sed -E 's/=.*//' supabase.env >&2
+            exit 1
+          fi
+          npm run test:integration

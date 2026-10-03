@@ -1,0 +1,5 @@
+
+> check:briefs
+> bash scripts/check-briefs.sh
+
+BRIEFS:0

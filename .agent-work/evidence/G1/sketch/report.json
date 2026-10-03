@@ -1,0 +1,13 @@
+{
+  "agentId": "bc-93113a05-9ed1-49dd-9f16-0313fb42593b",
+  "runId": "run-583f272f-777f-46a6-92e9-754a989fcc34",
+  "status": "FINISHED",
+  "artifact": "artifacts/wireframe.html",
+  "html_bytes": 13411,
+  "has_svg": true,
+  "has_script": false,
+  "shots": {
+    "390x844": [390, 844],
+    "1440x900": [1440, 900]
+  }
+}

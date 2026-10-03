@@ -1,0 +1,23 @@
+{
+  "norepoRun": {
+    "http": 200,
+    "status": "FINISHED"
+  },
+  "usage": {
+    "http": 200,
+    "runs": 1,
+    "hasTokens": true
+  },
+  "artifacts": {
+    "http": 200,
+    "paths": []
+  },
+  "download": {
+    "http": 0,
+    "bytes": 0
+  },
+  "planRun": {
+    "http": 200,
+    "status": "FINISHED"
+  }
+}
