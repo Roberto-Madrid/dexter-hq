@@ -15,6 +15,7 @@ import { SHIPPED_CREWS } from "./crews.ts";
 import type { HqDeps } from "./deps.ts";
 import { MemoryStore } from "./memory.ts";
 import type { HqStore } from "./model.ts";
+import { bundledRoleSheet } from "./bundled-assets.ts";
 import { readSnapshot, writeSnapshot } from "./snapshot-db.ts";
 import { createCursorCloud } from "../adapters/cursor-cloud.ts";
 import { createGhRunner } from "../adapters/gh-runner.ts";
@@ -121,12 +122,22 @@ function pathB(sheetText: string): CeoClient {
   };
 }
 
+function readRoleSheet(): string {
+  try {
+    return readFileSync("gateway/role-sheet.yaml", "utf8");
+  } catch (error) {
+    const bundled = bundledRoleSheet();
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" && bundled) return bundled;
+    throw error;
+  }
+}
+
 function current(): Boot {
   const globals = globalThis as typeof globalThis & { [bootKey]?: Boot };
   const existing = globals[bootKey];
   if (existing) return existing;
   fillEnv();
-  const sheetText = readFileSync("gateway/role-sheet.yaml", "utf8");
+  const sheetText = readRoleSheet();
   const sheet = parseRoleSheet(sheetText);
   const mode = process.env.DEXTER_CEO ?? "path-b";
   const ceo = mode === "scripted" ? createScriptedCeo(sheet) : mode === "off" ? disabledCeo() : pathB(sheetText);
