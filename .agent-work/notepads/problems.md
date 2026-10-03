@@ -4,3 +4,6 @@
 - G1: owner attested OA-1 through OA-6 and OA-12; local credential names were empty, so no spike ran.
 - G1: dexter-workers Actions secret and variable lists returned HTTP 403, so those names were not confirmed.
 - G1: dispatch-policy.json was left unchanged; v5 branch patterns stay unlisted.
+- G2: git cannot hold `v5` and `v5/G2-kernel` together; story branch is `v5-G2-kernel`.
+- G2: spike SQL moved to `0006_spike_tick.sql` so `0001_core.sql` has a unique version prefix.
+- G2: this VM has no Docker, so integration ran on local Postgres; CI runs `supabase start`.

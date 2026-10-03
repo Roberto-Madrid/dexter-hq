@@ -1,0 +1,4 @@
+
+> check:vendor
+> bash scripts/check-vendor-neutral.sh
+

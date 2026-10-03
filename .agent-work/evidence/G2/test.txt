@@ -1,0 +1,15 @@
+
+> test
+> vitest run tests/unit
+
+
+ RUN  v3.2.4 /agent/repos/dexter-hq
+
+ ✓ tests/unit/checks.test.ts (2 tests) 27ms
+ ✓ tests/unit/kernel.test.ts (20 tests) 14ms
+
+ Test Files  2 passed (2)
+      Tests  22 passed (22)
+   Start at  02:54:15
+   Duration  359ms (transform 122ms, setup 0ms, collect 239ms, tests 40ms, environment 0ms, prepare 108ms)
+
