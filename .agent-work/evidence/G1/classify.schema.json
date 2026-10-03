@@ -1,0 +1,1 @@
+{"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"type":"string","enum":["question","task","status"]}}}

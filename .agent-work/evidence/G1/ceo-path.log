@@ -1,0 +1,4 @@
+(node:27808) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"model":"gpt-6.1-sol","mediumOk":true,"lowOk":true,"firstTokenMs":3727,"kind":"question"}
+EXIT:0

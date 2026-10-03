@@ -1,3 +1,6 @@
 - G0: git cannot hold branch `v5` and `v5/G0-bootstrap` at once; story branch is `v5-G0-bootstrap`.
 - G0: `config/dispatch-policy.json` branch patterns omit `v5*`; left unedited because this story does not own the file.
 - G0: `README.md` still says the dispatch client is not installed; left for G7.
+- G1: owner attested OA-1 through OA-6 and OA-12; local credential names were empty, so no spike ran.
+- G1: dexter-workers Actions secret and variable lists returned HTTP 403, so those names were not confirmed.
+- G1: dispatch-policy.json was left unchanged; v5 branch patterns stay unlisted.

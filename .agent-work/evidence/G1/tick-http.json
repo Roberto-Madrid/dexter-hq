@@ -1,0 +1,14 @@
+{
+  "snapshot_at": "2026-10-03T00:59:45Z",
+  "note": "status codes only; response bodies were not selected",
+  "responses": [
+    {"id": 1, "status_code": 200, "timed_out": false, "has_error": false},
+    {"id": 2, "status_code": 200, "timed_out": false, "has_error": false},
+    {"id": 3, "status_code": 200, "timed_out": false, "has_error": false},
+    {"id": 4, "status_code": 200, "timed_out": false, "has_error": false},
+    {"id": 5, "status_code": 200, "timed_out": false, "has_error": false},
+    {"id": 6, "status_code": 200, "timed_out": false, "has_error": false},
+    {"id": 7, "status_code": 200, "timed_out": false, "has_error": false},
+    {"id": 8, "status_code": 200, "timed_out": false, "has_error": false}
+  ]
+}

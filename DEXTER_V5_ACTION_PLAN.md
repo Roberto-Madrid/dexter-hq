@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Target | Your existing `dexter-hq` GitHub repo, adapted in place to Master Plan V5.1 |
-| Version | v1.3 final (2026-10-02). Folds in every V5.1 decision, including the role sheet of model families (the latest GPT Sol at medium reasoning for the CEO, the latest Grok for building, the latest Composer for quick edits). Supersedes Amendment A1, which you no longer need to run. |
+| Version | v1.4 final (2026-10-02). Removes GitHub Models, which was retired on July 30, 2026. Folds in every V5.1 decision, including the role sheet of model families (the latest GPT Sol at medium reasoning for the CEO, the latest Grok for building, the latest Composer for quick edits). Supersedes Amendment A1, which you no longer need to run. |
 | Spec | Appendix A of this file (normative V5.1 digest). V1 remains the north star. |
 | Plan format | oh-my-claudecode (OMC) `ralplan` consensus, deliberate mode: RALPLAN-DR summary, ADRs, pre-mortem, expanded test plan. Execution follows OMC's Team pipeline (`team-plan → team-prd → team-exec → team-verify → team-fix`) and Ultragoal-style story ledger, ported to plain repo files so it runs on any agent tool. |
-| Runs on | Cursor (preferred, because you would rather spend Cursor usage than ChatGPT usage), OpenCode, Codex, or Claude Code (§4) |
+| Runs on | Cursor (preferred, because you would rather spend Cursor usage than ChatGPT usage), Codex, or Claude Code; OpenCode only if you buy OpenCode Go (§4) |
 | Status | `pending approval` — sending the kickoff prompt in §0 is your explicit approval to execute |
 | Date | 2026-10-02 |
 
@@ -38,7 +38,7 @@ To continue later (same tool or a different one), open a new chat with this file
 4. The product is model-agnostic in code: no vendor name in `kernel/`, no model name in any brief, persona, or crew file; an owner-approved role sheet (`gateway/role-sheet.yaml`) is the only place models are named; runtimes are adapters with four methods. Automated checks enforce this.
 5. Parallel work follows OMC's team discipline and the orchestrate skill: contracts first, one done-command per unit, explicit file ownership per lane, at most 3 concurrent lanes, the lead re-verifies every lane, integration seams listed and tested, verify/fix loop with a hard attempt limit.
 6. Every story ends with runnable evidence, a ledger entry, a handoff, and a commit. Owner-only actions (credentials, accounts, approvals) are explicit gates, never improvised.
-7. Spend order, for the product and for the build: Cursor usage first (Grok, Composer, Claude Opus), then free models, then a capped share of ChatGPT. Nothing new is bought; optional purchases (OpenCode Go, a capped CEO backup key, Claude Pro) happen only on the triggers in §5. The CEO itself runs on the ChatGPT plan (the latest GPT Sol, medium reasoning).
+7. Spend order, for the product and for the build: Cursor usage first (Grok, Composer, Claude Opus), then a capped share of ChatGPT for overflow. No free model tier is relied on: GitHub Models was retired on July 30, 2026. Nothing new is bought; optional purchases (OpenCode Go, a capped CEO backup key, Claude Pro) happen only on the triggers in §5. The CEO itself runs on the ChatGPT plan (the latest GPT Sol, medium reasoning).
 8. The CEO decides on one model family, the latest stable GPT Sol at medium reasoning on the ChatGPT plan through Codex, and is never silently swapped (a new version waits for the owner's tap); the latest Grok builds; Composer handles quick edits; Claude Opus is reserved for judgment; scripts do whatever scripts can (the token-saving playbook in A.6).
 
 File paths in this plan are **target paths**. Story G0 maps them onto the repo as it exists today and records the mapping.
@@ -171,18 +171,18 @@ Building Dexter uses your own tool subscriptions, so the build follows Dexter's 
 | --- | --- | --- |
 | Lead | Cursor agent chat on the strongest model in your plan | Your preferred quota; the lead makes the judgment calls |
 | Lanes | Cursor parallel agents in worktrees, or Cursor Cloud Agents on lane branches | Same quota, real parallelism |
-| Cheap lanes (docs, fixtures, mechanical edits) | OpenCode with a free GitHub Models row | Saves Cursor usage for real code |
+| Cheap lanes (docs, fixtures, mechanical edits) | Composer in Cursor | Cursor's own model and the cheapest in your plan |
 | Cross-family review (G2, G4, G7) | A different model family inside Cursor (for example Claude or GPT when Grok wrote the code) | Keeps ChatGPT usage near zero |
 | Last resort for review | Codex | Only if Cursor offers no second family |
 | Later | Claude Code with OMC, if you buy Claude Pro | Same protocol, nothing to change |
 
 ### 4.1 Model tiers (no model names hard-coded anywhere)
 
-| Tier | Build roles (Appendix B) | Cursor | OpenCode | Codex | Claude Code |
-| --- | --- | --- | --- | --- | --- |
-| deep | planner, architect, analyst, critic, security-reviewer, code-reviewer | Latest Claude Opus, or GPT Sol if your plan has it | Strongest free row | Highest reasoning effort | Strongest Claude model |
-| standard | executor, designer, test-engineer, verifier, debugger, git-master | Latest Grok | Default free row | Medium effort | Mid-tier Claude model |
-| fast | explore, writer, mechanical edits | Latest Composer | Fast free row | Low effort | Fastest Claude model |
+| Tier | Build roles (Appendix B) | Cursor | Codex | Claude Code |
+| --- | --- | --- | --- | --- |
+| deep | planner, architect, analyst, critic, security-reviewer, code-reviewer | Latest Claude Opus, or GPT Sol if your plan has it | Highest reasoning effort | Strongest Claude model |
+| standard | executor, designer, test-engineer, verifier, debugger, git-master | Latest Grok | Medium effort | Mid-tier Claude model |
+| fast | explore, writer, mechanical edits | Latest Composer | Low effort | Fastest Claude model |
 
 This mirrors Dexter's own role sheet, so the build and the product behave alike. If a model is missing in your tool, pick the closest one for that tier. Record the model each lane actually used in the ledger.
 
@@ -192,7 +192,7 @@ This mirrors Dexter's own role sheet, so the build and the product behave alike.
 - **With OMC and `cursor-agent` installed:** `omc team 3:cursor "<story>"` runs Cursor workers in tmux.
 
 ### 4.3 OpenCode
-For cheap lanes, in the lane's worktree: `opencode run --model <provider/model> --auto "<worker brief>"`, with a free GitHub Models row as the provider.
+Only if you buy OpenCode Go (D-5): run cheap lanes in their worktrees with `opencode run --model <provider/model> --auto "<worker brief>"`. Until then OpenCode has no model source, because GitHub Models was retired on July 30, 2026; use Composer in Cursor for cheap lanes instead.
 
 ### 4.4 Codex
 - **With oh-my-codex (OMX):** `$team` for a story's lanes and `$code-review` in team-verify.
@@ -225,7 +225,6 @@ The lead never performs these. When a story's Entry needs one, the lead prints t
 | OA-3 | Start of G1 | `gh repo create dexter-workers --private`; add Actions secrets `DEXTER_CALLBACK_SECRET` (random, 32+ bytes), `TARGET_READ_TOKEN` and `TARGET_WRITE_TOKEN` (fine-grained, product repos only), and `CODEX_AUTH_JSON_B64` for the reserve pool (run `codex login` on your machine, then base64 `~/.codex/auth.json`); add Actions variables `DEXTER_HQ_URL` and `DEXTER_HQ_AGE_PUBLIC_KEY` (the lead generates the key pair in G1 and gives you the public half) | Never use the Codex login flow in a public repo |
 | OA-4 | Start of G1 | Create a fine-grained GitHub token for HQ: Actions read/write and Contents read on `dexter-workers`; Contents and Pull requests read/write on product repos; save as `GH_HQ_TOKEN` | G1 verifies whether repo creation needs a GitHub App instead |
 | OA-5 | Start of G1 | Create a Cursor API key (`CURSOR_API_KEY`); confirm on-demand usage is off; tell the lead your Cursor plan name so usage is shown honestly | Cursor is the main runtime |
-| OA-6 | Start of G1 | Create a fine-grained GitHub token with Models read (`GITHUB_MODELS_TOKEN`) for the HQ app only | Workers use the job's built-in token instead |
 | OA-7 | Start of G3 | Import `dexter-hq` into Vercel (Hobby); set env vars from `.env.example`, including `DEXTER_OWNER_EMAIL` and `CODEX_WEEKLY_RUN_CAP` (default 10); confirm no card on Supabase and Vercel, and set the GitHub Actions budget to $0 if GitHub has a card | Lead verifies by reading names, never values |
 | OA-8 | During G4 | Approve the first design sketch from the HQ UI | Part of the barber-demo test |
 | OA-9 | Start of G4 | Create a scoped Vercel token for product previews (`VERCEL_TOKEN`); approve the starter template repo | HQ itself never deploys to production |
@@ -240,12 +239,13 @@ The lead never performs these. When a story's Entry needs one, the lead prints t
 | D-1 Clock | Settled | Supabase Cron, weekly history purge, gap alert |
 | D-2 CEO model | Settled | The latest stable GPT Sol (currently 6.1), reasoning effort medium, on your ChatGPT plan through Codex; G1 picks path A or B; if neither works, you choose what happens next (nothing switches silently) |
 | D-3 Width | Default | Cap of 3 concurrent runs, surge ceiling of 6 |
-| D-4 Spend order | Settled | Cursor (Grok, Composer, Claude Opus) → free rows → Codex up to `CODEX_WEEKLY_RUN_CAP` runs per week |
-| D-5 OpenCode Go | On trigger | Buy only when Dexter's work queues for lack of Cursor quota in two consecutive weeks, or the role sheet needs a model family you lack; then OA-13 |
+| D-4 Spend order | Settled | Cursor (Grok, Composer, Claude Opus) → Codex up to `CODEX_WEEKLY_RUN_CAP` runs per week; the CEO and short inline calls use the ChatGPT plan |
+| D-5 OpenCode Go | On trigger | Buy only when Dexter's work queues for lack of Cursor quota in two consecutive weeks, or the role sheet needs a model family you lack, or you want model work in GitHub Actions without using Cursor or ChatGPT; then OA-13 |
 | D-6 Claude Pro | Later | Adds one pool through the existing adapters (OA-14) |
 | D-7 Grok API key | Not needed | Your Cursor plan already includes Grok 4.7 |
 | D-8 Role sheet | Settled | Families, not versions: the latest Grok builds; the latest Composer handles quick edits; Claude Opus for judgment, sparingly; Council seats across Claude Opus, GPT Sol, and Grok (Appendix C.9) |
 | D-9 Version upgrades | Settled | Standard variants only, no price increase; worker roles switch after passing a 5-task check, with a notice and one-tap rollback; the CEO waits for your tap; any failed rule holds the current version and asks you |
+| D-10 Free model source | None | GitHub Models was retired on July 30, 2026. Short inline calls use GPT Sol at low reasoning through the CEO path; batch utility work uses Composer on Cursor; GitHub Actions runs scripts, the Checker, self-tests, and the Codex reserve |
 
 ---
 
@@ -265,18 +265,18 @@ Each story lists Entry, lanes, verify, and exit. Lanes in the same story never o
 **Exit:** OA-1.
 
 ### G1 — Stage 0: prove the controls
-**Entry:** OA-1 to OA-6 and OA-12. **Branch:** `v5/G1-spikes`. Run L1–L3 together, then L4–L5.
+**Entry:** OA-1 to OA-5 and OA-12. **Branch:** `v5/G1-spikes`. Run L1–L3 together, then L4–L5.
 
 | Lane | Role (tier) | Owns | Done when |
 | --- | --- | --- | --- |
 | L1 Tick | executor (standard) | `supabase/migrations/0000_extensions.sql`, `supabase/functions/tick/index.ts` (spike), `supabase/cron.sql` | Cron calls the function every minute using secrets from Supabase Vault; at least three `spike_heartbeats` rows about 60 s apart; a weekly `cron-history-purge` job is scheduled and removes a seeded old row of `cron.job_run_details`; query outputs saved |
 | L2 Cursor | executor (standard) | `scripts/spikes/cursor-lifecycle.ts` | Agent created with a client `agentId`; repeating the create is rejected as a duplicate; run status read; a run cancelled to a terminal state; artifacts listed and downloaded; per-run usage read; the model list saved as evidence, and each family in `gateway/role-sheet.yaml` (Grok, Composer, Claude Opus, GPT Sol) resolved to its current standard version, with Fast, Max, and preview variants excluded; one run in `plan` mode and one no-repo run succeed |
-| L3 Runner | executor (standard); security-reviewer reviews | `workers/**` (template source, pushed to `dexter-workers`), `scripts/spikes/gh-runner-lifecycle.ts` | Workflow from C.7 dispatches; the run is found by `run-name`; status polls; a second run is cancelled mid-way and reaches `cancelled`; artifacts download. An OpenCode run on a free GitHub Models row, authenticated by the job's built-in token, produces a dossier that passes the schema check. A Codex run (reserve) on the ChatGPT login produces a valid dossier, and refreshed-login persistence is tested. Only the selected provider's key reaches the agent step; job logs contain no secret values. Exact install commands and key variable names are recorded in the runtime matrix. |
-| L4 Gateway + CEO path | executor (standard) | `gateway/client.ts`, `gateway/rows.example.json`, `gateway/role-sheet.yaml`, `scripts/spikes/gateway-smoke.ts`, `scripts/spikes/ceo-path.ts`, `scripts/ceo-auth-store.ts` | Smoke test on the GitHub Models row with the HQ token: completion, one tool call, one schema-valid JSON reply. CEO path: the latest GPT Sol at reasoning effort medium streams a reply to a test route through the path you chose in OA-12 (Sign in with ChatGPT, or headless Codex bundled into the HQ app's chat function); first-token latency recorded; usage confirmed against your ChatGPT plan, not an API bill; the resolved GPT Sol version recorded |
+| L3 Runner | executor (standard); security-reviewer reviews | `workers/**` (template source, pushed to `dexter-workers`), `scripts/spikes/gh-runner-lifecycle.ts` | Workflow from C.7 dispatches; the run is found by `run-name`; status polls; a second run is cancelled mid-way and reaches `cancelled`; artifacts download. The Checker workflow runs a sample build, lint, and Playwright screenshot job with no model. A Codex run (reserve) on the ChatGPT login produces a valid dossier, and refreshed-login persistence is tested. Only the Codex login reaches the agent step; job logs contain no secret values. Exact install commands and key variable names are recorded in the runtime matrix. |
+| L4 CEO path | executor (standard) | `gateway/client.ts`, `gateway/role-sheet.yaml`, `scripts/spikes/ceo-path.ts`, `scripts/ceo-auth-store.ts` | CEO path: the latest GPT Sol at reasoning effort medium streams a reply to a test route through the path you chose in OA-12 (Sign in with ChatGPT, or headless Codex bundled into the HQ app's chat function); first-token latency recorded; usage confirmed against your ChatGPT plan, not an API bill; the same path at reasoning effort low returns a schema-valid JSON classification for short inline calls; the resolved GPT Sol version recorded |
 | L5 Sketch | designer (standard) | `workers/sketch/**`, `scripts/spikes/sketch.ts` | From a brief and 4 reference URLs, a no-repo Cursor agent produces a static HTML/SVG wireframe (no application code, no product repo) screenshotted at 390×844 and 1440×900; a `gh-runner` fallback exists if Cursor cannot render |
 
 **Lead after lanes:** write `docs/spikes/RUNTIME_MATRIX.md`: each adapter × start / status / confirmed cancel / collect / usage / auth persistence, plus the Cursor model list and the CEO decision-test result, each with evidence links. A failing adapter stays disabled with the missing operation named.
-**Fallback:** if Cursor fails, `gh-runner` with OpenCode on free rows carries the work and Codex stays the capped reserve; if the Codex login fails, the reserve is disabled (nothing is bought). Minimum set to proceed: the tick, one working runtime, one gateway row.
+**Fallback:** if Cursor fails, `gh-runner` with Codex carries coding within its weekly cap and you decide whether to raise the cap or buy OpenCode Go; if the Codex login fails, the reserve is disabled (nothing is bought). Minimum set to proceed: the tick, one working runtime, and the CEO path.
 **Exit:** the CEO streams on the latest GPT Sol through one working path and every family in the role sheet resolves to an exact version; otherwise you choose what happens next (owner gate). No other owner gate unless the minimum set fails.
 
 ### G2 — Kernel, schema, role sheet, and test harness
@@ -300,15 +300,15 @@ HQ's own interface follows the V5 Command Center wireframe as its approved sketc
 | Lane | Role (tier) | Owns | Done when |
 | --- | --- | --- | --- |
 | L1 Command Center | designer (standard) | `app/(hq)/**`, `app/login/**`, `app/manifest.*`, `public/**` | Owner-only login (single allowlisted email); desktop layout with top bar (STOP ALL, run slots, usage per pool, spend), request board (Needs you / Active / Queued / Done, other states as badges), Swarm View placeholder list, chat dock; node detail shows model, pool, and routing reason; phone tabs with STOP ALL always visible; installable PWA; realtime updates; stale data shows its timestamp; no invented percentages |
-| L2 CEO + role sheet | executor (deep) | `app/api/chat/**`, `gateway/**`, `personas/dexter.md`, `crews/answer.yaml`, `crews/research.yaml`, `crews/change.yaml`, `crews/custom.yaml`, `supabase/functions/catalog-sync/**` | Chat streams; every decision runs on the CEO family from the role sheet (the latest GPT Sol, reasoning effort medium) through the G1 path, and if it is unreachable the chat says so and holds new plans; status, cost, and list questions are answered from the database without a model; Dexter follows the CEO ladder (A.3) and emits a plan card that passes the validator; request and tasks persist through the kernel; work-starting messages call `/api/tick-now`; a daily catalog sync reads Cursor's and OpenAI's model lists, the GitHub Models catalog, and OpenCode's model metadata, resolves each family, and announces new versions while holding them until G5's upgrade check |
-| L3 Dispatch | executor (standard) | `supabase/functions/tick/**`, `adapters/cursor-cloud.ts`, `adapters/gh-runner.ts`, `adapters/inline.ts`, `app/api/callback/**`, `app/api/tick-now/**`, `workers/**` | Tick follows A.6; `cursor-cloud` (main) and `gh-runner` (OpenCode by default, Codex as the reserve) implement start/status/cancel/collect from the G1 spikes; callbacks are HMAC-verified and deduplicated and write posts, checkpoints, dossiers, artifacts, and outcomes; worker templates exist for the `research` and `change` crews |
+| L2 CEO + role sheet | executor (deep) | `app/api/chat/**`, `gateway/**`, `personas/dexter.md`, `crews/answer.yaml`, `crews/research.yaml`, `crews/change.yaml`, `crews/custom.yaml`, `supabase/functions/catalog-sync/**` | Chat streams; every decision runs on the CEO family from the role sheet (the latest GPT Sol, reasoning effort medium) through the G1 path, and if it is unreachable the chat says so and holds new plans; status, cost, and list questions are answered from the database without a model; Dexter follows the CEO ladder (A.3) and emits a plan card that passes the validator; request and tasks persist through the kernel; work-starting messages call `/api/tick-now`; a daily catalog sync reads Cursor's and OpenAI's model lists (and OpenCode's, only if OpenCode Go is bought), resolves each family, and announces new versions while holding them until G5's upgrade check |
+| L3 Dispatch | executor (standard) | `supabase/functions/tick/**`, `adapters/cursor-cloud.ts`, `adapters/gh-runner.ts`, `adapters/inline.ts`, `app/api/callback/**`, `app/api/tick-now/**`, `workers/**` | Tick follows A.6; `cursor-cloud` (main) and `gh-runner` (the Codex reserve, scripts, and the Checker) implement start/status/cancel/collect from the G1 spikes; callbacks are HMAC-verified and deduplicated and write posts, checkpoints, dossiers, artifacts, and outcomes; worker templates exist for the `research` and `change` crews |
 | L4 Safety | executor (standard); security-reviewer reviews | `app/api/stop/**`, `scripts/selftest/**`, `tests/security/**`, pre-flight wiring in dispatch | STOP ALL per A.9 lists and cancels in-progress Cursor runs and GitHub runs directly, works when Supabase is unreachable, and reports `stopping` / `stopped` / `unconfirmed` per run; the pre-flight scan runs before every unattended dispatch and moves high-risk cards to Needs you; prompt-injection fixtures exist for the research crew |
 
 L4 starts after one of L1–L3 finishes (cap of 3). L1 renders the STOP button against L4's route contract.
 **Verify:**
 - E2E: three different asks produce three plan cards with the expected crews (`answer`, `research`, `change`); a status question is answered without a model call (call count 0).
 - Live (`LIVE=1`): a research request runs on Cursor and finishes as a sourced brief, started from your phone with the laptop closed; its card shows the model and why.
-- Spend order: with Cursor marked exhausted (simulated), the next task runs on a free row; Codex is used only within its weekly cap; nothing is bought.
+- Spend order: with Cursor marked exhausted (simulated), the next task runs on the Codex reserve within its weekly cap, then queues; nothing is bought.
 - Role sheet: a quick edit runs on Composer, a build on Grok, and each run records the exact version; a seeded failing quick edit escalates to Grok after two failed checks, logged on the card.
 - CEO hold: with the CEO path disabled, status questions still answer, new plans are held with a notice, and no other model makes a decision.
 - Kill test: cancelling the run mid-task expires the lease; the task is leased again and the second run reads the first run's checkpoint.
@@ -391,7 +391,7 @@ Reviewers: security-reviewer and code-reviewer (deep), cross-family.
 | AC-10 | Fixed hosting is $0: no card on Supabase or Vercel, GitHub Actions budget $0, Cursor on-demand off | G3, G7 |
 | AC-11 | No secret value appears in the repo, logs, posts, or prompts; secret scanner clean | every CI run |
 | AC-12 | Swarm View node count equals task count and colors match states | G4 |
-| AC-13 | Spend order holds: Cursor first, then free rows, then Codex only within `CODEX_WEEKLY_RUN_CAP`; no code path makes a purchase | G2 unit, G3 |
+| AC-13 | Spend order holds: Cursor first, then Codex only within `CODEX_WEEKLY_RUN_CAP`; no code path makes a purchase | G2 unit, G3 |
 | AC-14 | Every run records its model and a routing reason; models are named only in `gateway/role-sheet.yaml`; `check:briefs` passes | G2, G3, every CI run |
 | AC-15 | Models change only through the role sheet: families resolve to their latest stable, standard version with no price increase; worker upgrades happen only after a passed check, with rollback; CEO upgrades and new families only after owner approval; escalations are logged per run | G2 unit, G5 |
 | AC-16 | Client or personal data never reaches a model that trains on prompts, and the CEO never uses an OpenCode Go key | G2 unit, G6 |
@@ -422,12 +422,13 @@ Reviewers: security-reviewer and code-reviewer (deep), cross-family.
 | Free-tier limits or a paused Supabase project | Medium | Self-tests post usage; resume is one click; work queues instead of buying capacity |
 | Existing data or working code damaged | Low | Audit first; new Supabase project; additive migrations; `legacy/` quarantine; no deletes without OA |
 | Secrets leak into git or worker logs | Medium | Names-only `.env.example`; secret scanner in CI; agent steps read-only; writes in a separate job; log scans in G1 and G6 |
-| Build agent's own usage drains your plan | Medium | Cursor first, cheap lanes on OpenCode with free rows (§4.0); cap 3 lanes; fake runtime in CI; live tests only behind `LIVE=1` |
-| Cursor quota runs out under Dexter's load | Medium | Work moves to free rows, then the capped Codex share, then queues; D-5 says when OpenCode Go becomes worth $10 |
+| Build agent's own usage drains your plan | Medium | Cursor first, cheap lanes on Composer (§4.0); cap 3 lanes; fake runtime in CI; live tests only behind `LIVE=1` |
+| Cursor quota runs out under Dexter's load | Medium | Work moves to the capped Codex share, then queues; D-5 says when OpenCode Go becomes worth $10 |
 | The CEO path to GPT Sol fails (preview access or headless Codex) | Medium | G1 tests both paths; if neither works, you decide (public repo, a capped backup key, or another named model); nothing switches silently |
 | A role-sheet model drifts in quality or is retired | Medium | Escalation per run; daily catalog sync with alerts; monthly bake-off proposals you approve |
 | A new version regresses or costs more | Medium | Standard variants only and a price guard; the 5-task upgrade check; one-tap rollback; the CEO upgrades only on your tap |
 | Providers add, rename, or retire models | High | Daily catalog sync with alerts; no model names in code or briefs |
+| A provider retires a whole service, as GitHub Models did on July 30, 2026 | Medium | No free tier is relied on; daily catalog sync with hold-and-ask; Stage 0 re-verifies every external service on your real accounts |
 
 ### Pre-mortem (deliberate mode)
 1. **"The agent rewrote half the repo and broke what worked."** Cause: no audit, big-bang edits. Prevention: G0 audit with evidence, OA-1, quarantine policy, story branches, revertable PRs into `v5`.
@@ -442,7 +443,7 @@ Reviewers: security-reviewer and code-reviewer (deep), cross-family.
 | --- | --- | --- |
 | Unit (Vitest) | State transitions (legal and illegal); lease generation guard; idempotency dedupe; slot reservation never exceeds the cap under concurrent calls; role-sheet resolution, quick-edit rule, escalation ladder, privacy exclusion, pool order, hold-and-notify, Codex weekly cap under concurrent reservations; pre-flight scan; secret redaction; plan-card validation; design-gate eligibility; post status rules; dead-end expiry; Council verdict merge | `tests/unit/**`, every CI run |
 | Integration (local Supabase in CI) | Row-level security; append-only events; disjoint concurrent claims; atomic transition plus event; callback signature and dedupe; tick against the fake runtime; STOP flag halts dispatch | `tests/integration/**`, every PR |
-| Live lifecycle (`LIVE=1`) | `cursor-cloud` lifecycle and model list; `gh-runner` with OpenCode and with Codex; gateway smoke; CEO path streaming on the latest GPT Sol | `tests/live/**`, manual and weekly |
+| Live lifecycle (`LIVE=1`) | `cursor-cloud` lifecycle and model list; `gh-runner` with Codex and the Checker; CEO path streaming on the latest GPT Sol | `tests/live/**`, manual and weekly |
 | End-to-end (Playwright) | Login; chat → plan card; research to brief (fake runtime in CI, real with `LIVE=1`); design gate flow; STOP ALL; phone viewport tabs | `tests/e2e/**` |
 | Observability | Every transition has an event; no orphan runs; usage sums reconcile; stale timestamps render; self-test posts arrive | `tests/integration/observability.*`, weekly self-tests |
 | Security | Injection fixtures (hostile source, hostile peer post); secret scanner; vendor-neutral check; dependency audit; permission test that agent steps cannot read write tokens or the deployer key | `tests/security/**`, CI |
@@ -485,8 +486,8 @@ A verifier verdict is `PASS`, `FAIL`, or `INCOMPLETE`, with each criterion marke
 - **Consequences:** fourteen owner actions (four of them optional) pause progress at known points; at most 3 lanes run at once; `.agent-work/` adds files to history (squash when merging `v5` into `main` if you prefer a clean log).
 - **Follow-ups:** after G3, review the CEO's plan quality from your overrides; after G4, review runtime matrix and Council diversity; if Supabase ever pauses the project, revisit D-1.
 
-### ADR-0002: V5.1 — Cursor-first pools, OpenCode harness, role sheet, fixed CEO model
-- **Decision:** spend Cursor Cloud Agents first (Grok, Composer, Claude Opus), then free GitHub Models rows through OpenCode in GitHub Actions, then a capped Codex share of the ChatGPT plan; assign every model through an owner-approved role sheet of model families (the latest GPT Sol at medium reasoning for the CEO on the ChatGPT plan, the latest Grok for building, the latest Composer for quick edits, Claude Opus for judgment), track each family's latest stable, standard version behind a price guard and an upgrade check, escalate only on failed checks, and add new families only through proposals the owner approves; enforce plan rules in code; borrow proven practices as text; buy nothing new unless a trigger in §5 fires.
+### ADR-0002: V5.1 — Cursor-first pools, role sheet, fixed CEO model
+- **Decision:** spend Cursor Cloud Agents first (Grok, Composer, Claude Opus), then a capped Codex share of the ChatGPT plan, with GitHub Actions running scripts, checks, and that reserve; assign every model through an owner-approved role sheet of model families (the latest GPT Sol at medium reasoning for the CEO on the ChatGPT plan, the latest Grok for building, the latest Composer for quick edits, Claude Opus for judgment), track each family's latest stable, standard version behind a price guard and an upgrade check, escalate only on failed checks, and add new families only through proposals the owner approves; enforce plan rules in code; borrow proven practices as text; buy nothing new unless a trigger in §5 fires.
 - **Drivers:** the owner prefers spending Cursor usage over ChatGPT usage; no new spend; CEO decisions carry the most leverage per token; the model landscape changes monthly.
 - **Alternatives considered:** Codex-first workers (drains ChatGPT); buying OpenCode Go now (unneeded while Cursor includes Grok 4.7); a learned per-request router or a hosted one such as Cursor's router, OpenRouter's Auto Router, or RouteLLM (unpredictable, breaks prompt caching, per-token billing or a team plan); a free-tier CEO (weak decisions); a separate Grok API key (duplicate access).
 - **Why chosen:** it uses what is already paid in the preferred order, keeps every runtime stoppable, and follows the role-per-model practice of oh-my-claudecode and pstack: predictable, visible, and changed only with approval.
@@ -523,7 +524,7 @@ Verdict on the revised snapshot: `APPROVE`.
 
 
 ### v1.1 review (V5.1 changes)
-- **Architect, steelman antithesis:** Cursor-first concentrates risk on one vendor. **Synthesis adopted:** pools behind identical adapters, free rows and a Codex reserve behind Cursor, and pool order that moves work on exhaustion without code changes.
+- **Architect, steelman antithesis:** Cursor-first concentrates risk on one vendor. **Synthesis adopted:** pools behind identical adapters, a Codex reserve behind Cursor, and pool order that moves work on exhaustion without code changes.
 - **Critic, first pass `ITERATE`:**
 
 | # | Severity | Finding | Fix applied |
@@ -542,11 +543,15 @@ Verdict on the revised snapshot: `APPROVE`.
 ### v1.3 review (family tracking)
 - **Critic `ITERATE`:** (C15, Major) "latest" without rules could land on a Fast variant priced several times higher, or change the CEO overnight. **Fixes:** standard variants only, a price guard, a 5-task upgrade check with rollback for workers, owner tap for the CEO, hold-and-ask on any failed rule (D-9, AC-15, C.9). **Second pass:** `APPROVE`.
 
+### v1.4 review (provider retirement)
+- **Critic `REJECT` on v1.3:** (C16, Critical) the plan relied on GitHub Models for free light calls, the OpenCode harness in Actions, and an owner token, but GitHub Models was fully retired on July 30, 2026. **Fixes:** no free model tier anywhere; short inline calls use GPT Sol at low reasoning through the CEO path; batch utility work uses Composer; GitHub Actions runs scripts, the Checker, self-tests, and the Codex reserve; OpenCode only with OpenCode Go; OA-6 and `GITHUB_MODELS_TOKEN` removed; a provider-retirement risk added. **Second pass:** `APPROVE`.
+
 ### Changelog
 - v1.0 (2026-10-01): initial consensus plan with Critic fixes C1–C7 applied.
 - v1.1 (2026-10-02): V5.1 folded in (Cursor-first pools, OpenCode harness, model selection, strong CEO, Supabase Cron settled, borrowed practices, orchestrate brief and verification rules); Critic fixes C8–C12; Amendment A1 superseded.
 - v1.2 (2026-10-02): role sheet replaces the learned router (GPT-6.1 Sol at medium reasoning for the CEO via Codex, Grok 4.7 builds, Composer for quick edits, Claude Opus for judgment); CEO path test replaces the CEO decision test; Critic fixes C13–C14.
 - v1.3 (2026-10-02): the role sheet names model families instead of versions; each tracks its latest stable, standard version behind a price guard and an upgrade check (workers automatic with rollback, CEO on owner tap); Critic fix C15.
+- v1.4 (2026-10-02): GitHub Models removed after its July 30, 2026 retirement; light calls move to the CEO path at low reasoning and to Composer; OpenCode becomes optional with OpenCode Go; Critic fix C16.
 
 ---
 
@@ -561,7 +566,7 @@ Dexter HQ is a personal, cloud-resident headquarters for building ventures. You 
 2. Frugality is policy: you never type a budget; Dexter picks the cheapest route that clears the quality bar. The strong model decides, cheaper models type, scripts do whatever scripts can. Controls: `cheaper`, `go deeper`, `stop`, `pause`, `prioritize this`, `surge` (needs approval), `why?`, or naming a crew, persona, or model.
 3. Model-agnostic in code: no vendor name in the kernel and no model name in any brief; every runtime is an adapter; an owner-approved role sheet is the only place models are named.
 4. Shared knowledge, no shared authority: workers share findings; only Dexter assigns work; only the owner grants access.
-5. Overspending is impossible by construction: free hosting plans with no card, existing subscriptions with overages off, every optional purchase flat-priced or prepaid with auto-reload off. Spend order: Cursor, then free rows, then a capped ChatGPT share.
+5. Overspending is impossible by construction: free hosting plans with no card, existing subscriptions with overages off, every optional purchase flat-priced or prepaid with auto-reload off. Spend order: Cursor, then a capped ChatGPT share; the CEO and short inline calls also run on the ChatGPT plan.
 
 ### A.2 Experience
 **CEO chat:** streams in seconds. Status, cost, and list questions are answered from the database without a model; decisions run on the latest stable GPT Sol at medium reasoning, the CEO's fixed model family, and are held with a notice if it is unreachable; anything needing work becomes a card. Every request gets a plan card: crew, personas, Council mode, tier, definition of done, what will not be done, when it needs the owner. `why?` returns the decision trail with evidence, never raw transcripts. For T3 or ambiguous requests, Strategist runs as a Cursor agent in `plan` mode and the card updates when it lands.
@@ -604,7 +609,7 @@ Phone: tabs Chat, Board, Swarm, Inbox; STOP ALL always visible; web push for Nee
 | Data | Maker | Schemas, migrations, queries, analysis, spreadsheets | Grok |
 | Writer | Maker | Documents, copy, reports, decks | Claude Opus |
 | QA | Checker | Anything the owner will open | Scripts and Playwright; Grok for visual checks |
-| Researcher | Scout | Sourced briefs | Grok; a free row for light lookups |
+| Researcher | Scout | Sourced briefs | Grok |
 | Venture | Scout | "Is this worth it?" | Claude Opus |
 | Career | Scout | Job scans and fit briefs | Grok |
 | Web3 | Scout | Protocol and ecosystem research | Grok |
@@ -689,11 +694,11 @@ Seats read diff, artifacts, and Checker evidence only; each judges before seeing
 | Order | Pool | What runs there | Paid by | Stop |
 | --- | --- | --- | --- | --- |
 | 1 | `cursor-cloud`: Cursor Cloud Agents | Coding, no-repo design sketches, deep plans in `plan` mode, review seats | Owner's Cursor plan (Grok, Composer, Claude Opus); on-demand off | Cancel run |
-| 2 | `gh-runner` + OpenCode | Utility work, research, the Checker, on free GitHub Models rows (job's built-in token, `permissions: models: read`) | 2,000 free private minutes; free models | Cancel workflow run |
-| 3 | `gh-runner` + Codex | Reserve coding and a second model family for reviews | Owner's ChatGPT plan, capped at `CODEX_WEEKLY_RUN_CAP` runs per week | Cancel workflow run |
+| 2 | `gh-runner` + Codex | Reserve coding when Cursor is exhausted | Owner's ChatGPT plan, capped at `CODEX_WEEKLY_RUN_CAP` runs per week | Cancel workflow run |
+| Checks | `gh-runner` + scripts | The Checker, self-tests, deterministic jobs; no model | 2,000 free private Linux minutes | Cancel workflow run |
 | CEO | ChatGPT plan through Codex | Every decision and the chat, on the latest GPT Sol at medium reasoning | Owner's ChatGPT plan, a small share | Not a sandbox run |
-| Inline | `inline` | Summaries and classification | Free rows | One HTTP call |
-| Later | OpenCode Go rows, a Claude Code harness | More families and headroom | Only if bought | Same adapters |
+| Inline | `inline` | Summaries and classification | GPT Sol at low reasoning through the CEO path (ChatGPT plan) | One HTTP call |
+| Later | OpenCode Go (with OpenCode as the harness), a Claude Code harness | More families and headroom | Only if bought | Same adapters |
 
 Cursor runs execute on Cursor's machines and use no GitHub minutes. On exhaustion, work moves to the next pool with suitable models or queues until the reported reset; nothing is ever bought.
 
@@ -706,7 +711,7 @@ interface Runtime {
 }
 ```
 
-**Harnesses inside `gh-runner`:** OpenCode is the default (`opencode run --model <provider/model> --format json --auto`; permissions via `OPENCODE_PERMISSION`); Codex is the reserve (`codex exec --json --sandbox workspace-write`, ChatGPT-managed login on a private repo only); `script` for deterministic jobs. The dossier is written to `dossier.json` and validated against C.8 by a deterministic step. Codex Cloud and Claude cloud routines are not used until each has a cancel command. Grok Bot is a tool the owner drives and a handoff destination, never an automated worker (shared computer and credentials, no stoppable API). `adapters/fake.ts` exists for tests only.
+**Harnesses inside `gh-runner`:** Codex is the reserve (`codex exec --json --sandbox workspace-write`, ChatGPT-managed login on a private repo only); `script` runs deterministic jobs and the Checker; OpenCode (`opencode run --model <provider/model> --format json --auto`, permissions via `OPENCODE_PERMISSION`) is added only with OpenCode Go, because GitHub Models, its free model source, was retired on July 30, 2026. The dossier is written to `dossier.json` and validated against C.8 by a deterministic step. Codex Cloud and Claude cloud routines are not used until each has a cancel command. Grok Bot is a tool the owner drives and a handoff destination, never an automated worker (shared computer and credentials, no stoppable API). `adapters/fake.ts` exists for tests only.
 
 **Role sheet (`gateway/role-sheet.yaml`, Appendix C.9) — the only file that names models. It names model families, not versions; it changes only with owner approval:**
 
@@ -719,7 +724,7 @@ interface Runtime {
 | Council seats and arena candidates | One each from Claude Opus, GPT Sol, and Grok, skipping the Maker's family | Cursor |
 | Synthesizer | The CEO | ChatGPT plan |
 | Checker | Scripts first; Grok for visual checks | GitHub Actions, Cursor |
-| Utility: summaries, classification, light lookups | A free GitHub Models row | GitHub Actions + OpenCode, or inline |
+| Utility: summaries, classification, light lookups | GPT Sol at low reasoning (interactive); Composer (batch) | ChatGPT plan through the CEO path; Cursor |
 | Reserve coding | Codex | ChatGPT plan, `CODEX_WEEKLY_RUN_CAP` |
 
 1. **Resolution:** the CEO assigns each task a role (and marks quick edits); the kernel resolves role → family → exact version → pool and records the exact version and `routing_reason` on the run.
@@ -732,9 +737,9 @@ interface Runtime {
 8. **Overrides:** "use <model>" in chat for one request, or edit the sheet in settings.
 9. Per-request routers (Cursor's router, OpenRouter's Auto Router, RouteLLM) are not used: they reduce reproducibility, break prompt caching when switching mid-session, and bill per token or need a team plan.
 
-**Gateway and keys:** inline calls use OpenAI-compatible rows. GitHub Models is free: the job's built-in token inside Actions, `GITHUB_MODELS_TOKEN` for the HQ app. Model keys may live in GitHub Actions secrets, but the agent step receives only the key for the provider the role sheet assigns; HQ secrets never enter a worker job. The CEO reaches the latest GPT Sol on the ChatGPT plan by path A (OpenAI's Sign in with ChatGPT plan usage, a preview that launched for open-source projects, so `dexter-hq` becomes public code while secrets, data, and venture repos stay private) or path B (headless Codex called from the HQ app with the owner's Codex login stored encrypted in Supabase Vault, repo stays private); G1 proves one.
+**Gateway and keys:** short inline calls go through the CEO path at low reasoning effort; no free model tier is relied on, since GitHub Models was retired on July 30, 2026. Model keys may live in GitHub Actions secrets, but the agent step receives only the key for the provider the role sheet assigns; HQ secrets never enter a worker job. The CEO reaches the latest GPT Sol on the ChatGPT plan by path A (OpenAI's Sign in with ChatGPT plan usage, a preview that launched for open-source projects, so `dexter-hq` becomes public code while secrets, data, and venture repos stay private) or path B (headless Codex called from the HQ app with the owner's Codex login stored encrypted in Supabase Vault, repo stays private); G1 proves one.
 
-**Optional purchases (triggers in §5):** OpenCode Go, $10/month flat, when Cursor runs dry under Dexter's load or a family is missing; "Use balance" stays off; it is for coding-agent traffic only, so the CEO never uses it; its "Contributor" models train on prompts and never see client data. A capped CEO backup key only if neither CEO path works in G1 and the owner chooses it. Claude Pro later as one more pool. No separate Grok key: the Cursor plan includes Grok 4.7.
+**Optional purchases (triggers in §5):** OpenCode Go, $10/month flat, when Cursor runs dry under Dexter's load, a family is missing, or you want model work in GitHub Actions without Cursor or ChatGPT; "Use balance" stays off; it is for coding-agent traffic only, so the CEO never uses it; its "Contributor" models train on prompts and never see client data. A capped CEO backup key only if neither CEO path works in G1 and the owner chooses it. Claude Pro later as one more pool. No separate Grok key: the Cursor plan includes Grok 4.7.
 
 A new model = a catalog row + smoke test (prompt, tool call, schema-valid JSON). A new runtime = four methods + lifecycle test (start, status, confirmed cancel, collect).
 
@@ -745,15 +750,15 @@ A new model = a catalog row + smoke test (prompt, tool call, schema-valid JSON).
 | State, queue, board, memory, auth, realtime, files | One Supabase free project |
 | Clock | Supabase Cron (`pg_cron` + `pg_net`) calls the `tick` Edge Function every minute; weekly history purge; gap alert |
 | Main workers | Cursor Cloud Agents on the owner's Cursor plan: the latest Grok, Composer, and Claude Opus, standard variants |
-| Utility workers and checks | GitHub Actions in private `dexter-workers`, running OpenCode, scripts, and the Checker |
+| Utility workers and checks | GitHub Actions in private `dexter-workers`, running scripts, the Checker, self-tests, and the Codex reserve |
 | Reserve workers | Codex in the same jobs, capped by `CODEX_WEEKLY_RUN_CAP` |
 | CEO | The latest stable GPT Sol at medium reasoning on the ChatGPT plan through Codex |
-| Light calls | Free GitHub Models rows |
+| Light calls | GPT Sol at low reasoning through the CEO path (interactive); Composer on Cursor (batch) |
 | Code and artifacts | GitHub, Supabase Storage |
 
 **Tick (bounded work, then exit):** read STOP flag, due schedules, active runs, approvals, free slots → reconcile a bounded batch of run states from Cursor and GitHub and store artifacts, usage, and outcomes → claim ready tasks atomically (`FOR UPDATE SKIP LOCKED`), check design gate, approvals, and pre-flight scan, resolve model and pool from the role sheet, reserve slots → dispatch with idempotency keys, save receipts → when an outcome is uncertain, reconcile before any retry. Workers post checkpoints, posts, and dossiers to one signed callback endpoint; the tick polls as fallback. A chat message that starts work triggers an immediate tick.
 
-**Envelope:** Cursor Cloud Agents within the plan's allowance (no GitHub minutes); Edge Function calls ~45,000 of 500,000 free per month; database 500 MB (raw logs pruned after 90 days); Storage 1 GB; GitHub Actions 2,000 private Linux minutes; GitHub Models free and rate-limited; Vercel Hobby for HQ only. Verify on the real accounts.
+**Envelope:** Cursor Cloud Agents within the plan's allowance (no GitHub minutes); Edge Function calls ~45,000 of 500,000 free per month; database 500 MB (raw logs pruned after 90 days); Storage 1 GB; GitHub Actions 2,000 private Linux minutes; Vercel Hobby for HQ only. Verify on the real accounts.
 
 **Overspend prevention:** no card on free plans; GitHub Actions budget $0 if a card exists; Cursor on-demand off; ChatGPT top-ups off and Codex capped weekly; OpenCode Go "Use balance" off if ever bought; any prepaid key with auto-reload off; any non-zero charge pauses dispatch and posts an alert. Client demos that are sold deploy to the client's or a commercial account.
 
@@ -807,7 +812,7 @@ STOP ALL is a button on every screen and an authenticated route: set the stop fl
 Security: owner auth on every route; RLS on every table; no secrets in browser state; model keys may live in GitHub Actions secrets but each agent step receives only the routed provider's key and never an HQ secret; dangerous actions are made impossible (no credential in scope) rather than forbidden; a pre-flight scan checks every unattended brief and workspace for secret-shaped strings, destructive commands, and unknown URLs, and high risk goes to Needs you; agent CLIs that need a login token inside the sandbox can read it, so the exposure is recorded per runtime and limited to plan quota; agent steps get read-only repo access and writes happen in a separate step that never sees the model credential; tool results tagged trusted control / trusted internal / untrusted external, only the first carries instructions; secret-shaped strings redacted from posts and logs.
 
 ### A.10 Not built
-AWS, VPS, always-on servers; Redis, Kafka, Kubernetes, queue services, a second database, a vector database before logged misses; paid monitoring, secrets managers, image services, or design-reference accounts; separate council, memory, or cost rooms; a Fleet Manager agent; a Codex Cloud adapter or Claude cloud routines until each has a cancel command; Grok Bot as an automated worker; a separate Grok API key; OpenCode Go before its trigger; third-party plugin code inside workers; typed dollar budgets; a multi-client SaaS control plane; agent chat rooms and progress narration.
+AWS, VPS, always-on servers; Redis, Kafka, Kubernetes, queue services, a second database, a vector database before logged misses; paid monitoring, secrets managers, image services, or design-reference accounts; separate council, memory, or cost rooms; a Fleet Manager agent; a Codex Cloud adapter or Claude cloud routines until each has a cancel command; Grok Bot as an automated worker; a separate Grok API key; OpenCode Go before its trigger; third-party plugin code inside workers; a dependency on any free model tier; typed dollar budgets; a multi-client SaaS control plane; agent chat rooms and progress narration.
 
 ### A.11 Practices borrowed from proven agent toolkits
 Borrowed as text, credited and pinned (Appendix D); no third-party code runs in workers; only the checklists a task needs are loaded.
@@ -944,7 +949,6 @@ DEXTER_TICK_SECRET=
 DEXTER_AGE_PRIVATE_KEY=
 GH_HQ_TOKEN=
 GH_WORKERS_REPO=
-GITHUB_MODELS_TOKEN=
 CURSOR_API_KEY=
 VERCEL_TOKEN=
 CODEX_WEEKLY_RUN_CAP=10
@@ -952,7 +956,7 @@ CODEX_WEEKLY_RUN_CAP=10
 CEO_PATH=
 CEO_CHATGPT_AUTH_VAULT_ID=
 ```
-`dexter-workers` holds its own Actions secrets (`DEXTER_CALLBACK_SECRET`, `TARGET_READ_TOKEN`, `TARGET_WRITE_TOKEN`, `CODEX_AUTH_JSON_B64`, and only if bought `OPENCODE_GO_KEY`; optional `TESTNET_DEPLOYER_KEY`) and variables (`DEXTER_HQ_URL`, `DEXTER_HQ_AGE_PUBLIC_KEY`). GitHub Models needs no secret inside workers: the job's built-in token with `models: read` is enough.
+`dexter-workers` holds its own Actions secrets (`DEXTER_CALLBACK_SECRET`, `TARGET_READ_TOKEN`, `TARGET_WRITE_TOKEN`, `CODEX_AUTH_JSON_B64`, and only if bought `OPENCODE_GO_KEY`; optional `TESTNET_DEPLOYER_KEY`) and variables (`DEXTER_HQ_URL`, `DEXTER_HQ_AGE_PUBLIC_KEY`).
 
 ### C.7 Worker workflow skeleton (`dexter-workers/.github/workflows/agent-run.yml`)
 G1 turns this skeleton into a working, tested workflow and records the verified install commands and key variable names. The agent job holds no write token; the publish job never sees a model credential; the agent step receives only the routed provider's key.
@@ -967,12 +971,11 @@ on:
       spec_url:    { required: true,  type: string }   # one-time signed URL, short expiry
       target_repo: { required: false, type: string, default: "" }
       target_ref:  { required: false, type: string, default: "main" }
-      runtime:     { required: true,  type: choice, options: [opencode, codex, script] }
-      provider:    { required: false, type: string, default: "github-models" }
+      runtime:     { required: true,  type: choice, options: [codex, script, opencode] }   # opencode only with OpenCode Go
+      provider:    { required: false, type: string, default: "opencode-go" }
       model:       { required: false, type: string, default: "" }   # provider/model, from the role sheet
 permissions:
   contents: read
-  models: read
 jobs:
   agent:
     runs-on: ubuntu-latest
@@ -989,10 +992,9 @@ jobs:
           token: ${{ secrets.TARGET_READ_TOKEN }}
           path: work
           persist-credentials: false
-      - name: Run agent (OpenCode, default)
+      - name: Run agent (OpenCode, only with OpenCode Go)
         if: ${{ inputs.runtime == 'opencode' }}
         env:
-          GITHUB_TOKEN: ${{ inputs.provider == 'github-models' && github.token || '' }}
           OPENCODE_API_KEY: ${{ inputs.provider == 'opencode-go' && secrets.OPENCODE_GO_KEY || '' }}
         run: |
           npm i -g opencode-ai
@@ -1134,7 +1136,8 @@ roles:
   writer:     { family: claude-opus, pool: cursor }
   venture:    { family: claude-opus, pool: cursor }
   security:   { family: claude-opus, pool: cursor }
-  utility:    { family: github-models-free, pool: gh-runner }
+  utility_inline: { family: gpt-sol, reasoning_effort: low, pool: chatgpt-plan }
+  utility_batch:  { family: composer, pool: cursor }
   reserve:    { family: codex-default, pool: codex, weekly_run_cap: 10 }
 council:
   families: [claude-opus, gpt-sol, grok]   # the seat matching the Maker's family is skipped
