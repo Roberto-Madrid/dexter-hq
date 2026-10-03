@@ -1,0 +1,7 @@
+Merge pull request 6 is on v5 at 6b3dff6.
+Git deployment dpl_5wV8cUkrShDrvJjcjFVP1rJNcWJc is READY.
+URL: https://dexter-oi3a5ii6c-dexter-b9aa.vercel.app
+Branch alias: https://dexter-hq-git-v5-dexter-b9aa.vercel.app
+Target: preview. Production branch remains main. SSO protection unchanged.
+Anonymous GET /login returned 302 to Vercel SSO.
+No new deployment was created.
