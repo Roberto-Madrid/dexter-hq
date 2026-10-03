@@ -1,0 +1,6 @@
+{
+  "secret_name": "codex_chatgpt_auth",
+  "vault_id": "7ca36b52-c254-47fd-9979-d4aac95c52bf",
+  "ciphertext_bytes": 5805,
+  "armor": true
+}

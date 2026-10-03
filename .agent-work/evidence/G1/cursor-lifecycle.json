@@ -42,9 +42,9 @@
   ],
   "norepo": {
     "http": 201,
-    "clientAgentId": "bc-6fc9fc5d-f8b9-414c-8d24-57039180bf97",
-    "agentId": "bc-6fc9fc5d-f8b9-414c-8d24-57039180bf97",
-    "runId": "run-f14bdcc7-e20e-449f-b6a1-006fe1526649",
+    "clientAgentId": "bc-1def40c1-f122-428e-aab0-fa9fed918268",
+    "agentId": "bc-1def40c1-f122-428e-aab0-fa9fed918268",
+    "runId": "run-613273db-e127-4c31-83da-f857f5638edc",
     "initialStatus": "FINISHED"
   },
   "duplicate": {
@@ -54,6 +54,25 @@
       "message": "An agent with this agentId already exists."
     }
   },
+  "norepoWait": {
+    "status": "FINISHED",
+    "http": 200
+  },
+  "usage": {
+    "http": 200,
+    "runCount": 1
+  },
+  "artifacts": {
+    "http": 200,
+    "paths": [
+      "artifacts/spike.txt"
+    ]
+  },
+  "download": {
+    "http": 200,
+    "bytes": 2,
+    "path": "artifacts/spike.txt"
+  },
   "cancel": {
     "createHttp": 201,
     "cancelHttp": 200,
@@ -61,6 +80,9 @@
     "http": 200
   },
   "plan": {
-    "http": 201
+    "http": 200,
+    "agentId": "bc-3ee2bc38-b9c1-40db-b4e6-abd85ca68c4a",
+    "runId": "run-d4df34ec-271f-47bb-b2d4-0fbcec2047a3",
+    "status": "FINISHED"
   }
 }

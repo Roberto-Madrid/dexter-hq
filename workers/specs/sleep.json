@@ -1,0 +1,94 @@
+{
+  "script": "sleep 180",
+  "prompt": "",
+  "dossier_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "status",
+      "done",
+      "verified",
+      "unverified",
+      "findings",
+      "dead_ends",
+      "next_action"
+    ],
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": [
+          "done",
+          "blocked",
+          "give_up_with_notes"
+        ]
+      },
+      "done": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "verified": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "unverified": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "claim",
+            "evidence",
+            "confidence"
+          ],
+          "properties": {
+            "claim": {
+              "type": "string"
+            },
+            "evidence": {
+              "type": "string"
+            },
+            "confidence": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "dead_ends": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "approach",
+            "why",
+            "conditions"
+          ],
+          "properties": {
+            "approach": {
+              "type": "string"
+            },
+            "why": {
+              "type": "string"
+            },
+            "conditions": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "next_action": {
+        "type": "string"
+      }
+    }
+  }
+}

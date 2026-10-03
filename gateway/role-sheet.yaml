@@ -32,7 +32,8 @@ roles:
   writer:     { family: claude-opus, pool: cursor }
   venture:    { family: claude-opus, pool: cursor }
   security:   { family: claude-opus, pool: cursor }
-  utility:    { family: github-models-free, pool: gh-runner }
+  utility_inline: { family: gpt-sol, reasoning_effort: low, pool: chatgpt-plan }
+  utility_batch:  { family: composer, pool: cursor }
   reserve:    { family: codex-default, pool: codex, weekly_run_cap: 10 }
 council:
   families: [claude-opus, gpt-sol, grok]

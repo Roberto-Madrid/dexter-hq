@@ -1,0 +1,37 @@
+{
+  "path": "B",
+  "login": "chatgpt",
+  "openai_api_key_set": false,
+  "model": "gpt-6.1-sol",
+  "efforts": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra"
+  ],
+  "medium": {
+    "firstTokenMs": 3727,
+    "text": "pong",
+    "usage": {
+      "input_tokens": 14123,
+      "cached_input_tokens": 12288,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 5,
+      "reasoning_output_tokens": 0
+    },
+    "ok": true
+  },
+  "low": {
+    "schemaKind": "question",
+    "usage": {
+      "input_tokens": 14174,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 15,
+      "reasoning_output_tokens": 0
+    },
+    "ok": true
+  }
+}

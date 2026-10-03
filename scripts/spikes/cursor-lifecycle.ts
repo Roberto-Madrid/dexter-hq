@@ -172,7 +172,7 @@ async function main() {
     agentId: norepoId,
     name: "dexter-g1-norepo",
     prompt: {
-      text: "Create the file artifacts/spike.txt containing exactly the word ok. Do not use a repository. Do not call any other tool.",
+      text: "Write the file /opt/cursor/artifacts/spike.txt with exactly the characters ok and no newline. That directory is the published artifacts directory. Use the file tool. Do not open a pull request and do not use a repository.",
     },
   };
   const created = await api(key, "POST", "/v1/agents", norepoBody);
@@ -197,7 +197,7 @@ async function main() {
 
   const agentId = String(createdAgent.id ?? norepoId);
   const runId = String(createdRun.id ?? "");
-  if (created.status === 200 && runId) {
+  if (created.status >= 200 && created.status < 300 && runId) {
     report.norepoWait = await waitRun(key, agentId, runId, 8 * 60 * 1000);
     console.log("norepo_terminal", JSON.stringify(report.norepoWait));
     const usage = await api(key, "GET", `/v1/agents/${agentId}/usage?runId=${encodeURIComponent(runId)}`);
@@ -206,9 +206,18 @@ async function main() {
     console.log("usage_http", usage.status);
     const artifacts = await api(key, "GET", `/v1/agents/${agentId}/artifacts`);
     const list = asRecord(artifacts.body).artifacts ?? asRecord(artifacts.body).items ?? [];
-    const paths = Array.isArray(list)
+    let paths = Array.isArray(list)
       ? list.map((item) => String(asRecord(item).path ?? "")).filter(Boolean)
       : [];
+    for (let attempt = 0; attempt < 12 && paths.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const again = await api(key, "GET", `/v1/agents/${agentId}/artifacts`);
+      const againList = asRecord(again.body).artifacts ?? asRecord(again.body).items ?? [];
+      paths = Array.isArray(againList)
+        ? againList.map((item) => String(asRecord(item).path ?? "")).filter(Boolean)
+        : [];
+      report.artifacts = { http: again.status, paths };
+    }
     report.artifacts = { http: artifacts.status, paths };
     console.log("artifact_paths", paths.join(",") || "none");
     const wanted = paths.find((path) => path.endsWith("spike.txt")) ?? paths[0];
@@ -260,9 +269,13 @@ async function main() {
   });
   const planAgent = String(asRecord(asRecord(planCreate.body).agent).id ?? planId);
   const planRun = String(asRecord(asRecord(planCreate.body).run).id ?? "");
-  let planResult: Record<string, unknown> = { http: planCreate.status };
-  if (planCreate.status === 200 && planRun) {
-    planResult = { http: planCreate.status, ...(await waitRun(key, planAgent, planRun, 8 * 60 * 1000)) };
+  let planResult: Record<string, unknown> = {
+    http: planCreate.status,
+    agentId: planAgent,
+    runId: planRun,
+  };
+  if (planCreate.status >= 200 && planCreate.status < 300 && planRun) {
+    planResult = { ...planResult, ...(await waitRun(key, planAgent, planRun, 8 * 60 * 1000)) };
   }
   report.plan = planResult;
   console.log("plan", JSON.stringify(planResult));
@@ -273,11 +286,12 @@ async function main() {
   const duplicateOk = duplicate.status === 409;
   const cancelOk = asRecord(report.cancel).status === "CANCELLED";
   const planOk = asRecord(report.plan).status === "FINISHED";
+  const artifactsOk = Number(asRecord(report.download).bytes) > 0;
   console.log(
     "summary",
-    JSON.stringify({ familiesOk, norepoOk, duplicateOk, cancelOk, planOk }),
+    JSON.stringify({ familiesOk, norepoOk, duplicateOk, cancelOk, planOk, artifactsOk }),
   );
-  if (!familiesOk || !norepoOk || !duplicateOk || !cancelOk || !planOk) process.exit(1);
+  if (!familiesOk || !norepoOk || !duplicateOk || !cancelOk || !planOk || !artifactsOk) process.exit(1);
 }
 
 main().catch((error: unknown) => {

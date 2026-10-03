@@ -1,0 +1,94 @@
+{
+  "prompt": "Write the required dossier and nothing else. status is done. done has one item: reserve spike. verified has one item: schema. unverified, findings, and dead_ends are empty. next_action is none. Do not read home or auth files.",
+  "dossier_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "status",
+      "done",
+      "verified",
+      "unverified",
+      "findings",
+      "dead_ends",
+      "next_action"
+    ],
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": [
+          "done",
+          "blocked",
+          "give_up_with_notes"
+        ]
+      },
+      "done": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "verified": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "unverified": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "claim",
+            "evidence",
+            "confidence"
+          ],
+          "properties": {
+            "claim": {
+              "type": "string"
+            },
+            "evidence": {
+              "type": "string"
+            },
+            "confidence": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "dead_ends": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "approach",
+            "why",
+            "conditions"
+          ],
+          "properties": {
+            "approach": {
+              "type": "string"
+            },
+            "why": {
+              "type": "string"
+            },
+            "conditions": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "next_action": {
+        "type": "string"
+      }
+    }
+  },
+  "permission": {}
+}

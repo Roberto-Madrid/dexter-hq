@@ -1,0 +1,126 @@
+name: agent-run
+run-name: dexter-${{ inputs.run_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      run_id: { required: true, type: string }
+      spec_url: { required: true, type: string }
+      target_repo: { required: false, type: string, default: "" }
+      target_ref: { required: false, type: string, default: "main" }
+      runtime: { required: true, type: choice, options: [codex, script, opencode] }
+      provider: { required: false, type: string, default: "opencode-go" }
+      model: { required: false, type: string, default: "" }
+permissions:
+  contents: read
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Fetch run spec
+        run: |
+          url="${{ inputs.spec_url }}"
+          if [[ "$url" == repo:* ]]; then
+            cp "${url#repo:}" spec.json
+          else
+            curl -fsSL "$url" -o spec.json
+          fi
+          jq '.dossier_schema' spec.json > dossier.schema.json
+      - name: Check out target (read-only, credentials not persisted)
+        if: ${{ inputs.target_repo != '' }}
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.target_repo }}
+          ref: ${{ inputs.target_ref }}
+          token: ${{ secrets.TARGET_READ_TOKEN }}
+          path: work
+          persist-credentials: false
+      - name: Run script (no model and no credentials)
+        if: ${{ inputs.runtime == 'script' }}
+        run: bash -lc "$(jq -r '.script' spec.json)"
+      - name: Run agent (OpenCode, only with OpenCode Go)
+        if: ${{ inputs.runtime == 'opencode' }}
+        env:
+          OPENCODE_API_KEY: ${{ inputs.provider == 'opencode-go' && secrets.OPENCODE_GO_KEY || '' }}
+        run: |
+          npm i -g opencode-ai
+          export OPENCODE_PERMISSION="$(jq -c '.permission' spec.json)"
+          mkdir -p work && cd work
+          opencode run --model "${{ inputs.model }}" --format json --auto \
+            --title "dexter-${{ inputs.run_id }}" "$(jq -r '.prompt' ../spec.json)" > ../events.jsonl
+          git add -N . 2>/dev/null; git diff --binary > ../change.patch 2>/dev/null || true
+      - name: Seed reserve login (Codex only)
+        if: ${{ inputs.runtime == 'codex' }}
+        env:
+          AUTH_B64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
+        run: mkdir -p ~/.codex && printf '%s' "$AUTH_B64" | base64 -d > ~/.codex/auth.json && chmod 600 ~/.codex/auth.json
+      - name: Run agent (Codex, reserve; no secrets in this step's environment)
+        if: ${{ inputs.runtime == 'codex' }}
+        run: |
+          npm i -g @openai/codex
+          mkdir -p work && cd work
+          args=(exec --json --sandbox workspace-write --skip-git-repo-check --output-schema ../dossier.schema.json -o ../dossier.json)
+          if [ -n "${{ inputs.model }}" ]; then args+=(-m "${{ inputs.model }}"); fi
+          codex "${args[@]}" "$(jq -r '.prompt' ../spec.json)" > ../events.jsonl
+          git add -N . 2>/dev/null; git diff --binary > ../change.patch 2>/dev/null || true
+      - name: Encrypt refreshed reserve login for HQ, then remove it
+        if: ${{ !cancelled() && inputs.runtime == 'codex' }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y age >/dev/null
+          key="${{ vars.DEXTER_HQ_AGE_PUBLIC_KEY }}"
+          if [ -z "$key" ]; then key="$(tr -d '[:space:]' < age.pub)"; fi
+          test -n "$key"
+          age -r "$key" -o auth.json.age ~/.codex/auth.json
+          rm -f ~/.codex/auth.json
+      - name: Validate dossier
+        if: ${{ !cancelled() && inputs.runtime != 'script' }}
+        run: |
+          test -f dossier.json || cp work/dossier.json dossier.json 2>/dev/null || true
+          npx -y ajv-cli@5 validate -s dossier.schema.json -d dossier.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: result-${{ inputs.run_id }}
+          path: |
+            dossier.json
+            events.jsonl
+            change.patch
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && inputs.runtime == 'codex' }}
+        with:
+          name: login-${{ inputs.run_id }}
+          path: auth.json.age
+          retention-days: 1
+  publish:
+    needs: agent
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: result-${{ inputs.run_id }}
+      - name: Push branch with the patch (no model credential in this job)
+        if: ${{ needs.agent.result == 'success' && inputs.target_repo != '' }}
+        env:
+          TOKEN: ${{ secrets.TARGET_WRITE_TOKEN }}
+        run: |
+          git clone --depth 1 --branch "${{ inputs.target_ref }}" "https://x-access-token:${TOKEN}@github.com/${{ inputs.target_repo }}.git" out
+          cd out && git checkout -b "dexter/${{ inputs.run_id }}"
+          git apply --index ../change.patch && git -c user.name=dexter-bot -c user.email=dexter-bot@users.noreply.github.com commit -m "dexter run ${{ inputs.run_id }}"
+          git push origin "dexter/${{ inputs.run_id }}"
+      - name: Signed callback to HQ
+        env:
+          SECRET: ${{ secrets.DEXTER_CALLBACK_SECRET }}
+          HQ_URL: ${{ vars.DEXTER_HQ_URL }}
+        run: |
+          if [ -z "$HQ_URL" ]; then echo "callback skipped; DEXTER_HQ_URL unset"; exit 0; fi
+          if [ -f dossier.json ]; then DOSSIER=$(cat dossier.json); else DOSSIER=null; fi
+          BODY=$(jq -cn --arg run "${{ inputs.run_id }}" --arg result "${{ needs.agent.result }}" --argjson dossier "$DOSSIER" '{run_id:$run,result:$result,dossier:$dossier}')
+          SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
+          curl -fsS -X POST "$HQ_URL/api/callback" -H 'content-type: application/json' -H "x-dexter-signature: $SIG" -d "$BODY"

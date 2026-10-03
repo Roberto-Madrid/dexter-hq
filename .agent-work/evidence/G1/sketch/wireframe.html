@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Northline — Book</title>
+  <style>
+    :root {
+      --ink: #111;
+      --line: #111;
+      --mute: #6a6a6a;
+      --fill: #f4f4f4;
+      --paper: #fff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .wrap {
+      width: min(1120px, calc(100% - 48px));
+      margin: 0 auto;
+    }
+    header {
+      border-bottom: 2px solid var(--line);
+      padding: 14px 0;
+    }
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: 0.22em;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    nav {
+      display: flex;
+      gap: 22px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    nav span { color: var(--mute); }
+    nav .here {
+      color: var(--ink);
+      border-bottom: 2px solid var(--ink);
+      padding-bottom: 2px;
+    }
+    .hours-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border: 1px solid var(--line);
+      padding: 6px 10px;
+    }
+    main {
+      flex: 1;
+      padding: 28px 0 20px;
+    }
+    .hero {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .hero h1 {
+      font-size: 42px;
+      font-weight: 500;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+    }
+    .hero p {
+      margin-top: 8px;
+      color: var(--mute);
+      font-size: 14px;
+      letter-spacing: 0.04em;
+    }
+    .rule {
+      width: 64px;
+      height: 2px;
+      background: var(--ink);
+      margin: 14px auto 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr;
+      gap: 24px;
+      align-items: start;
+    }
+    .panel {
+      border: 2px solid var(--line);
+    }
+    .panel h2 {
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--line);
+      padding: 10px 14px;
+    }
+    .services {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+    .service {
+      padding: 14px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      min-height: 118px;
+    }
+    .service:nth-child(2n) { border-right: 0; }
+    .service:nth-last-child(-n+2) { border-bottom: 0; }
+    .service .ico { margin-bottom: 8px; }
+    .service h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .service p { font-size: 12px; color: var(--mute); line-height: 1.4; }
+    .meta {
+      margin-top: 10px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .book {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+    }
+    .cal, .slots { padding: 14px; }
+    .cal { border-right: 1px solid var(--line); }
+    .month {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .dow, .days {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      text-align: center;
+    }
+    .dow {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--mute);
+      margin-bottom: 6px;
+    }
+    .day {
+      border: 1px solid var(--line);
+      height: 32px;
+      line-height: 30px;
+      font-size: 12px;
+    }
+    .day.mute { color: var(--mute); background: var(--fill); }
+    .day.sel { background: var(--ink); color: var(--paper); }
+    .slots h3 {
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+    .times {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .time {
+      border: 1px solid var(--line);
+      text-align: center;
+      font-size: 12px;
+      padding: 8px 0;
+    }
+    .time.sel { background: var(--ink); color: var(--paper); }
+    .time.off { color: var(--mute); background: var(--fill); }
+    .form {
+      border-top: 1px solid var(--line);
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 10px;
+      align-items: end;
+    }
+    label {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .field {
+      border: 1px solid var(--line);
+      height: 36px;
+      background: var(--paper);
+    }
+    .cta {
+      height: 36px;
+      padding: 0 18px;
+      background: var(--ink);
+      color: var(--paper);
+      border: 1px solid var(--line);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+    }
+    footer {
+      border-top: 2px solid var(--line);
+      padding: 16px 0 20px;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--mute);
+    }
+    .foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+    }
+    .foot-left, .foot-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap header-inner">
+      <div class="brand">
+        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+          <rect x="1" y="1" width="26" height="26" fill="none" stroke="#111" stroke-width="2"/>
+          <path d="M8 20V8l12 12V8" fill="none" stroke="#111" stroke-width="2"/>
+        </svg>
+        Northline
+      </div>
+      <nav>
+        <span>Shop</span>
+        <span class="here">Book</span>
+        <span>Hours</span>
+        <span>Contact</span>
+      </nav>
+      <div class="hours-chip">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <circle cx="7" cy="7" r="6" fill="none" stroke="#111" stroke-width="1.2"/>
+          <path d="M7 3.5V7l2.5 1.5" fill="none" stroke="#111" stroke-width="1.2"/>
+        </svg>
+        Open · 10–19
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap">
+      <div class="hero">
+        <h1>Reserve a bench at Northline</h1>
+        <p>One screen. One visit. Fictional atelier on the north line.</p>
+        <div class="rule"></div>
+      </div>
+
+      <div class="grid">
+        <section class="panel" aria-label="Services">
+          <h2>Choose a service</h2>
+          <div class="services">
+            <article class="service">
+              <div class="ico">
+                <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                  <rect x="4" y="6" width="20" height="16" fill="none" stroke="#111" stroke-width="1.5"/>
+                  <path d="M4 11h20M10 6V4h8v2" fill="none" stroke="#111" stroke-width="1.5"/>
+                </svg>
+              </div>
+              <h3>Fitting</h3>
+              <p>Measure, mark, and pin a garment on the stand.</p>
+              <div class="meta">45 min · selected</div>
+            </article>
+            <article class="service">
+              <div class="ico">
+                <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                  <circle cx="9" cy="9" r="4" fill="none" stroke="#111" stroke-width="1.5"/>
+                  <circle cx="19" cy="19" r="4" fill="none" stroke="#111" stroke-width="1.5"/>
+                  <path d="M12 12l4 4" stroke="#111" stroke-width="1.5"/>
+                </svg>
+              </div>
+              <h3>Alteration</h3>
+              <p>Hem, take in, or let out an existing piece.</p>
+              <div class="meta">60 min</div>
+            </article>
+            <article class="service">
+              <div class="ico">
+                <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                  <path d="M6 20V8h16v12" fill="none" stroke="#111" stroke-width="1.5"/>
+                  <path d="M6 14h16M10 8v12M18 8v12" fill="none" stroke="#111" stroke-width="1.5"/>
+                </svg>
+              </div>
+              <h3>Repair</h3>
+              <p>Seams, hardware, and small structural work.</p>
+              <div class="meta">30 min</div>
+            </article>
+            <article class="service">
+              <div class="ico">
+                <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                  <path d="M8 20c0-6 12-6 12 0" fill="none" stroke="#111" stroke-width="1.5"/>
+                  <circle cx="14" cy="10" r="4" fill="none" stroke="#111" stroke-width="1.5"/>
+                </svg>
+              </div>
+              <h3>Consult</h3>
+              <p>Walk-through of cloth, cut, and timeline.</p>
+              <div class="meta">20 min</div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" aria-label="Booking">
+          <h2>Pick a time</h2>
+          <div class="book">
+            <div class="cal">
+              <div class="month">
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M10 3L5 8l5 5" fill="none" stroke="#111" stroke-width="1.5"/>
+                </svg>
+                October 2026
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M6 3l5 5-5 5" fill="none" stroke="#111" stroke-width="1.5"/>
+                </svg>
+              </div>
+              <div class="dow">
+                <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+              </div>
+              <div class="days">
+                <span class="day mute">28</span>
+                <span class="day mute">29</span>
+                <span class="day mute">30</span>
+                <span class="day">1</span>
+                <span class="day sel">2</span>
+                <span class="day">3</span>
+                <span class="day">4</span>
+                <span class="day">5</span>
+                <span class="day">6</span>
+                <span class="day">7</span>
+                <span class="day">8</span>
+                <span class="day">9</span>
+                <span class="day">10</span>
+                <span class="day">11</span>
+                <span class="day">12</span>
+                <span class="day">13</span>
+                <span class="day">14</span>
+                <span class="day">15</span>
+                <span class="day">16</span>
+                <span class="day">17</span>
+                <span class="day">18</span>
+                <span class="day">19</span>
+                <span class="day">20</span>
+                <span class="day">21</span>
+                <span class="day">22</span>
+                <span class="day">23</span>
+                <span class="day">24</span>
+                <span class="day">25</span>
+                <span class="day">26</span>
+                <span class="day">27</span>
+                <span class="day">28</span>
+                <span class="day">29</span>
+                <span class="day">30</span>
+                <span class="day">31</span>
+                <span class="day mute">1</span>
+              </div>
+            </div>
+            <div class="slots">
+              <h3>Friday 2 Oct</h3>
+              <div class="times">
+                <div class="time off">10:00</div>
+                <div class="time">10:45</div>
+                <div class="time sel">11:30</div>
+                <div class="time">13:00</div>
+                <div class="time off">14:00</div>
+                <div class="time">15:30</div>
+                <div class="time">16:15</div>
+                <div class="time">17:00</div>
+              </div>
+            </div>
+          </div>
+          <div class="form">
+            <div>
+              <label>Name</label>
+              <div class="field"></div>
+            </div>
+            <div>
+              <label>Note</label>
+              <div class="field"></div>
+            </div>
+            <div class="cta">Hold bench</div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="wrap foot">
+      <div class="foot-left">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M7 12s4-3.4 4-6A4 4 0 0 0 3 6c0 2.6 4 6 4 6z" fill="none" stroke="#111" stroke-width="1.2"/>
+          <circle cx="7" cy="6" r="1.2" fill="#111"/>
+        </svg>
+        12 Platform Row · North Station
+      </div>
+      <div>Northline · wireframe · one screen</div>
+      <div class="foot-right">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <rect x="1.5" y="2.5" width="11" height="9" fill="none" stroke="#111" stroke-width="1.2"/>
+          <path d="M1.5 5h11" stroke="#111" stroke-width="1.2"/>
+        </svg>
+        Book only · no payment
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

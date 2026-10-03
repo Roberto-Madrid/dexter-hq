@@ -1,0 +1,28 @@
+{
+  "checker": {
+    "id": 37088726440,
+    "conclusion": "failure",
+    "shot": false
+  },
+  "cancel": {
+    "id": 37088728206,
+    "http": 202,
+    "polls": [
+      "queued",
+      "in_progress"
+    ],
+    "conclusion": "cancelled"
+  },
+  "codex": {
+    "id": 37088761702,
+    "conclusion": "success",
+    "dossier": true,
+    "login_persisted": true,
+    "login_bytes": 4036,
+    "log_secret_hits": 0
+  },
+  "artifact_names": [
+    "login-codex-murr5yvq",
+    "result-codex-murr5yvq"
+  ]
+}
