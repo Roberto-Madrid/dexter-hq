@@ -1,0 +1,15 @@
+{
+  "snapshot_at": "2026-10-03T00:59:45Z",
+  "rows": [
+    {"id": 1, "beat_at": "2026-10-03T00:51:01.122807Z"},
+    {"id": 2, "beat_at": "2026-10-03T00:52:00.191642Z", "gap_seconds": 59.069},
+    {"id": 3, "beat_at": "2026-10-03T00:53:00.261530Z", "gap_seconds": 60.070},
+    {"id": 4, "beat_at": "2026-10-03T00:54:00.186936Z", "gap_seconds": 59.925},
+    {"id": 5, "beat_at": "2026-10-03T00:55:00.222611Z", "gap_seconds": 60.036},
+    {"id": 6, "beat_at": "2026-10-03T00:56:00.337219Z", "gap_seconds": 60.115},
+    {"id": 7, "beat_at": "2026-10-03T00:57:00.198705Z", "gap_seconds": 59.861},
+    {"id": 8, "beat_at": "2026-10-03T00:58:00.237618Z", "gap_seconds": 60.039}
+  ],
+  "criterion": "at least three rows about 60s apart",
+  "verdict": "pass"
+}

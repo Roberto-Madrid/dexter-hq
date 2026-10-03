@@ -1,0 +1,66 @@
+{
+  "resolved": [
+    {
+      "family": "grok",
+      "chosen": "grok-4.7",
+      "excluded": [],
+      "considered": [
+        "grok-4.5",
+        "grok-4.6",
+        "grok-4.7"
+      ]
+    },
+    {
+      "family": "composer",
+      "chosen": "composer-2.5",
+      "excluded": [],
+      "considered": [
+        "composer-2.5"
+      ]
+    },
+    {
+      "family": "claude-opus",
+      "chosen": "claude-opus-5-5",
+      "excluded": [],
+      "considered": [
+        "claude-opus-4-5",
+        "claude-opus-4-6",
+        "claude-opus-4-7",
+        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-opus-5-5"
+      ]
+    },
+    {
+      "family": "gpt-sol",
+      "chosen": "gpt-5.6-sol",
+      "excluded": [],
+      "considered": [
+        "gpt-5.6-sol"
+      ]
+    }
+  ],
+  "norepo": {
+    "http": 201,
+    "clientAgentId": "bc-6fc9fc5d-f8b9-414c-8d24-57039180bf97",
+    "agentId": "bc-6fc9fc5d-f8b9-414c-8d24-57039180bf97",
+    "runId": "run-f14bdcc7-e20e-449f-b6a1-006fe1526649",
+    "initialStatus": "FINISHED"
+  },
+  "duplicate": {
+    "http": 409,
+    "code": {
+      "code": "agent_id_conflict",
+      "message": "An agent with this agentId already exists."
+    }
+  },
+  "cancel": {
+    "createHttp": 201,
+    "cancelHttp": 200,
+    "status": "CANCELLED",
+    "http": 200
+  },
+  "plan": {
+    "http": 201
+  }
+}

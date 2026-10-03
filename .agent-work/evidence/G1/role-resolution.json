@@ -1,0 +1,43 @@
+{
+  "resolved": [
+    {
+      "family": "grok",
+      "chosen": "grok-4.7",
+      "excluded": [],
+      "considered": [
+        "grok-4.5",
+        "grok-4.6",
+        "grok-4.7"
+      ]
+    },
+    {
+      "family": "composer",
+      "chosen": "composer-2.5",
+      "excluded": [],
+      "considered": [
+        "composer-2.5"
+      ]
+    },
+    {
+      "family": "claude-opus",
+      "chosen": "claude-opus-5-5",
+      "excluded": [],
+      "considered": [
+        "claude-opus-4-5",
+        "claude-opus-4-6",
+        "claude-opus-4-7",
+        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-opus-5-5"
+      ]
+    },
+    {
+      "family": "gpt-sol",
+      "chosen": "gpt-5.6-sol",
+      "excluded": [],
+      "considered": [
+        "gpt-5.6-sol"
+      ]
+    }
+  ]
+}
