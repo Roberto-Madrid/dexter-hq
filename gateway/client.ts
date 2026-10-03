@@ -5,7 +5,7 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 export type CeoEffort = "low" | "medium";
 
@@ -74,11 +74,15 @@ export function ceoCommand(call: CeoCall): { args: string[]; env: NodeJS.Process
   };
 }
 
+export function commandPath(bin: string): string {
+  return isAbsolute(bin) ? bin : resolve(bin);
+}
+
 export function runCeo(call: CeoCall, onEvent: (event: CeoEvent, atMs: number) => void): Promise<number> {
   const { args, env } = ceoCommand(call);
 
   const started = Date.now();
-  const child = spawn(call.codexBin, args, {
+  const child = spawn(commandPath(call.codexBin), args, {
     cwd: mkdtempSync(join(tmpdir(), "dexter-ceo-")),
     env,
     stdio: ["pipe", "pipe", "pipe"],

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ceoCommand } from "../../gateway/client.ts";
+import { ceoCommand, commandPath } from "../../gateway/client.ts";
 import { loginKindFromText } from "../../hq/codex-login.ts";
 
 describe("path B command", () => {
@@ -21,6 +21,9 @@ describe("path B command", () => {
     expect(env.HOME).toBe("/tmp");
     expect(env.CODEX_HOME).toBe("/tmp/.codex");
     expect(env.OPENAI_API_KEY).toBeUndefined();
+    const bin = commandPath("vendor/codex/codex");
+    expect(bin.startsWith("/")).toBe(true);
+    expect(bin.endsWith("/vendor/codex/codex")).toBe(true);
   });
 
   it("tells a ChatGPT login from an API-key login", () => {
