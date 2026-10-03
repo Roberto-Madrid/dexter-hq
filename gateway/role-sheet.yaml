@@ -47,3 +47,4 @@ escalation:
 new_family_bake_off:
   saved_tasks_per_role: 5-10
   apply: owner_approval
+pool_order: [cursor, free, codex]
