@@ -8,6 +8,12 @@
 
 # Tooling caches. Not part of the product.
 node_modules/
+.next/
+tsconfig.tsbuildinfo
+tsconfig.app.tsbuildinfo
+playwright-report/
+test-results/
+app/generated/*.js
 .omc/
 .omx/
 supabase/.temp/

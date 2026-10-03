@@ -1,0 +1,6 @@
+
+> check:bundle
+> bash scripts/check-bundle-fresh.sh
+
+kernel bundle fresh
+BUNDLE:0

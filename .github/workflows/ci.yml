@@ -3,7 +3,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [v5, v5-G2-kernel]
+    branches: [v5, v5-G2-kernel, v5-G3-hq]
 
 jobs:
   check:

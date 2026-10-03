@@ -1,0 +1,47 @@
+
+> test:e2e
+> node scripts/run-e2e.mjs
+
+   ▲ Next.js 15.5.27
+   - Local:        http://localhost:3210
+   - Network:      http://172.30.0.2:3210
+   - Environments: .env.local
+
+ ✓ Starting...
+   Using tsconfig file: tsconfig.app.json
+ ✓ Ready in 1145ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 721ms (535 modules)
+ GET /login 200 in 1024ms
+
+Running 2 tests using 1 worker
+
+(node:68417) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68417) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ GET /login 200 in 45ms
+ ✓ Compiled /api/login in 404ms (562 modules)
+ POST /api/login 303 in 568ms
+ ✓ Compiled / in 185ms (588 modules)
+ GET / 200 in 420ms
+ GET / 200 in 46ms
+ ✓ Compiled /api/chat in 171ms (590 modules)
+ POST /api/chat 200 in 230ms
+ ✓ Compiled /api/board in 126ms (592 modules)
+ GET /api/board 200 in 156ms
+ POST /api/chat 200 in 13ms
+ GET /api/board 200 in 6ms
+ POST /api/chat 200 in 9ms
+ GET /api/board 200 in 5ms
+ POST /api/chat 200 in 7ms
+ GET /api/board 200 in 6ms
+  ✓  1 tests/e2e/command-center.spec.ts:11:1 › three asks become three plan cards and status uses no model (3.0s)
+ GET /login 200 in 112ms
+ POST /api/login 303 in 15ms
+ GET / 200 in 69ms
+ GET / 200 in 47ms
+  ✓  2 tests/e2e/command-center.spec.ts:29:1 › phone keeps STOP ALL visible (1.1s)
+
+  2 passed (4.7s)
+[?25h

@@ -13,6 +13,7 @@ version_policy:
   on_rule_failure: hold_and_ask
 ceo:
   family: gpt-sol
+  version: gpt-6.1-sol
   reasoning_effort: medium
   pool: chatgpt-plan
   on_unavailable: hold_and_notify
@@ -48,3 +49,8 @@ new_family_bake_off:
   saved_tasks_per_role: 5-10
   apply: owner_approval
 pool_order: [cursor, free, codex]
+catalog_match:
+  - { family: grok, prefix: "grok-", suffix: "" }
+  - { family: composer, prefix: "composer-", suffix: "" }
+  - { family: claude-opus, prefix: "claude-opus-", suffix: "" }
+  - { family: gpt-sol, prefix: "gpt-", suffix: "-sol" }

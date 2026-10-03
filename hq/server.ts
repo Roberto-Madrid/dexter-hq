@@ -1,0 +1,232 @@
+import { timingSafeEqual } from "node:crypto";
+import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { parse } from "yaml";
+import { parseRoleSheet } from "../kernel/role-sheet.ts";
+import { cookieHeader, emailsMatch, issueSession, readSession, sessionToken } from "./session.ts";
+import { createScriptedCeo, type CeoClient } from "./scripted-ceo.ts";
+import { handleChat } from "./chat.ts";
+import { acceptCallback } from "./callback.ts";
+import { stopAll } from "./stop.ts";
+import { tick } from "./tick.ts";
+import { snapshot, type BoardSnapshot } from "./board.ts";
+import { SHIPPED_CREWS } from "./crews.ts";
+import type { HqDeps } from "./deps.ts";
+import { MemoryStore } from "./memory.ts";
+import type { HqStore } from "./model.ts";
+import { readSnapshot, writeSnapshot } from "./snapshot-db.ts";
+import { createCursorCloud } from "../adapters/cursor-cloud.ts";
+import { createGhRunner } from "../adapters/gh-runner.ts";
+import { runCeo } from "../gateway/client.ts";
+import type { ChatResult } from "../kernel/contracts.ts";
+import type { PlanCard } from "../kernel/types.ts";
+import { readFileSync as readOut } from "node:fs";
+
+type Boot = { store: HqStore; deps: HqDeps; secret: string; ownerEmail: string };
+
+const bootKey = Symbol.for("dexter.hq.boot");
+
+function fillEnv(): void {
+  try {
+    const text = readFileSync(".env.local", "utf8");
+    for (const raw of text.split("\n")) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#") || !line.includes("=")) continue;
+      const index = line.indexOf("=");
+      const key = line.slice(0, index).trim();
+      if (Object.prototype.hasOwnProperty.call(process.env, key)) continue;
+      let value = line.slice(index + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      if (value) process.env[key] = value;
+    }
+  } catch {
+    // The host environment is enough when the file is absent.
+  }
+}
+
+function pathB(sheetText: string): CeoClient {
+  const sheet = parseRoleSheet(sheetText);
+  let calls = 0;
+  return {
+    get calls() {
+      return calls;
+    },
+    async decide(text: string) {
+      calls += 1;
+      const rawSheet = parse(sheetText) as { ceo?: { version?: string } };
+      const model = rawSheet.ceo?.version;
+      if (!model) throw new Error("ceo_version_missing");
+      const dir = mkdtempSync(join(tmpdir(), "dexter-ceo-"));
+      const output = join(dir, "out.json");
+      const schema = join(dir, "card.json");
+      writeFileSync(
+        schema,
+        JSON.stringify({
+          type: "object",
+          additionalProperties: false,
+          required: ["text", "crew", "personas", "councilMode", "tier", "definitionOfDone", "outOfScope"],
+          properties: {
+            text: { type: "string" },
+            crew: { type: "string" },
+            personas: { type: "array", items: { type: "string" } },
+            councilMode: { type: "string" },
+            tier: { type: "string" },
+            definitionOfDone: { type: "string" },
+            outOfScope: { type: "string" },
+            newScreen: { type: "boolean" },
+            outwardAction: { type: "boolean" },
+          },
+        }),
+      );
+      await runCeo(
+        {
+          model,
+          effort: "medium",
+          prompt: `Reply as the coordinator. Return only the schema. Ask: ${text}`,
+          schemaPath: schema,
+          outputPath: output,
+          codexBin: "codex",
+        },
+        () => undefined,
+      );
+      const parsed = JSON.parse(readOut(output, "utf8")) as {
+        text?: string;
+        crew: string;
+        personas?: string[];
+        councilMode?: PlanCard["councilMode"];
+        tier?: PlanCard["tier"];
+        definitionOfDone?: string;
+        outOfScope?: string;
+        newScreen?: boolean;
+        outwardAction?: boolean;
+      };
+      const card: PlanCard = {
+        crew: parsed.crew,
+        personas: parsed.personas ?? ["dexter"],
+        councilMode: parsed.councilMode ?? "off",
+        tier: parsed.tier ?? "T1",
+        definitionOfDone: parsed.definitionOfDone ?? "done",
+        outOfScope: parsed.outOfScope ?? "",
+        needsOwner: [],
+        newScreen: parsed.newScreen ?? false,
+        outwardAction: parsed.outwardAction ?? false,
+        requiresDesignApproval: false,
+        requiresApproval: false,
+      };
+      return { text: parsed.text ?? "Plan ready.", card, model: sheet.ceo.family, effort: sheet.ceo.reasoningEffort };
+    },
+  };
+}
+
+function current(): Boot {
+  const globals = globalThis as typeof globalThis & { [bootKey]?: Boot };
+  const existing = globals[bootKey];
+  if (existing) return existing;
+  fillEnv();
+  const sheetText = readFileSync("gateway/role-sheet.yaml", "utf8");
+  const sheet = parseRoleSheet(sheetText);
+  const mode = process.env.DEXTER_CEO ?? "path-b";
+  const ceo = mode === "scripted" ? createScriptedCeo(sheet) : mode === "off" ? disabledCeo() : pathB(sheetText);
+  const store = new MemoryStore();
+  const cursorKey = process.env.CURSOR_API_KEY;
+  const ghToken = process.env.GH_HQ_TOKEN;
+  const repo = process.env.GH_WORKERS_REPO;
+  const runtimes: HqDeps["runtimes"] = {};
+  if (cursorKey) runtimes["cursor-cloud"] = createCursorCloud({ apiKey: cursorKey });
+  if (ghToken && repo) runtimes["gh-runner"] = createGhRunner({ token: ghToken, repo });
+  const next: Boot = {
+    store,
+    secret: process.env.DEXTER_CALLBACK_SECRET ?? "",
+    ownerEmail: process.env.DEXTER_OWNER_EMAIL ?? "",
+    deps: {
+      ceo,
+      ceoEnabled: mode !== "off",
+      sheet,
+      catalog: [],
+      shippedCrews: SHIPPED_CREWS,
+      exhaustedPools: [],
+      knownHosts: ["example.com"],
+      slotCap: 3,
+      runtimes,
+      controlReachable: true,
+    },
+  };
+  globals[bootKey] = next;
+  return next;
+}
+
+function tokenMatch(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+function disabledCeo(): CeoClient {
+  return { calls: 0, async decide() { throw new Error("ceo_disabled"); } };
+}
+
+export function login(email: string, secure: boolean, now = Date.now()): { ok: true; token: string; cookie: string } | { ok: false; status: number } {
+  const live = current();
+  if (!live.secret || !live.ownerEmail) return { ok: false, status: 503 };
+  if (!emailsMatch(email, live.ownerEmail)) return { ok: false, status: 401 };
+  const token = issueSession(email.trim().toLowerCase(), live.secret, now + 7 * 24 * 60 * 60 * 1000);
+  return { ok: true, token, cookie: cookieHeader(token, secure) };
+}
+
+export function emailFromCookie(header: string | null, now = Date.now()): string | null {
+  const live = current();
+  const token = sessionToken(header);
+  if (!token || !live.secret) return null;
+  return readSession(token, live.secret, now)?.email ?? null;
+}
+
+async function withStore<T>(fn: (store: HqStore) => Promise<T>): Promise<T> {
+  const live = current();
+  const url = process.env.SUPABASE_DB_URL;
+  if (process.env.DEXTER_STORE === "memory" || !url) return fn(live.store);
+  const loaded = new MemoryStore();
+  try {
+    const raw = await readSnapshot(url);
+    if (raw && raw !== "null" && raw !== "{}") loaded.load(raw);
+  } catch {
+    throw new Error("hq_store_unavailable");
+  }
+  const result = await fn(loaded);
+  await writeSnapshot(url, loaded.dump());
+  return result;
+}
+
+export async function postChat(text: string): Promise<ChatResult> {
+  const live = current();
+  return withStore((store) => handleChat(store, live.deps, text));
+}
+
+export async function getBoard(): Promise<BoardSnapshot> {
+  const live = current();
+  return withStore((store) => snapshot(store, live.deps.slotCap));
+}
+
+export async function postStop(): Promise<Awaited<ReturnType<typeof stopAll>>> {
+  const live = current();
+  return withStore((store) => stopAll(store, live.deps));
+}
+
+export async function postTick(header: string | null): Promise<{ status: number; body?: unknown }> {
+  const live = current();
+  const expected = process.env.DEXTER_TICK_SECRET ?? "";
+  if (!expected || !header || !tokenMatch(header, expected)) return { status: 401 };
+  return { status: 200, body: await withStore((store) => tick(store, live.deps)) };
+}
+
+export async function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }> {
+  const live = current();
+  if (!live.secret) return { status: 503 };
+  return withStore(async (store) => {
+    const result = await acceptCallback(store, live.secret, raw, signature);
+    return { status: result.status, duplicate: result.duplicate };
+  });
+}

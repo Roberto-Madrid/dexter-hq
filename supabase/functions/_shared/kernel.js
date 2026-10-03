@@ -11005,11 +11005,102 @@ function mergeVerdicts(parts) {
   }
   return { result, actions };
 }
+
+// kernel/contracts.ts
+var CHANNELS = {
+  board: "hq:board",
+  runs: "hq:runs",
+  chat: "hq:chat"
+};
+var ChatRequestSchema = external_exports.object({
+  text: external_exports.string().min(1).max(8e3)
+});
+var UiCardSchema = external_exports.object({
+  id: external_exports.string(),
+  title: external_exports.string(),
+  crew: external_exports.string(),
+  tier: external_exports.string(),
+  stage: external_exports.string(),
+  personas: external_exports.array(external_exports.string()),
+  updatedAt: external_exports.string(),
+  evidenceAt: external_exports.string().nullable(),
+  tasksDone: external_exports.number().int().nonnegative(),
+  tasksTotal: external_exports.number().int().nonnegative(),
+  usageByPool: external_exports.record(external_exports.number()),
+  blocker: external_exports.string().nullable(),
+  badges: external_exports.array(external_exports.string()),
+  model: external_exports.string().nullable(),
+  pool: external_exports.string().nullable(),
+  routingReason: external_exports.string().nullable()
+});
+var ChatResultSchema = external_exports.object({
+  kind: external_exports.enum(["status", "cost", "list", "plan", "hold"]),
+  text: external_exports.string(),
+  modelCalls: external_exports.number().int().nonnegative(),
+  card: PlanCardSchema.nullable(),
+  notices: external_exports.array(external_exports.string()),
+  requestId: external_exports.string().nullable(),
+  asOf: external_exports.string()
+});
+var StopReportSchema = external_exports.object({
+  id: external_exports.string(),
+  runtime: external_exports.string(),
+  state: external_exports.enum(["stopping", "stopped", "unconfirmed"])
+});
+var StopResultSchema = external_exports.object({
+  reports: external_exports.array(StopReportSchema),
+  asOf: external_exports.string()
+});
+var TickResultSchema = external_exports.object({
+  dispatched: external_exports.number().int().nonnegative(),
+  queued: external_exports.number().int().nonnegative(),
+  held: external_exports.number().int().nonnegative(),
+  bought: external_exports.literal(false),
+  asOf: external_exports.string()
+});
+var CallbackSchema = external_exports.object({
+  eventId: external_exports.string().min(1).optional(),
+  run_id: external_exports.string().min(1).optional(),
+  runId: external_exports.string().min(1).optional(),
+  result: external_exports.string().optional(),
+  post: external_exports.object({
+    type: external_exports.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff"]),
+    body: external_exports.string(),
+    evidence: external_exports.array(external_exports.string()).default([])
+  }).optional(),
+  checkpoint: external_exports.string().optional(),
+  dossier: DossierSchema.optional(),
+  artifact: external_exports.object({
+    type: external_exports.string().min(1),
+    location: external_exports.string().min(1),
+    contentHash: external_exports.string().min(1)
+  }).optional(),
+  outcome: external_exports.object({
+    passed: external_exports.boolean(),
+    checksFailed: external_exports.number().int().nonnegative()
+  }).optional()
+}).refine((value) => Boolean(value.eventId || value.run_id || value.runId), "missing event");
+
+// kernel/versions.ts
+function holdVersionChanges(current, incoming) {
+  const pins = new Map(current.map((row) => [row.family, row.version]));
+  const held = [];
+  for (const row of incoming) {
+    const pinned = pins.get(row.family);
+    if (!pinned || pinned === row.version) continue;
+    held.push({ family: row.family, current: pinned, incoming: row.version, action: "hold" });
+  }
+  return held;
+}
 export {
   ApprovalSchema,
   ArtifactSchema,
+  CHANNELS,
   CREW_ORDER,
+  CallbackSchema,
   CapabilitySchema,
+  ChatRequestSchema,
+  ChatResultSchema,
   DESTRUCTIVE_RULES,
   DossierSchema,
   EventSchema,
@@ -11031,13 +11122,18 @@ export {
   SECRET_RULES,
   ScheduleSchema,
   StaleGeneration,
+  StopReportSchema,
+  StopResultSchema,
   TASK_STATES,
   TaskSchema,
+  TickResultSchema,
+  UiCardSchema,
   VerdictSchema,
   assertFresh,
   capForPool,
   charge,
   deadEndActive,
+  holdVersionChanges,
   idempotencyKey,
   leaseExpired,
   matchingRules,

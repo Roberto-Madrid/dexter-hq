@@ -1,0 +1,8 @@
+name: research
+tier: T2
+council: quick
+personas: [researcher]
+tasks:
+  - persona: researcher
+    role: researcher
+    artifact: note
