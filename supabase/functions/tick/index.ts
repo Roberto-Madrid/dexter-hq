@@ -33,7 +33,16 @@ Deno.serve(async (req: Request) => {
     body: JSON.stringify({ p_token: token }),
   });
 
-  return new Response(await res.text(), {
+  const text = await res.text();
+  const hq = Deno.env.get("DEXTER_HQ_URL");
+  if (res.ok && hq) {
+    await fetch(`${hq}/api/tick-now`, {
+      method: "POST",
+      headers: { "x-dexter-tick": token },
+    }).catch(() => undefined);
+  }
+
+  return new Response(text, {
     status: res.status,
     headers: { "content-type": "application/json" },
   });

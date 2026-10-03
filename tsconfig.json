@@ -13,5 +13,5 @@
     "noUnusedParameters": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["kernel", "adapters", "tests", "vitest.config.ts"]
+  "include": ["kernel", "adapters", "hq", "gateway", "tests", "vitest.config.ts"]
 }

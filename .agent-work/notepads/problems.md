@@ -7,3 +7,6 @@
 - G2: git cannot hold `v5` and `v5/G2-kernel` together; story branch is `v5-G2-kernel`.
 - G2: spike SQL moved to `0006_spike_tick.sql` so `0001_core.sql` has a unique version prefix.
 - G2: this VM has no Docker, so integration ran on local Postgres; CI runs `supabase start`.
+- G3: git cannot hold `v5` and `v5/G3-hq` together; story branch is `v5-G3-hq`.
+- G3: a click before hydration submitted the chat form; Send is a button and the test waits for `data-ready`.
+- G3: path B cannot run on Vercel, so new plans hold there; card and Actions budget were not confirmed.

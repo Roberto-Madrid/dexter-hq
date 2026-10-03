@@ -11,3 +11,5 @@ export * from "./board.ts";
 export * from "./plan-card.ts";
 export * from "./verdict.ts";
 export * from "./patterns.ts";
+export * from "./contracts.ts";
+export * from "./versions.ts";

@@ -280,6 +280,8 @@ export type Verdict = {
 export type RunSpec = {
   idempotencyKey: string;
   taskId: string;
+  checkpoint?: string | null;
+  brief?: string;
 };
 
 export type RunHandle = {

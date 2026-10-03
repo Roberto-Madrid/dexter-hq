@@ -1,0 +1,75 @@
+{
+  "story": "G3",
+  "plan_version": 1,
+  "contract_tasks": [
+    {
+      "id": "G3-C1",
+      "owner": "lead",
+      "owns": ["kernel/contracts.ts", "kernel/versions.ts", "hq/server.ts", "package.json"],
+      "done_command": "npm run typecheck",
+      "done_when": ["chat, callback, stop, and tick-now shapes compile", "channel names and plan-card fields are in the kernel contract"]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "G3-L1-1",
+      "lane": "L1",
+      "role": "designer",
+      "tier": "standard",
+      "owns": ["app/(hq)", "app/login", "app/manifest.ts", "public"],
+      "reads": ["kernel/contracts.ts"],
+      "imitate": ["app/layout.tsx"],
+      "invariants": ["owner-only login", "no invented percentages", "STOP ALL stays visible on a phone"],
+      "depends_on": ["G3-C1"],
+      "done_when": ["desktop board, swarm placeholder, and chat dock render", "phone tabs keep STOP ALL visible"],
+      "done_command": "npm run test:e2e",
+      "proof": "Playwright sees three plan cards and a status answer with model call count 0",
+      "seams": "board snapshot and chat result shapes"
+    },
+    {
+      "id": "G3-L2-1",
+      "lane": "L2",
+      "role": "executor",
+      "tier": "deep",
+      "owns": ["app/api/chat", "gateway", "personas/dexter.md", "crews", "supabase/functions/catalog-sync"],
+      "reads": ["gateway/role-sheet.yaml"],
+      "imitate": ["kernel/plan-card.ts"],
+      "invariants": ["decisions use the role-sheet CEO family", "status, cost, and list make no model call", "model names stay in the role sheet"],
+      "depends_on": ["G3-C1"],
+      "done_when": ["a plan card passes the validator", "an unreachable CEO holds new plans", "catalog sync holds version changes"],
+      "done_command": "npm test",
+      "proof": "unit tests count model calls and refuse an off-sheet decision",
+      "seams": "ChatResult and tick invocation"
+    },
+    {
+      "id": "G3-L3-1",
+      "lane": "L3",
+      "role": "executor",
+      "tier": "standard",
+      "owns": ["supabase/functions/tick", "adapters/cursor-cloud.ts", "adapters/gh-runner.ts", "adapters/inline.ts", "app/api/callback", "app/api/tick-now", "workers"],
+      "reads": ["scripts/spikes"],
+      "imitate": ["adapters/fake.ts"],
+      "invariants": ["callbacks are HMAC verified and deduped", "nothing is bought"],
+      "depends_on": ["G3-C1"],
+      "done_when": ["cursor and the reserve implement start, status, cancel, and collect", "research and change worker templates exist"],
+      "done_command": "npm test",
+      "proof": "exhausted cursor falls through to the reserve, then the weekly cap queues",
+      "seams": "runtime method names and callback body"
+    },
+    {
+      "id": "G3-L4-1",
+      "lane": "L4",
+      "role": "executor",
+      "tier": "standard",
+      "owns": ["app/api/stop", "scripts/selftest", "tests/security", "hq/tick.ts"],
+      "reads": ["kernel/preflight.ts"],
+      "imitate": ["kernel/patterns.ts"],
+      "invariants": ["STOP reports stopping, stopped, or unconfirmed", "preflight runs before unattended dispatch"],
+      "depends_on": ["G3-L3-1"],
+      "done_when": ["STOP works when the control database is unreachable", "a hostile research source cannot add a tool, read another request, or send"],
+      "done_command": "node scripts/selftest/run.mjs",
+      "proof": "security fixtures fail if a hostile source changes tools, requests, or sends",
+      "seams": "stop report states"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+
+> test
+> vitest run tests/unit tests/security
+
+
+ RUN  v3.2.4 /agent/repos/dexter-hq
+
+ ✓ tests/unit/checks.test.ts (2 tests) 27ms
+ ✓ tests/security/injection.test.ts (2 tests) 3ms
+ ✓ tests/unit/kernel.test.ts (20 tests) 13ms
+ ✓ tests/unit/g3.test.ts (12 tests) 47ms
+
+ Test Files  4 passed (4)
+      Tests  36 passed (36)
+   Start at  05:40:00
+   Duration  470ms (transform 284ms, setup 0ms, collect 550ms, tests 90ms, environment 0ms, prepare 236ms)
+
+TEST:0
