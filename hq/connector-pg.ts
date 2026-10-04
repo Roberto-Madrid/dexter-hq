@@ -323,6 +323,38 @@ export function createPgConnectorStore(url: string): ConnectorStore {
         return row ? approvalFromRow(row) : null;
       });
     },
+    async claimApproval(id, status) {
+      return withClient(url, async (client) => {
+        const updated = await client.query<{
+          id: string;
+          owner_id: string;
+          request_id: string | null;
+          action: string;
+          target: string;
+        }>(
+          `update public.approvals
+           set action = $2 || case
+             when action like 'pending:%' then substr(action, 9)
+             else action
+           end
+           where id = $1
+             and action not like 'approved:%'
+             and action not like 'denied:%'
+           returning id, owner_id, request_id, action, target`,
+          [id, `${status}:`],
+        );
+        if (updated.rows[0]) return { claimed: true, row: approvalFromRow(updated.rows[0]) };
+        const found = await client.query<{
+          id: string;
+          owner_id: string;
+          request_id: string | null;
+          action: string;
+          target: string;
+        }>("select id, owner_id, request_id, action, target from public.approvals where id = $1", [id]);
+        const row = found.rows[0];
+        return { claimed: false, row: row ? approvalFromRow(row) : null };
+      });
+    },
     async listApprovals() {
       return withClient(url, async (client) => {
         const found = await client.query<{

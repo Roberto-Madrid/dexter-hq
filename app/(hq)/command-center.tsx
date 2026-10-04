@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./control-tower.css";
 import { EXAMPLE_LABEL, STATUS_COPY, type GraphModel, type RequestStatus } from "./example-fixture";
 import {
@@ -106,15 +106,25 @@ function statusClass(status: RequestStatus) {
   return status;
 }
 
-function NeedList({ needs }: { needs: TowerNeed[] }) {
+function NeedList({
+  needs,
+  onDecide,
+}: {
+  needs: TowerNeed[];
+  onDecide: (id: string, decision: "approved" | "denied") => void;
+}) {
   return (
     <>
       {needs.map((need) => (
         <div className="need" key={need.id}>
           {need.text}
           <div className="acts">
-            <span>Approve</span>
-            <span>Deny</span>
+            <button type="button" onClick={() => onDecide(need.id, "approved")}>
+              Approve
+            </button>
+            <button type="button" onClick={() => onDecide(need.id, "denied")}>
+              Deny
+            </button>
           </div>
         </div>
       ))}
@@ -148,6 +158,8 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
   const [tab, setTab] = useState<Tab>("requests");
   const [screen, setScreen] = useState<Screen>("home");
   const [openId, setOpenId] = useState(view.requests.items[0]?.id ?? "");
+  const [settled, setSettled] = useState<Record<string, "approved" | "denied">>({});
+  const busy = useRef(false);
 
   useEffect(() => {
     setReady(true);
@@ -171,6 +183,28 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
   function halt() {
     void fetch("/api/stop", { method: "POST" });
   }
+
+  async function decide(id: string, decision: "approved" | "denied") {
+    if (busy.current || settled[id]) return;
+    busy.current = true;
+    try {
+      const response = await fetch("/api/approval", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ approvalId: id, decision }),
+      });
+      const body = (await response.json()) as { status?: string };
+      if (body.status === "approved" || body.status === "denied") {
+        setSettled((prev) => ({ ...prev, [id]: body.status }));
+      }
+    } catch {
+      // Keep the need visible when the route does not record a decision.
+    } finally {
+      busy.current = false;
+    }
+  }
+
+  const openNeeds = view.needs.items.filter((need) => !settled[need.id]);
 
   return (
     <div className="tower" data-ready={ready ? "1" : "0"} data-example={example ? "1" : "0"}>
@@ -252,7 +286,7 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
               <section className="grp" data-source={view.needs.source}>
                 <div className="gl">Needs you</div>
                 {view.needs.source === "example" ? <ExampleMark show /> : null}
-                <NeedList needs={view.needs.items} />
+                <NeedList needs={openNeeds} onDecide={decide} />
               </section>
               <section className="grp" data-source={view.bots.source}>
                 <div className="gl">Bots</div>
@@ -289,7 +323,7 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
             <GraphField graph={view.swarm.phone} rules={{}} example={view.swarm.source === "example"} />
           ) : null}
           {screen === "home" && tab === "bots" ? <BotList bots={view.bots.items} /> : null}
-          {screen === "home" && tab === "needs" ? <NeedList needs={view.needs.items} /> : null}
+          {screen === "home" && tab === "needs" ? <NeedList needs={openNeeds} onDecide={decide} /> : null}
         </div>
       </div>
     </div>

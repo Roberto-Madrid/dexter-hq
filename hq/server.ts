@@ -8,7 +8,9 @@ import { cookieHeader, emailsMatch, issueSession, readSession, sessionToken } fr
 import { createScriptedCeo, type CeoClient } from "./scripted-ceo.ts";
 import { handleChat } from "./chat.ts";
 import { acceptCallback } from "./callback.ts";
+import { decideApproval, type DecideApprovalResult } from "./approval.ts";
 import { createPgConnectorStore } from "./connector-pg.ts";
+import { createMemoryConnectorStore } from "./connector-store.ts";
 import { resumeAll, stopAll } from "./stop.ts";
 import { tick } from "./tick.ts";
 import { snapshot, type BoardSnapshot } from "./board.ts";
@@ -337,6 +339,32 @@ export async function getBoard(): Promise<BoardSnapshot> {
 function connectorFromEnv() {
   const url = process.env.SUPABASE_DB_URL?.trim();
   return url ? createPgConnectorStore(url) : undefined;
+}
+
+function parseDecision(value: unknown): "approved" | "denied" | null {
+  if (value === "approved" || value === "approve") return "approved";
+  if (value === "denied" || value === "deny") return "denied";
+  return null;
+}
+
+export async function postApproval(raw: string): Promise<DecideApprovalResult> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return { status: "unknown", ran: false, reason: "invalid_json" };
+  }
+  const body = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  const approvalId =
+    typeof body.approvalId === "string" && body.approvalId.trim()
+      ? body.approvalId.trim()
+      : typeof body.id === "string" && body.id.trim()
+        ? body.id.trim()
+        : "";
+  const decision = parseDecision(body.decision);
+  if (!approvalId || !decision) return { status: "unknown", ran: false, reason: "invalid_request" };
+  const store = connectorFromEnv() ?? createMemoryConnectorStore();
+  return decideApproval(store, { approvalId, decision, env: process.env });
 }
 
 export async function postStop(): Promise<Awaited<ReturnType<typeof stopAll>>> {

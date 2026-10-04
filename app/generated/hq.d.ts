@@ -69,5 +69,13 @@ export function postChat(
 export function getBoard(): Promise<BoardSnapshot>;
 export function postStop(): Promise<{ reports: { id: string; runtime: string; state: string }[]; asOf: string }>;
 export function postResume(): Promise<{ resumed: boolean; asOf: string }>;
+export function postApproval(raw: string): Promise<{
+  status: "approved" | "denied" | "unknown";
+  approvalId?: string;
+  action?: string;
+  ran: boolean;
+  reason?: string;
+  execution?: { status: "ok" | "not_configured" | "error"; reason?: string; ran: boolean; deploymentId?: string };
+}>;
 export function postTick(header: string | null): Promise<{ status: number; body?: unknown }>;
 export function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }>;

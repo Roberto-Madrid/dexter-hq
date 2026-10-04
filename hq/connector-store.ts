@@ -110,6 +110,10 @@ export interface ConnectorStore {
   listRequests(): Promise<ConnectorRequest[]>;
   saveApproval(row: ConnectorApproval): Promise<void>;
   getApproval(id: string): Promise<ConnectorApproval | null>;
+  claimApproval(
+    id: string,
+    status: "approved" | "denied",
+  ): Promise<{ claimed: boolean; row: ConnectorApproval | null }>;
   listApprovals(): Promise<ConnectorApproval[]>;
   savePost(row: ConnectorPost): Promise<void>;
   getPost(id: string): Promise<ConnectorPost | null>;
@@ -202,6 +206,14 @@ export function createMemoryConnectorStore(seed?: {
     },
     async getApproval(id) {
       return approvals.get(id) ?? null;
+    },
+    async claimApproval(id, status) {
+      const row = approvals.get(id);
+      if (!row) return { claimed: false, row: null };
+      if (row.status !== "pending") return { claimed: false, row: { ...row } };
+      const next = { ...row, status };
+      approvals.set(id, next);
+      return { claimed: true, row: { ...next } };
     },
     async listApprovals() {
       return [...approvals.values()].map((row) => ({ ...row }));
