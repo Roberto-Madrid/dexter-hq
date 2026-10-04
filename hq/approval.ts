@@ -107,6 +107,9 @@ export async function decideApproval(
       result: { status: row.status, reason: "already_decided", ran: false },
       at,
     });
+    if (row.status === "pending") {
+      return { status: "unknown", approvalId: row.id, action: row.action, ran: false, reason: "not_claimed" };
+    }
     return {
       status: row.status,
       approvalId: row.id,

@@ -195,7 +195,8 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
       });
       const body = (await response.json()) as { status?: string };
       if (body.status === "approved" || body.status === "denied") {
-        setSettled((prev) => ({ ...prev, [id]: body.status }));
+        const next = body.status;
+        setSettled((prev) => ({ ...prev, [id]: next }));
       }
     } catch {
       // Keep the need visible when the route does not record a decision.
