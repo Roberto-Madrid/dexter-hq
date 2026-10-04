@@ -41,7 +41,8 @@ test("phone keeps STOP ALL on every tab and the open request", async ({ page }) 
   await expect(page.getByRole("button", { name: "STOP ALL" })).toBeVisible();
   await page.getByRole("button", { name: "Needs you" }).click();
   await expect(page.getByText("Set the Vercel production branch to v5")).toBeVisible();
-  await expect(page.getByText("Approve").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Deny" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "STOP ALL" })).toBeVisible();
   await page.getByRole("button", { name: "Requests" }).click();
   await page.getByRole("button", { name: /Point production at v5/ }).click();
