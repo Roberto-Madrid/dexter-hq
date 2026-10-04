@@ -94,6 +94,7 @@ export type ConnectorPost = {
 export interface ConnectorStore {
   stopped(): Promise<boolean>;
   setStopped(value: boolean): Promise<void>;
+  setTokensSuspended(value: boolean): Promise<void>;
   authenticate(tokenHash: string): Promise<ConnectorAuth | null>;
   getBot(id: string): Promise<ConnectorBot | null>;
   heartbeat(botId: string, task: string | null, at: string): Promise<void>;
@@ -123,7 +124,7 @@ export function createMemoryConnectorStore(seed?: {
   let stopped = seed?.stopped ?? false;
   const bots = new Map<string, ConnectorBot>();
   for (const bot of seed?.bots ?? []) bots.set(bot.id, { ...bot });
-  const tokens = seed?.tokens ?? [];
+  const tokens = (seed?.tokens ?? []).map((item) => ({ ...item, suspended: item.suspended ?? false }));
   const events: ConnectorEvent[] = [];
   const agents = new Map<string, ConnectorAgent>();
   const requests = new Map<string, ConnectorRequest>();
@@ -136,6 +137,9 @@ export function createMemoryConnectorStore(seed?: {
     },
     async setStopped(value) {
       stopped = value;
+    },
+    async setTokensSuspended(value) {
+      for (const token of tokens) token.suspended = value;
     },
     async authenticate(tokenHash) {
       const row = tokens.find((item) => item.tokenHash === tokenHash);
