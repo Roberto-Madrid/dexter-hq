@@ -22,7 +22,10 @@ export function createCursorCloud(options: {
   fetchImpl?: FetchLike;
   base?: string;
   ownerId?: string;
-}): Runtime & { listInProgress(): Promise<{ id: string; runtime: string }[]> } {
+}): Runtime & {
+  listInProgress(): Promise<{ id: string; runtime: string }[]>;
+  followup(handle: RunHandle, text: string): Promise<RunHandle>;
+} {
   const fetchImpl = options.fetchImpl ?? fetch;
   const base = options.base ?? "https://api.cursor.com";
   const ownerId = options.ownerId ?? "owner";
@@ -58,6 +61,17 @@ export function createCursorCloud(options: {
       if (response.status === 404) return { state: "unsupported" };
       if (response.status >= 500) return { state: "requested" };
       return { state: "confirmed" };
+    },
+    async followup(handle: RunHandle, text: string): Promise<RunHandle> {
+      const [agentId] = handle.id.split(":");
+      const response = await fetchImpl(`${base}/v1/agents/${agentId}/runs`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ prompt: { text } }),
+      });
+      const body = asRecord(await readJson(response));
+      const runId = String(asRecord(body.run).id ?? asRecord(body).id ?? "followup");
+      return { id: `${agentId}:${runId}`, runtime: "cursor-cloud" };
     },
     async collect(handle: RunHandle): Promise<Artifact[]> {
       const [agentId] = handle.id.split(":");
