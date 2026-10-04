@@ -32,6 +32,7 @@
     "hq/connector.ts",
     "hq/connector-store.ts",
     "hq/connector-pg.ts",
+    "hq/tower-load.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],

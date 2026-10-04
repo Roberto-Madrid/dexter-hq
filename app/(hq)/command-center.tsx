@@ -2,20 +2,15 @@
 
 import { useEffect, useState } from "react";
 import "./control-tower.css";
+import { EXAMPLE_LABEL, STATUS_COPY, type GraphModel, type RequestStatus } from "./example-fixture";
 import {
-  EXAMPLE_LABEL,
-  STATUS_COPY,
-  desktopGraph,
-  exampleBots,
-  exampleCeo,
-  exampleCounts,
-  exampleNeeds,
-  exampleRequests,
-  phoneGraph,
-  requestGraph,
-  type GraphModel,
-  type RequestStatus,
-} from "./example-fixture";
+  exampleTowerSnapshot,
+  usesExampleFixtures,
+  type TowerBot,
+  type TowerNeed,
+  type TowerRequest,
+  type TowerSnapshot,
+} from "./tower-model";
 
 type Tab = "requests" | "swarm" | "bots" | "needs";
 type Screen = "home" | "request";
@@ -30,12 +25,14 @@ const TABS: { id: Tab; label: string }[] = [
 function GraphField({
   graph,
   rules,
+  example,
 }: {
   graph: GraphModel;
   rules: { left?: boolean; right?: boolean; bottom?: boolean };
+  example: boolean;
 }) {
   return (
-    <div className="field" data-testid="swarm-field">
+    <div className="field" data-testid="swarm-field" data-source={example ? "example" : "live"}>
       <svg
         className="g"
         viewBox={`0 0 ${graph.width} ${graph.height}`}
@@ -81,6 +78,7 @@ function GraphField({
         </div>
       ))}
       <div className="gst">{graph.status}</div>
+      {example ? <div className="ex graph-ex">{EXAMPLE_LABEL}</div> : null}
       {rules.left ? <div className="rule-l" /> : null}
       {rules.right ? <div className="rule-r" /> : null}
       {rules.bottom ? <div className="rule-b" /> : null}
@@ -88,10 +86,10 @@ function GraphField({
   );
 }
 
-function RequestRows({ onOpen }: { onOpen: (id: string) => void }) {
+function RequestRows({ requests, onOpen }: { requests: TowerRequest[]; onOpen: (id: string) => void }) {
   return (
     <>
-      {exampleRequests.map((request) => (
+      {requests.map((request) => (
         <button className="row" type="button" key={request.id} onClick={() => onOpen(request.id)}>
           <div className="rt">{request.title}</div>
           <div className="row-meta">
@@ -108,12 +106,12 @@ function statusClass(status: RequestStatus) {
   return status;
 }
 
-function NeedList() {
+function NeedList({ needs }: { needs: TowerNeed[] }) {
   return (
     <>
-      {exampleNeeds.map((need) => (
-        <div className="need" key={need}>
-          {need}
+      {needs.map((need) => (
+        <div className="need" key={need.id}>
+          {need.text}
           <div className="acts">
             <span>Approve</span>
             <span>Deny</span>
@@ -124,14 +122,14 @@ function NeedList() {
   );
 }
 
-function BotList() {
+function BotList({ bots }: { bots: TowerBot[] }) {
   return (
     <>
-      {exampleBots.map((bot) => (
+      {bots.map((bot) => (
         <div className="bot" key={bot.name}>
           <span>{bot.name}</span>
-          <span className={`bst ${bot.state === "waiting" ? "wait" : bot.state}`}>
-            {bot.state === "waiting" ? "waiting" : bot.state}
+          <span className={`bst ${bot.state === "waiting" || bot.state === "stale" ? "wait" : bot.state}`}>
+            {bot.state}
           </span>
         </div>
       ))}
@@ -139,18 +137,27 @@ function BotList() {
   );
 }
 
-export function CommandCenter() {
+function ExampleMark({ show }: { show: boolean }) {
+  if (!show) return null;
+  return <div className="ex">{EXAMPLE_LABEL}</div>;
+}
+
+export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
+  const view = snapshot ?? exampleTowerSnapshot();
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>("requests");
   const [screen, setScreen] = useState<Screen>("home");
-  const [openId, setOpenId] = useState(exampleRequests[0].id);
+  const [openId, setOpenId] = useState(view.requests.items[0]?.id ?? "");
 
   useEffect(() => {
     setReady(true);
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
   }, []);
 
-  const open = exampleRequests.find((item) => item.id === openId) ?? exampleRequests[0];
+  const open = view.requests.items.find((item) => item.id === openId) ?? view.requests.items[0];
+  const example = usesExampleFixtures(view);
+  const mixedCounts = view.counts.some((item) => item.source === "live") && view.counts.some((item) => item.source === "example");
+  const countsExample = view.counts.some((item) => item.source === "example");
 
   function openRequest(id: string) {
     setOpenId(id);
@@ -162,15 +169,16 @@ export function CommandCenter() {
   }
 
   return (
-    <div className="tower" data-ready={ready ? "1" : "0"} data-example="1">
+    <div className="tower" data-ready={ready ? "1" : "0"} data-example={example ? "1" : "0"}>
       <header className="bar">
         <button className="word" type="button" onClick={goHome}>
           DEXTER
         </button>
-        <div className="counts" aria-label="Example counts">
-          {exampleCounts.map((item) => (
-            <span className="count" key={item.label}>
+        <div className="counts" aria-label={countsExample ? "Example counts" : "Live counts"}>
+          {view.counts.map((item) => (
+            <span className="count" data-source={item.source} key={item.label}>
               <span className="cw">{item.label}</span> <span className="cn">{item.value}</span>
+              {item.source === "example" && mixedCounts ? <span className="ex-mark">{EXAMPLE_LABEL}</span> : null}
             </span>
           ))}
         </div>
@@ -183,7 +191,7 @@ export function CommandCenter() {
         <button className="word" type="button" onClick={goHome}>
           DEXTER
         </button>
-        <div className="ex">{EXAMPLE_LABEL}</div>
+        {example ? <div className="ex">{EXAMPLE_LABEL}</div> : null}
       </div>
       <button className="pstop" type="button">
         STOP ALL
@@ -206,60 +214,78 @@ export function CommandCenter() {
       </nav>
 
       <div className="body">
-        {screen === "request" ? (
+        {screen === "request" && open ? (
           <>
-            <div className="doc">
-              <div className="ex" style={{ padding: 0 }}>
-                {EXAMPLE_LABEL}
-              </div>
+            <div className="doc" data-source={view.requests.source}>
+              <ExampleMark show={view.requests.source === "example"} />
               <h1>{open.title}</h1>
               <div className="who">{open.owner}</div>
               <div className="st">{STATUS_COPY[open.status]}</div>
               {open.body ? <p>{open.body}</p> : null}
             </div>
             <div className="desk-pane">
-              <GraphField graph={requestGraph} rules={{ left: true, bottom: true }} />
+              <GraphField
+                graph={view.swarm.request}
+                rules={{ left: true, bottom: true }}
+                example={view.swarm.source === "example"}
+              />
             </div>
           </>
         ) : (
           <>
-            <aside className="requests">
-              <div className="ex">{EXAMPLE_LABEL}</div>
-              <RequestRows onOpen={openRequest} />
+            <aside className="requests" data-source={view.requests.source}>
+              <ExampleMark show={view.requests.source === "example"} />
+              <RequestRows requests={view.requests.items} onOpen={openRequest} />
             </aside>
             <div className="desk-pane">
-              <GraphField graph={desktopGraph} rules={{ left: true, right: true, bottom: true }} />
+              <GraphField
+                graph={view.swarm.desktop}
+                rules={{ left: true, right: true, bottom: true }}
+                example={view.swarm.source === "example"}
+              />
             </div>
             <aside className="side">
-              <section className="grp">
+              <section className="grp" data-source={view.needs.source}>
                 <div className="gl">Needs you</div>
-                <NeedList />
+                {view.needs.source === "example" ? <ExampleMark show /> : null}
+                <NeedList needs={view.needs.items} />
               </section>
-              <section className="grp">
+              <section className="grp" data-source={view.bots.source}>
                 <div className="gl">Bots</div>
-                <BotList />
+                {view.bots.source === "example" ? <ExampleMark show /> : null}
+                <BotList bots={view.bots.items} />
               </section>
-              <section className="grp">
+              <section className="grp" data-source={view.ceo.source}>
                 <div className="gl">CEO</div>
-                <div className="ceo">{exampleCeo}</div>
+                {view.ceo.source === "example" ? <ExampleMark show /> : null}
+                {view.ceo.items.map((line) => (
+                  <div className="ceo" key={line}>
+                    {line}
+                  </div>
+                ))}
               </section>
             </aside>
           </>
         )}
 
         <div className="phone-main">
-          {screen === "request" ? (
+          {screen === "request" && open ? (
             <div className="phone-doc">
+              {view.requests.source === "example" ? <div className="ex">{EXAMPLE_LABEL}</div> : null}
               <h1>{open.title}</h1>
               <div className="who">{open.owner}</div>
               <div className="st">{STATUS_COPY[open.status]}</div>
               {open.body ? <p>{open.body}</p> : null}
             </div>
           ) : null}
-          {screen === "home" && tab === "requests" ? <RequestRows onOpen={openRequest} /> : null}
-          {screen === "home" && tab === "swarm" ? <GraphField graph={phoneGraph} rules={{}} /> : null}
-          {screen === "home" && tab === "bots" ? <BotList /> : null}
-          {screen === "home" && tab === "needs" ? <NeedList /> : null}
+          {screen === "home" && tab === "requests" ? (
+            <RequestRows requests={view.requests.items} onOpen={openRequest} />
+          ) : null}
+          {screen === "home" && tab === "swarm" ? (
+            <GraphField graph={view.swarm.phone} rules={{}} example={view.swarm.source === "example"} />
+          ) : null}
+          {screen === "home" && tab === "bots" ? <BotList bots={view.bots.items} /> : null}
+          {screen === "home" && tab === "needs" ? <NeedList needs={view.needs.items} /> : null}
         </div>
       </div>
     </div>

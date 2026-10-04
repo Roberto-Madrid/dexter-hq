@@ -86,10 +86,10 @@ export type GraphModel = {
   status: string;
 };
 
-const LIVE = "#0E7490";
-const FORMING = "#B45309";
-const DIM = "#C5D0D6";
-const INK = "#102026";
+export const LIVE = "#0E7490";
+export const FORMING = "#B45309";
+export const DIM = "#C5D0D6";
+export const INK = "#102026";
 
 export const desktopGraph: GraphModel = {
   width: 860,
