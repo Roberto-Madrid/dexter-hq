@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
+import { parseRoleSheet } from "../../kernel/role-sheet.ts";
+import {
+  createDefaultConnectorDeps,
+  createMemoryConnectorStore,
+  hashBotToken,
+  loadConnectorSheetText,
+} from "../../hq/connector.ts";
 import { CONNECTOR_IDENTITY, handleMcpHttp } from "../../hq/mcp.ts";
 
 const endpoint = "http://127.0.0.1/api/mcp";
+const OWNER = "11111111-1111-4111-8111-111111111111";
+const BOT = "22222222-2222-4222-8222-222222222222";
+const TOKEN = "unit-connector-token";
 
-async function mcpPost(body: unknown, extra?: Record<string, string>): Promise<Response> {
+async function mcpPost(
+  body: unknown,
+  extra?: Record<string, string>,
+  deps?: Parameters<typeof handleMcpHttp>[1],
+): Promise<Response> {
   return handleMcpHttp(
     new Request(endpoint, {
       method: "POST",
@@ -15,7 +29,44 @@ async function mcpPost(body: unknown, extra?: Record<string, string>): Promise<R
       },
       body: JSON.stringify(body),
     }),
+    deps,
   );
+}
+
+function callBody(name: string, args: Record<string, unknown>, id = 3) {
+  return { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } };
+}
+
+function leadDeps(options?: { stopped?: boolean; scopes?: string[]; cursorConfigured?: boolean }) {
+  const store = createMemoryConnectorStore({
+    stopped: options?.stopped ?? false,
+    bots: [
+      {
+        id: BOT,
+        ownerId: OWNER,
+        name: "unit-lead",
+        kind: "lead",
+        repos: ["owner/demo"],
+        tools: ["whoami", "launch_agent", "heartbeat"],
+        currentTask: null,
+        heartbeatAt: null,
+      },
+    ],
+    tokens: [
+      {
+        tokenHash: hashBotToken(TOKEN),
+        botId: BOT,
+        scopes: options?.scopes ?? ["whoami", "launch_agent", "heartbeat"],
+      },
+    ],
+  });
+  return createDefaultConnectorDeps({
+    store,
+    sheet: parseRoleSheet(loadConnectorSheetText()),
+    cursor: null,
+    cursorConfigured: options?.cursorConfigured ?? false,
+    ownerId: OWNER,
+  });
 }
 
 describe("mcp connector stub", () => {
@@ -62,7 +113,7 @@ describe("mcp connector stub", () => {
       { "mcp-protocol-version": "2025-03-26" },
     );
     expect(whoami.status).toBe(200);
-    const callBody = (await whoami.json()) as {
+    const whoamiBody = (await whoami.json()) as {
       jsonrpc: string;
       id: number;
       result: {
@@ -71,11 +122,81 @@ describe("mcp connector stub", () => {
         content: { type: string; text: string }[];
       };
     };
-    expect(callBody.jsonrpc).toBe("2.0");
-    expect(callBody.id).toBe(3);
-    expect(callBody.result.isError).toBe(false);
-    expect(callBody.result.structuredContent).toEqual(CONNECTOR_IDENTITY);
-    expect(callBody.result.content[0]?.type).toBe("text");
-    expect(JSON.parse(callBody.result.content[0].text)).toEqual(CONNECTOR_IDENTITY);
+    expect(whoamiBody.jsonrpc).toBe("2.0");
+    expect(whoamiBody.id).toBe(3);
+    expect(whoamiBody.result.isError).toBe(false);
+    expect(whoamiBody.result.structuredContent).toEqual(CONNECTOR_IDENTITY);
+    expect(whoamiBody.result.content[0]?.type).toBe("text");
+    expect(JSON.parse(whoamiBody.result.content[0].text)).toEqual(CONNECTOR_IDENTITY);
+  });
+
+  it("rejects an unknown tool", async () => {
+    const response = await mcpPost(callBody("not_a_tool", {}));
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { error?: { code: number; message: string } };
+    expect(body.error?.code).toBe(-32602);
+    expect(body.error?.message).toBe("unknown tool");
+  });
+
+  it("blocks a mutating tool when the stop flag is on", async () => {
+    const deps = leadDeps({ stopped: true });
+    const response = await mcpPost(
+      callBody("launch_agent", {
+        repo: "owner/demo",
+        role: "builder",
+        brief: "Change one label.",
+        idempotencyKey: "stop-1",
+      }),
+      { authorization: `Bearer ${TOKEN}` },
+      deps,
+    );
+    const body = (await response.json()) as { result: { isError: boolean; structuredContent: { status: string } } };
+    expect(body.result.structuredContent.status).toBe("stopped");
+    expect(body.result.isError).toBe(true);
+    const events = await deps.store.listEvents();
+    expect(events.some((event) => event.action === "launch_agent" && event.result?.status === "stopped")).toBe(true);
+  });
+
+  it("does not claim success when launch has no key", async () => {
+    const deps = leadDeps({ cursorConfigured: false });
+    const response = await mcpPost(
+      callBody("launch_agent", {
+        repo: "owner/demo",
+        role: "builder",
+        brief: "Change one label.",
+        idempotencyKey: "launch-1",
+      }),
+      { authorization: `Bearer ${TOKEN}` },
+      deps,
+    );
+    const body = (await response.json()) as {
+      result: { isError: boolean; structuredContent: { status: string; launched?: boolean; agentId?: string } };
+    };
+    expect(body.result.structuredContent.status).toBe("not-configured");
+    expect(body.result.structuredContent.launched).toBe(false);
+    expect(body.result.structuredContent.agentId).toBeUndefined();
+    expect(body.result.isError).toBe(true);
+    const events = await deps.store.listEvents();
+    expect(events.some((event) => event.action === "launch_agent" && event.result?.status === "not-configured")).toBe(
+      true,
+    );
+    expect(events.some((event) => event.result?.launched === true)).toBe(false);
+  });
+
+  it("refuses a token outside its scope", async () => {
+    const deps = leadDeps({ scopes: ["whoami"] });
+    const response = await mcpPost(
+      callBody("launch_agent", {
+        repo: "owner/demo",
+        role: "builder",
+        brief: "Change one label.",
+        idempotencyKey: "scope-1",
+      }),
+      { authorization: `Bearer ${TOKEN}` },
+      deps,
+    );
+    const body = (await response.json()) as { result: { structuredContent: { status: string; reason?: string } } };
+    expect(body.result.structuredContent.status).toBe("refused");
+    expect(body.result.structuredContent.reason).toBe("out_of_scope");
   });
 });

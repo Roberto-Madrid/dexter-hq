@@ -12,6 +12,7 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "allowJs": true,
@@ -28,6 +29,9 @@
   "include": [
     "app",
     "hq/mcp.ts",
+    "hq/connector.ts",
+    "hq/connector-store.ts",
+    "hq/connector-pg.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],

@@ -1,3 +1,16 @@
+import { parseRoleSheet } from "../kernel/role-sheet.ts";
+import { createPgConnectorStore } from "./connector-pg.ts";
+import {
+  CONNECTOR_TOOLS,
+  callConnectorTool,
+  connectorToolDescriptors,
+  createDefaultConnectorDeps,
+  createMemoryConnectorStore,
+  hashBotToken,
+  loadConnectorSheetText,
+  type ConnectorDeps,
+} from "./connector.ts";
+
 const JSONRPC = "2.0";
 const PROTOCOL_2025_03_26 = "2025-03-26";
 const PROTOCOL_2025_06_18 = "2025-06-18";
@@ -13,7 +26,7 @@ export const CONNECTOR_IDENTITY = {
 
 const WHOAMI_TOOL = {
   name: "whoami",
-  description: "Return this connector's fixed identity. It does not perform an action.",
+  description: "Return this connector's identity. It does not perform an action.",
   inputSchema: {
     type: "object",
     properties: {},
@@ -100,29 +113,83 @@ function initializeResult(params: unknown) {
   };
 }
 
-function whoamiResult() {
-  const text = JSON.stringify(CONNECTOR_IDENTITY);
-  return {
-    content: [{ type: "text", text }],
-    structuredContent: CONNECTOR_IDENTITY,
-    isError: false,
-  };
+function bearerToken(request: Request): string | null {
+  const header = request.headers.get("authorization");
+  if (!header) return null;
+  const match = /^Bearer\s+(\S+)/i.exec(header.trim());
+  return match?.[1] ?? null;
 }
 
-function handleMethod(method: string, params: unknown, id: JsonRpcId): Response {
+export function createLiveConnectorDeps(): ConnectorDeps {
+  const url = process.env.SUPABASE_DB_URL;
+  return createDefaultConnectorDeps({
+    store: url ? createPgConnectorStore(url) : createMemoryConnectorStore(),
+    sheet: parseRoleSheet(loadConnectorSheetText()),
+  });
+}
+
+function defaultTestSafeDeps(): ConnectorDeps {
+  return createDefaultConnectorDeps({
+    store: createMemoryConnectorStore(),
+    cursorConfigured: false,
+    cursor: null,
+  });
+}
+
+async function handleMethod(
+  method: string,
+  params: unknown,
+  id: JsonRpcId,
+  request: Request,
+  deps: ConnectorDeps,
+): Promise<Response> {
+  const token = bearerToken(request);
+  const auth = token ? await deps.store.authenticate(hashBotToken(token)) : null;
   if (method === "initialize") return rpcResult(id, initializeResult(params));
   if (method === "ping") return rpcResult(id, {});
-  if (method === "tools/list") return rpcResult(id, { tools: [WHOAMI_TOOL] });
+  if (method === "tools/list") {
+    if (!auth) return rpcResult(id, { tools: [WHOAMI_TOOL] });
+    const names = CONNECTOR_TOOLS.filter((name) => {
+      const allowed = auth.scopes.length > 0 ? auth.scopes : auth.tools;
+      if (name === "whoami") return true;
+      if (allowed.length === 0) return true;
+      return allowed.includes(name);
+    });
+    return rpcResult(id, { tools: connectorToolDescriptors(names) });
+  }
   if (method === "tools/call") {
     const name =
       params && typeof params === "object" && "name" in params ? (params as { name?: unknown }).name : undefined;
-    if (name !== "whoami") return rpcError(id, -32602, "unknown tool");
-    return rpcResult(id, whoamiResult());
+    const args =
+      params && typeof params === "object" && "arguments" in params
+        ? (params as { arguments?: unknown }).arguments
+        : {};
+    if (typeof name !== "string") return rpcError(id, -32602, "unknown tool");
+    if (!auth && name !== "whoami") return rpcError(id, -32602, "unknown tool");
+    if (name === "whoami" && !auth) {
+      const text = JSON.stringify(CONNECTOR_IDENTITY);
+      await deps.store.appendEvent({
+        ownerId: deps.ownerId ?? "00000000-0000-4000-8000-000000000000",
+        actor: "anonymous",
+        action: "whoami",
+        target: "stub",
+        result: { id: CONNECTOR_IDENTITY.id },
+        at: new Date().toISOString(),
+      });
+      return rpcResult(id, {
+        content: [{ type: "text", text }],
+        structuredContent: CONNECTOR_IDENTITY,
+        isError: false,
+      });
+    }
+    const result = await callConnectorTool(deps, auth, name, args);
+    if (result.structuredContent.reason === "unknown_tool") return rpcError(id, -32602, "unknown tool");
+    return rpcResult(id, result);
   }
   return rpcError(id, -32601, "method not found");
 }
 
-export async function handleMcpHttp(request: Request): Promise<Response> {
+export async function handleMcpHttp(request: Request, deps?: ConnectorDeps): Promise<Response> {
   if (!originAllowed(request)) return new Response("invalid origin", { status: 403 });
 
   if (request.method === "GET" || request.method === "DELETE") {
@@ -164,5 +231,6 @@ export async function handleMcpHttp(request: Request): Promise<Response> {
   }
 
   if (!isRequest(message)) return new Response("invalid json-rpc", { status: 400 });
-  return handleMethod(message.method as string, message.params, message.id ?? null);
+  const resolved = deps ?? defaultTestSafeDeps();
+  return handleMethod(message.method as string, message.params, message.id ?? null, request, resolved);
 }
