@@ -5,17 +5,18 @@
 
  RUN  v3.2.4 /workspace
 
- ✓ tests/unit/kernel.test.ts (20 tests) 13ms
- ✓ tests/unit/g3.test.ts (12 tests) 43ms
+ ✓ tests/unit/kernel.test.ts (20 tests) 12ms
+ ✓ tests/unit/g3.test.ts (12 tests) 41ms
  ✓ tests/unit/ceo-run.test.ts (4 tests) 209ms
- ✓ tests/unit/mcp.test.ts (1 test) 18ms
- ✓ tests/unit/checks.test.ts (2 tests) 43ms
+ ✓ tests/unit/mcp.test.ts (1 test) 19ms
+ ✓ tests/unit/council-seat.test.ts (2 tests) 8ms
+ ✓ tests/unit/checks.test.ts (2 tests) 28ms
+ ✓ tests/unit/ceo-command.test.ts (4 tests) 3ms
  ✓ tests/security/injection.test.ts (2 tests) 3ms
- ✓ tests/unit/ceo-command.test.ts (4 tests) 4ms
  ✓ tests/unit/snapshot-db.test.ts (2 tests) 3ms
 
- Test Files  8 passed (8)
-      Tests  47 passed (47)
-   Start at  18:39:51
-   Duration  769ms (transform 290ms, setup 0ms, collect 614ms, tests 335ms, environment 1ms, prepare 439ms)
+ Test Files  9 passed (9)
+      Tests  49 passed (49)
+   Start at  00:23:17
+   Duration  787ms (transform 328ms, setup 0ms, collect 696ms, tests 327ms, environment 1ms, prepare 464ms)
 
