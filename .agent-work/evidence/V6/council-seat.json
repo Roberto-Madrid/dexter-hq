@@ -1,14 +1,12 @@
 {
-  "outcome": "stop",
-  "reason": "path_b_login_unavailable",
+  "outcome": "verdict",
+  "seat": "critic",
+  "path": "B",
+  "effort": "medium",
   "openai_api_key_set": false,
-  "missing": [
-    ".env.local",
-    "SUPABASE_DB_URL",
-    "DEXTER_AGE_PRIVATE_KEY"
-  ],
-  "missing_runtime": [
-    "vendor/codex/codex"
-  ],
-  "owner_step": "Owner step missing: give this worker the existing path B ChatGPT login, or run this script where path B already works.\n\nPath B loads the Codex ChatGPT login from Supabase Vault (name `codex_chatgpt_auth`) and decrypts it with `DEXTER_AGE_PRIVATE_KEY`.\nThose names already exist on the Vercel preview and in `.env.example`. Do not create a new secret.\n\nThis environment is missing: .env.local, SUPABASE_DB_URL, DEXTER_AGE_PRIVATE_KEY.\n\nRe-run `node --experimental-strip-types scripts/prove-council-seat.ts` on the Vercel preview host or a local checkout that already has `.env.local` for path B."
+  "result": "changes",
+  "actions": [
+    "Handle null before calling name.toUpperCase(); it currently throws.",
+    "Add tests for a normal string and null, asserting the intended greeting or explicit validation error."
+  ]
 }
