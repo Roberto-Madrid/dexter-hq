@@ -18,6 +18,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
+function isMissingRelation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && (error as { code: string }).code === "42P01");
+}
+
 async function withClient<T>(url: string, fn: (client: pg.Client) => Promise<T>): Promise<T> {
   const client = new pg.Client(pgConfig(url));
   await client.connect();
@@ -115,6 +119,16 @@ export function createPgConnectorStore(url: string): ConnectorStore {
         const existing = await client.query("select owner_id from public.control limit 1");
         if (existing.rows.length === 0) {
           await client.query("insert into public.control (owner_id, stop_all) values ($1, $2)", [randomUUID(), value]);
+        }
+      });
+    },
+    async setTokensSuspended(value) {
+      await withClient(url, async (client) => {
+        try {
+          await client.query("update public.bot_tokens set suspended = $1", [value]);
+        } catch (error) {
+          if (isMissingRelation(error)) return;
+          throw error;
         }
       });
     },

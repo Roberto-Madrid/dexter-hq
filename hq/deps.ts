@@ -1,4 +1,5 @@
 import type { ModelRow, RoleSheet, Runtime } from "../kernel/types.ts";
+import type { ConnectorStore } from "./connector-store.ts";
 import type { CeoClient } from "./scripted-ceo.ts";
 
 export type ListedRuntime = Runtime & {
@@ -16,6 +17,7 @@ export type HqDeps = {
   slotCap: number;
   runtimes: Record<string, ListedRuntime>;
   controlReachable: boolean;
+  connector?: ConnectorStore;
 };
 
 export function runtimeNameForPool(pool: string): string | null {

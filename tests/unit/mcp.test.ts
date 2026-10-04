@@ -157,6 +157,44 @@ describe("mcp connector stub", () => {
     expect(events.some((event) => event.action === "launch_agent" && event.result?.status === "stopped")).toBe(true);
   });
 
+  it("refuses a suspended token until resume", async () => {
+    const deps = leadDeps();
+    const auth = await deps.store.authenticate(hashBotToken(TOKEN));
+    expect(auth).not.toBeNull();
+    await deps.store.setTokensSuspended(true);
+    const paused = await deps.store.authenticate(hashBotToken(TOKEN));
+    expect(paused?.suspended).toBe(true);
+    const blocked = await mcpPost(
+      callBody("launch_agent", {
+        repo: "owner/demo",
+        role: "builder",
+        brief: "Change one label.",
+        idempotencyKey: "suspend-mcp-1",
+      }),
+      { authorization: `Bearer ${TOKEN}` },
+      deps,
+    );
+    const blockedBody = (await blocked.json()) as {
+      result: { structuredContent: { status: string; reason?: string } };
+    };
+    expect(blockedBody.result.structuredContent.status).toBe("stopped");
+    expect(blockedBody.result.structuredContent.reason).toBe("suspended");
+
+    await deps.store.setTokensSuspended(false);
+    const after = await mcpPost(
+      callBody("launch_agent", {
+        repo: "owner/demo",
+        role: "builder",
+        brief: "Change one label.",
+        idempotencyKey: "suspend-mcp-2",
+      }),
+      { authorization: `Bearer ${TOKEN}` },
+      deps,
+    );
+    const afterBody = (await after.json()) as { result: { structuredContent: { status: string } } };
+    expect(afterBody.result.structuredContent.status).toBe("not-configured");
+  });
+
   it("does not claim success when launch has no key", async () => {
     const deps = leadDeps({ cursorConfigured: false });
     const response = await mcpPost(

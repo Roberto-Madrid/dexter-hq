@@ -168,6 +168,10 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
     setScreen("home");
   }
 
+  function halt() {
+    void fetch("/api/stop", { method: "POST" });
+  }
+
   return (
     <div className="tower" data-ready={ready ? "1" : "0"} data-example={example ? "1" : "0"}>
       <header className="bar">
@@ -182,7 +186,7 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
             </span>
           ))}
         </div>
-        <button className="halt" type="button">
+        <button className="halt" type="button" onClick={halt}>
           STOP ALL
         </button>
       </header>
@@ -193,7 +197,7 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
         </button>
         {example ? <div className="ex">{EXAMPLE_LABEL}</div> : null}
       </div>
-      <button className="pstop" type="button">
+      <button className="pstop" type="button" onClick={halt}>
         STOP ALL
       </button>
       <nav className="phone-tabs" aria-label="Sections">

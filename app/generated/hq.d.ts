@@ -68,5 +68,6 @@ export function postChat(
 >;
 export function getBoard(): Promise<BoardSnapshot>;
 export function postStop(): Promise<{ reports: { id: string; runtime: string; state: string }[]; asOf: string }>;
+export function postResume(): Promise<{ resumed: boolean; asOf: string }>;
 export function postTick(header: string | null): Promise<{ status: number; body?: unknown }>;
 export function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }>;

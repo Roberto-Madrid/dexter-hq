@@ -8,7 +8,8 @@ import { cookieHeader, emailsMatch, issueSession, readSession, sessionToken } fr
 import { createScriptedCeo, type CeoClient } from "./scripted-ceo.ts";
 import { handleChat } from "./chat.ts";
 import { acceptCallback } from "./callback.ts";
-import { stopAll } from "./stop.ts";
+import { createPgConnectorStore } from "./connector-pg.ts";
+import { resumeAll, stopAll } from "./stop.ts";
 import { tick } from "./tick.ts";
 import { snapshot, type BoardSnapshot } from "./board.ts";
 import { SHIPPED_CREWS } from "./crews.ts";
@@ -333,9 +334,21 @@ export async function getBoard(): Promise<BoardSnapshot> {
   return withStore((store) => snapshot(store, live.deps.slotCap));
 }
 
+function connectorFromEnv() {
+  const url = process.env.SUPABASE_DB_URL?.trim();
+  return url ? createPgConnectorStore(url) : undefined;
+}
+
 export async function postStop(): Promise<Awaited<ReturnType<typeof stopAll>>> {
   const live = current();
-  return withStore((store) => stopAll(store, live.deps));
+  const connector = connectorFromEnv();
+  return withStore((store) => stopAll(store, { ...live.deps, connector }));
+}
+
+export async function postResume(): Promise<Awaited<ReturnType<typeof resumeAll>>> {
+  const live = current();
+  const connector = connectorFromEnv();
+  return withStore((store) => resumeAll(store, { ...live.deps, connector }));
 }
 
 export async function postTick(header: string | null): Promise<{ status: number; body?: unknown }> {
