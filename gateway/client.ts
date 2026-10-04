@@ -89,7 +89,7 @@ export function ceoCommand(call: CeoCall): { args: string[]; env: NodeJS.Process
       TEMP: CODEX_TMPDIR,
       USER: "dexter",
       LANG: process.env.LANG ?? "C.UTF-8",
-    },
+    } as unknown as NodeJS.ProcessEnv,
   };
 }
 
