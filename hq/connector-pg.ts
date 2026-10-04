@@ -50,6 +50,26 @@ function botFromRow(row: {
   };
 }
 
+function approvalFromRow(row: {
+  id: string;
+  owner_id: string;
+  request_id: string | null;
+  action: string;
+  target: string;
+}): ConnectorApproval {
+  const split = row.action.includes(":") ? row.action.split(":") : ["pending", row.action];
+  const status = split[0] === "approved" || split[0] === "denied" || split[0] === "pending" ? split[0] : "pending";
+  const action = split.length > 1 ? split.slice(1).join(":") : row.action;
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    requestId: row.request_id,
+    action,
+    target: row.target,
+    status: status as ConnectorApproval["status"],
+  };
+}
+
 function agentFromRow(row: {
   id: string;
   owner_id: string;
@@ -185,6 +205,14 @@ export function createPgConnectorStore(url: string): ConnectorStore {
         }));
       });
     },
+    async listBots() {
+      return withClient(url, async (client) => {
+        const found = await client.query(
+          `select id, owner_id, name, kind, repos, tools, current_task, heartbeat_at from public.bots order by created_at asc`,
+        );
+        return found.rows.map(botFromRow);
+      });
+    },
     async listAgents() {
       return withClient(url, async (client) => {
         const found = await client.query(
@@ -247,6 +275,17 @@ export function createPgConnectorStore(url: string): ConnectorStore {
     async getRequest(id) {
       return withClient(url, async (client) => readRequest(client, id));
     },
+    async listRequests() {
+      return withClient(url, async (client) => {
+        const found = await client.query<{ id: string }>("select id from public.requests order by created_at asc");
+        const rows = [];
+        for (const item of found.rows) {
+          const row = await readRequest(client, item.id);
+          if (row) rows.push(row);
+        }
+        return rows;
+      });
+    },
     async saveApproval(row) {
       await withClient(url, async (client) => {
         await client.query(
@@ -267,18 +306,19 @@ export function createPgConnectorStore(url: string): ConnectorStore {
           target: string;
         }>("select id, owner_id, request_id, action, target from public.approvals where id = $1", [id]);
         const row = found.rows[0];
-        if (!row) return null;
-        const split = row.action.includes(":") ? row.action.split(":") : ["pending", row.action];
-        const status = split[0] === "approved" || split[0] === "denied" || split[0] === "pending" ? split[0] : "pending";
-        const action = split.length > 1 ? split.slice(1).join(":") : row.action;
-        return {
-          id: row.id,
-          ownerId: row.owner_id,
-          requestId: row.request_id,
-          action,
-          target: row.target,
-          status: status as ConnectorApproval["status"],
-        };
+        return row ? approvalFromRow(row) : null;
+      });
+    },
+    async listApprovals() {
+      return withClient(url, async (client) => {
+        const found = await client.query<{
+          id: string;
+          owner_id: string;
+          request_id: string | null;
+          action: string;
+          target: string;
+        }>("select id, owner_id, request_id, action, target from public.approvals order by approved_at asc");
+        return found.rows.map(approvalFromRow);
       });
     },
     async savePost(row) {

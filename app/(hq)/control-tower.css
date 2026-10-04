@@ -124,6 +124,24 @@
   font-family: "IBM Plex Sans", sans-serif;
 }
 
+.tower .ex-mark {
+  margin-left: 6px;
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--muted);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.tower .gl .ex-mark {
+  margin-left: 8px;
+}
+
+.tower .side .ex {
+  padding: 0 0 8px;
+}
+
 .tower .cn {
   font-family: "IBM Plex Mono", monospace;
   color: var(--ink);
@@ -165,6 +183,14 @@
   font-size: 11px;
   line-height: 13px;
   color: var(--muted);
+}
+
+.tower .field .graph-ex {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  padding: 0;
+  z-index: 1;
 }
 
 .tower .row {

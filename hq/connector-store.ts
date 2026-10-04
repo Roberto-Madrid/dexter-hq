@@ -99,14 +99,17 @@ export interface ConnectorStore {
   heartbeat(botId: string, task: string | null, at: string): Promise<void>;
   appendEvent(event: Omit<ConnectorEvent, "id"> & { id?: string }): Promise<ConnectorEvent>;
   listEvents(): Promise<ConnectorEvent[]>;
+  listBots(): Promise<ConnectorBot[]>;
   listAgents(): Promise<ConnectorAgent[]>;
   getAgent(id: string): Promise<ConnectorAgent | null>;
   findLaunch(botId: string, idempotencyKey: string): Promise<ConnectorAgent | null>;
   saveAgent(agent: ConnectorAgent): Promise<void>;
   saveRequest(row: ConnectorRequest): Promise<void>;
   getRequest(id: string): Promise<ConnectorRequest | null>;
+  listRequests(): Promise<ConnectorRequest[]>;
   saveApproval(row: ConnectorApproval): Promise<void>;
   getApproval(id: string): Promise<ConnectorApproval | null>;
+  listApprovals(): Promise<ConnectorApproval[]>;
   savePost(row: ConnectorPost): Promise<void>;
   getPost(id: string): Promise<ConnectorPost | null>;
   listPosts(): Promise<ConnectorPost[]>;
@@ -166,6 +169,9 @@ export function createMemoryConnectorStore(seed?: {
     async listEvents() {
       return [...events];
     },
+    async listBots() {
+      return [...bots.values()].map((bot) => ({ ...bot }));
+    },
     async listAgents() {
       return [...agents.values()];
     },
@@ -184,11 +190,17 @@ export function createMemoryConnectorStore(seed?: {
     async getRequest(id) {
       return requests.get(id) ?? null;
     },
+    async listRequests() {
+      return [...requests.values()].map((row) => ({ ...row }));
+    },
     async saveApproval(row) {
       approvals.set(row.id, { ...row });
     },
     async getApproval(id) {
       return approvals.get(id) ?? null;
+    },
+    async listApprovals() {
+      return [...approvals.values()].map((row) => ({ ...row }));
     },
     async savePost(row) {
       posts.set(row.id, { ...row });
