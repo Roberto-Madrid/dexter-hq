@@ -5,6 +5,7 @@
 .env
 .env.local
 .env.*.local
+hq-age.key
 
 # Tooling caches. Not part of the product.
 node_modules/
