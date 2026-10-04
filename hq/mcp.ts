@@ -133,6 +133,7 @@ function defaultTestSafeDeps(): ConnectorDeps {
     store: createMemoryConnectorStore(),
     cursorConfigured: false,
     cursor: null,
+    councilConfigured: false,
   });
 }
 

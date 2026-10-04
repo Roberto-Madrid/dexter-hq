@@ -1,0 +1,12 @@
+
+ RUN  v3.2.4 /workspace
+
+ ✓ tests/unit/council-seat.test.ts (2 tests) 8ms
+ ✓ tests/unit/connector-council.test.ts (3 tests) 23ms
+ ✓ tests/unit/mcp.test.ts (6 tests) 67ms
+
+ Test Files  3 passed (3)
+      Tests  11 passed (11)
+   Start at  11:32:08
+   Duration  403ms (transform 228ms, setup 0ms, collect 512ms, tests 98ms, environment 0ms, prepare 169ms)
+

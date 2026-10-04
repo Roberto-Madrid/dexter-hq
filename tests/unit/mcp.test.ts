@@ -183,6 +183,54 @@ describe("mcp connector stub", () => {
     expect(events.some((event) => event.result?.launched === true)).toBe(false);
   });
 
+  it("exposes request_council and records a not-configured council call", async () => {
+    const store = createMemoryConnectorStore({
+      bots: [
+        {
+          id: BOT,
+          ownerId: OWNER,
+          name: "unit-lead",
+          kind: "lead",
+          repos: ["owner/demo"],
+          tools: ["whoami", "request_council"],
+          currentTask: null,
+          heartbeatAt: null,
+        },
+      ],
+      tokens: [{ tokenHash: hashBotToken(TOKEN), botId: BOT, scopes: ["whoami", "request_council"] }],
+    });
+    const deps = createDefaultConnectorDeps({
+      store,
+      sheet: parseRoleSheet(loadConnectorSheetText()),
+      cursor: null,
+      cursorConfigured: false,
+      councilConfigured: false,
+      ownerId: OWNER,
+    });
+    const listed = await mcpPost(
+      { jsonrpc: "2.0", id: 2, method: "tools/list" },
+      { authorization: `Bearer ${TOKEN}`, "mcp-protocol-version": "2025-03-26" },
+      deps,
+    );
+    const listBody = (await listed.json()) as { result: { tools: { name: string }[] } };
+    expect(listBody.result.tools.map((tool) => tool.name)).toContain("request_council");
+
+    const response = await mcpPost(
+      callBody("request_council", { packet: "Diff: x" }),
+      { authorization: `Bearer ${TOKEN}` },
+      deps,
+    );
+    const body = (await response.json()) as {
+      result: { isError: boolean; structuredContent: { status: string; result?: unknown; actions?: unknown } };
+    };
+    expect(body.result.structuredContent.status).toBe("not-configured");
+    expect(body.result.structuredContent.result).toBeUndefined();
+    expect(body.result.structuredContent.actions).toBeUndefined();
+    expect(body.result.isError).toBe(true);
+    const events = await deps.store.listEvents();
+    expect(events.some((event) => event.action === "request_council")).toBe(true);
+  });
+
   it("refuses a token outside its scope", async () => {
     const deps = leadDeps({ scopes: ["whoami"] });
     const response = await mcpPost(

@@ -67,7 +67,7 @@ export async function loadCodexLogin(dbUrl: string): Promise<"chatgpt" | "api_ke
   chmodSync(AUTH_PATH, 0o600);
   const status = spawnSync(codexBin(), ["login", "status"], {
     encoding: "utf8",
-    env: { PATH: process.env.PATH, HOME: "/tmp", CODEX_HOME: "/tmp/.codex", LANG: "C.UTF-8" },
+    env: { PATH: process.env.PATH, HOME: "/tmp", CODEX_HOME: "/tmp/.codex", LANG: "C.UTF-8" } as unknown as NodeJS.ProcessEnv,
   });
   return loginKindFromText(`${status.stdout ?? ""}\n${status.stderr ?? ""}`);
 }

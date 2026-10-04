@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { createCursorCloud } from "../adapters/cursor-cloud.ts";
 import { SHIPPED_CREWS } from "./crews.ts";
 import { bundledRoleSheet } from "./bundled-assets.ts";
-import { PlanCardSchema } from "../kernel/schemas.ts";
+import { PlanCardSchema, VerdictSchema } from "../kernel/schemas.ts";
 import { validatePlanCard } from "../kernel/plan-card.ts";
 import { preflight } from "../kernel/preflight.ts";
 import { SANDBOX_SLOT_CAP } from "../kernel/police.ts";
 import { parseRoleSheet } from "../kernel/role-sheet.ts";
-import { REQUEST_STATES, type PlanCard, type RoleSheet, type RunHandle, type Runtime } from "../kernel/types.ts";
+import { REQUEST_STATES, type PlanCard, type RoleSheet, type RunHandle, type Runtime, type Verdict } from "../kernel/types.ts";
 import {
   CONNECTOR_TOOLS,
   createMemoryConnectorStore,
@@ -17,6 +17,7 @@ import {
   type ConnectorStore,
   type ConnectorToolName,
 } from "./connector-store.ts";
+import { parseCouncilVerdict, runCriticSeat } from "./council-seat.ts";
 
 export { CONNECTOR_TOOLS, createMemoryConnectorStore };
 export type { ConnectorAuth, ConnectorStore, ConnectorToolName };
@@ -32,6 +33,8 @@ export type CursorGateway = Runtime & {
   followup?(handle: RunHandle, text: string): Promise<RunHandle>;
 };
 
+export type CouncilSeatFn = (input: { packet: string }) => Promise<Verdict>;
+
 export type ConnectorDeps = {
   store: ConnectorStore;
   sheet: RoleSheet;
@@ -40,6 +43,8 @@ export type ConnectorDeps = {
   knownHosts?: readonly string[];
   now?: () => string;
   ownerId?: string;
+  councilConfigured?: boolean;
+  runCouncilSeat?: CouncilSeatFn;
 };
 
 export type ToolResult = {
@@ -58,6 +63,10 @@ function toolResult(body: Record<string, unknown>, isError = false): ToolResult 
 
 export function hashBotToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+export function pathBCouncilConfigured(): boolean {
+  return Boolean(process.env.SUPABASE_DB_URL?.trim() && process.env.DEXTER_AGE_PRIVATE_KEY?.trim());
 }
 
 export function loadConnectorSheetText(): string {
@@ -371,6 +380,96 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
   return toolResult(body);
 }
 
+function councilPacket(args: Record<string, unknown>): string | null {
+  const packet = textArg(args, "packet");
+  if (packet) return packet;
+  const diff = textArg(args, "diff");
+  const checker = textArg(args, "checker");
+  const evidence = Array.isArray(args.evidence)
+    ? args.evidence.map((item) => String(item)).filter(Boolean).join("\n")
+    : textArg(args, "evidence");
+  if (!diff && !checker && !evidence) return null;
+  return ["Diff:", diff ?? "(none)", "Checker:", checker ?? evidence ?? "(none)"].join("\n");
+}
+
+function safeCouncilError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "council_failed";
+  return message.replace(/eyJ[A-Za-z0-9_-]+/g, "[REDACTED]").replace(/postgres(?:ql)?:\/\/\S+/gi, "[db]").slice(0, 120);
+}
+
+function councilUnavailableReason(message: string): "not-configured" | "not-ready" | "error" {
+  if (
+    message === "codex_login_missing" ||
+    message === "age_key_missing" ||
+    message === "path_b_login_unavailable" ||
+    message === "codex_login_not_chatgpt" ||
+    message === "codex_login_unknown"
+  ) {
+    return "not-configured";
+  }
+  if (message === "openai_api_key_set") return "not-ready";
+  return "error";
+}
+
+async function liveCriticSeat(packet: string): Promise<Verdict> {
+  if (process.env.OPENAI_API_KEY) throw new Error("openai_api_key_set");
+  const verdict = await runCriticSeat({
+    sheetText: loadConnectorSheetText(),
+    packet,
+    dbUrl: process.env.SUPABASE_DB_URL ?? "",
+  });
+  return parseCouncilVerdict(verdict);
+}
+
+async function handleCouncil(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
+  const target = textArg(args, "requestId") ?? textArg(args, "request_id") ?? "council";
+  const mode = textArg(args, "mode") ?? textArg(args, "councilMode") ?? "quick";
+  if (mode === "off") {
+    const body = { status: "refused", reason: "council_off" };
+    await record(deps, auth, "request_council", target, body);
+    return toolResult(body, true);
+  }
+  const packet = councilPacket(args);
+  if (!packet) {
+    const body = { status: "refused", reason: "packet_required" };
+    await record(deps, auth, "request_council", target, body);
+    return toolResult(body, true);
+  }
+  const configured = deps.councilConfigured ?? pathBCouncilConfigured();
+  if (!configured && !deps.runCouncilSeat) {
+    const body = { status: "not-configured", reason: "path_b_login_unavailable", configured: false };
+    await record(deps, auth, "request_council", target, body);
+    return toolResult(body, true);
+  }
+  try {
+    const raw = deps.runCouncilSeat ? await deps.runCouncilSeat({ packet }) : await liveCriticSeat(packet);
+    const parsed = VerdictSchema.safeParse(raw);
+    if (!parsed.success) {
+      const body = { status: "error", reason: "invalid_verdict" };
+      await record(deps, auth, "request_council", target, body);
+      return toolResult(body, true);
+    }
+    const body = {
+      status: "verdict",
+      seat: "critic",
+      path: "B",
+      result: parsed.data.result,
+      actions: parsed.data.actions,
+    };
+    await record(deps, auth, "request_council", target, body);
+    return toolResult(body);
+  } catch (error) {
+    const reason = safeCouncilError(error);
+    const status = councilUnavailableReason(reason);
+    const body =
+      status === "error"
+        ? { status, reason }
+        : { status, reason, configured: false };
+    await record(deps, auth, "request_council", target, body);
+    return toolResult(body, true);
+  }
+}
+
 async function handleAssign(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
   const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
   const botId = textArg(args, "botId") ?? textArg(args, "bot_id");
@@ -454,11 +553,7 @@ export async function callConnectorTool(
     await record(deps, auth, name, textArg(args, "branch") ?? textArg(args, "pullRequest") ?? "checks", body);
     return toolResult(body);
   }
-  if (name === "request_council") {
-    const body = { status: "not-ready", reason: "council_seat_not_wired" };
-    await record(deps, auth, name, textArg(args, "requestId") ?? "council", body);
-    return toolResult(body);
-  }
+  if (name === "request_council") return handleCouncil(deps, auth, args);
   if (name === "request_approval") {
     const action = textArg(args, "action") ?? "unknown";
     const target = textArg(args, "target") ?? action;
@@ -541,13 +636,20 @@ export function createDefaultConnectorDeps(overrides?: Partial<ConnectorDeps>): 
     knownHosts: overrides?.knownHosts ?? KNOWN_HOSTS,
     now: overrides?.now,
     ownerId: overrides?.ownerId,
+    councilConfigured: overrides?.councilConfigured ?? pathBCouncilConfigured(),
+    runCouncilSeat: overrides?.runCouncilSeat,
   };
 }
 
 export function connectorToolDescriptors(names: readonly string[]) {
   return names.map((name) => ({
     name,
-    description: name === "whoami" ? "Return this connector's identity, scopes, caps left, and stop flag." : `Dexter connector tool ${name}.`,
+    description:
+      name === "whoami"
+        ? "Return this connector's identity, scopes, caps left, and stop flag."
+        : name === "request_council"
+          ? "Run one Critic seat through path B. Returns a schema-valid verdict, or not-configured when the login is absent."
+          : `Dexter connector tool ${name}.`,
     inputSchema: { type: "object", additionalProperties: true },
   }));
 }

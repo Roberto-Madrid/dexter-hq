@@ -1,0 +1,1 @@
+{"outcome":"stop","reason":"path_b_login_unavailable","missing":[".env.local","SUPABASE_DB_URL","DEXTER_AGE_PRIVATE_KEY"],"missing_runtime":["vendor/codex/codex"],"openai_api_key_set":false}
