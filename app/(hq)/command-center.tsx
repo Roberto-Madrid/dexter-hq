@@ -1,166 +1,267 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { BoardSnapshot, ChatResult, UiCard } from "../ui-types";
+import "./control-tower.css";
+import {
+  EXAMPLE_LABEL,
+  STATUS_COPY,
+  desktopGraph,
+  exampleBots,
+  exampleCeo,
+  exampleCounts,
+  exampleNeeds,
+  exampleRequests,
+  phoneGraph,
+  requestGraph,
+  type GraphModel,
+  type RequestStatus,
+} from "./example-fixture";
 
-type Tab = "chat" | "board" | "swarm" | "inbox";
+type Tab = "requests" | "swarm" | "bots" | "needs";
+type Screen = "home" | "request";
 
-function Card({ card }: { card: UiCard }) {
+const TABS: { id: Tab; label: string }[] = [
+  { id: "requests", label: "Requests" },
+  { id: "swarm", label: "Swarm" },
+  { id: "bots", label: "Bots" },
+  { id: "needs", label: "Needs you" },
+];
+
+function GraphField({
+  graph,
+  rules,
+}: {
+  graph: GraphModel;
+  rules: { left?: boolean; right?: boolean; bottom?: boolean };
+}) {
   return (
-    <article className="card" data-crew={card.crew} data-testid="plan-card">
-      <strong>{card.title}</strong>
-      <div className="muted">
-        {card.crew} · {card.tier} · {card.tasksDone} of {card.tasksTotal}
-      </div>
-      {card.badges.map((badge) => (
-        <span className="badge" key={badge}>{badge}</span>
+    <div className="field" data-testid="swarm-field">
+      <svg
+        className="g"
+        viewBox={`0 0 ${graph.width} ${graph.height}`}
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        {graph.lines.map((line, index) => (
+          <line
+            key={`e-${index}`}
+            x1={line.x1}
+            y1={line.y1}
+            x2={line.x2}
+            y2={line.y2}
+            stroke={line.stroke}
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        {graph.nodes.map((node, index) => (
+          <circle key={`n-${index}`} cx={node.cx} cy={node.cy} r={node.r} fill={node.fill} />
+        ))}
+      </svg>
+      {graph.labels.map((label, index) => (
+        <div
+          className="nl"
+          key={`l-${index}`}
+          style={{
+            left: `${(label.left / graph.width) * 100}%`,
+            top: `${(label.top / graph.height) * 100}%`,
+            width: `${(label.width / graph.width) * 100}%`,
+            textAlign: label.align,
+            color: label.color,
+            fontWeight: label.weight,
+          }}
+        >
+          {label.lines.map((line, lineIndex) => (
+            <span key={lineIndex}>
+              {lineIndex > 0 ? <br /> : null}
+              {line}
+            </span>
+          ))}
+        </div>
       ))}
-      {card.blocker ? <div className="muted">{card.blocker}</div> : null}
-      <div className="muted" data-testid="routing">
-        {card.model ?? "no run"} · {card.pool ?? "no pool"} · {card.routingReason ?? "no reason"}
-      </div>
-      <div className="muted">Updated {card.updatedAt}</div>
-    </article>
+      <div className="gst">{graph.status}</div>
+      {rules.left ? <div className="rule-l" /> : null}
+      {rules.right ? <div className="rule-r" /> : null}
+      {rules.bottom ? <div className="rule-b" /> : null}
+    </div>
   );
 }
 
-function Column({ title, cards }: { title: string; cards: UiCard[] }) {
+function RequestRows({ onOpen }: { onOpen: (id: string) => void }) {
   return (
-    <section className="column">
-      <h3>{title}</h3>
-      {cards.length === 0 ? <p className="muted">None</p> : cards.map((card) => <Card card={card} key={card.id} />)}
-    </section>
+    <>
+      {exampleRequests.map((request) => (
+        <button className="row" type="button" key={request.id} onClick={() => onOpen(request.id)}>
+          <div className="rt">{request.title}</div>
+          <div className="row-meta">
+            <span className={statusClass(request.status)}>{STATUS_COPY[request.status]}</span>
+            <span className="owner">{request.owner}</span>
+          </div>
+        </button>
+      ))}
+    </>
   );
 }
 
-export function CommandCenter({ initial }: { initial: BoardSnapshot }) {
-  const [board, setBoard] = useState(initial);
-  const [tab, setTab] = useState<Tab>("chat");
-  const [text, setText] = useState("");
-  const [draft, setDraft] = useState("");
-  const [calls, setCalls] = useState<number | null>(null);
-  const [stopNote, setStopNote] = useState("");
+function statusClass(status: RequestStatus) {
+  return status;
+}
+
+function NeedList() {
+  return (
+    <>
+      {exampleNeeds.map((need) => (
+        <div className="need" key={need}>
+          {need}
+          <div className="acts">
+            <span>Approve</span>
+            <span>Deny</span>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function BotList() {
+  return (
+    <>
+      {exampleBots.map((bot) => (
+        <div className="bot" key={bot.name}>
+          <span>{bot.name}</span>
+          <span className={`bst ${bot.state === "waiting" ? "wait" : bot.state}`}>
+            {bot.state === "waiting" ? "waiting" : bot.state}
+          </span>
+        </div>
+      ))}
+    </>
+  );
+}
+
+export function CommandCenter() {
   const [ready, setReady] = useState(false);
+  const [tab, setTab] = useState<Tab>("requests");
+  const [screen, setScreen] = useState<Screen>("home");
+  const [openId, setOpenId] = useState(exampleRequests[0].id);
 
   useEffect(() => {
     setReady(true);
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
-    const timer = setInterval(() => {
-      void fetch("/api/board")
-        .then((response) => response.json())
-        .then((next: BoardSnapshot) => setBoard(next))
-        .catch(() => undefined);
-    }, 4000);
-    return () => clearInterval(timer);
   }, []);
 
-  async function send(event: { preventDefault(): void }) {
-    event.preventDefault();
-    const message = text.trim();
-    if (!message) return;
-    setText("");
-    setDraft("");
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ text: message }),
-    });
-    if (!response.ok || !response.body) {
-      setDraft(`The chat route returned ${response.status}.`);
-      return;
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    const apply = async (part: string) => {
-      const line = part.replace(/^data: /, "").trim();
-      if (!line) return;
-      const event = JSON.parse(line) as { delta?: string; done?: ChatResult };
-      if (event.delta) setDraft((current) => current + event.delta);
-      if (event.done) {
-        setCalls(event.done.modelCalls);
-        setDraft("");
-        const next = await fetch("/api/board").then((item) => item.json() as Promise<BoardSnapshot>);
-        setBoard(next);
-      }
-    };
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      buffer += decoder.decode(chunk.value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-      for (const part of parts) await apply(part);
-    }
-    if (buffer.trim()) await apply(buffer);
+  const open = exampleRequests.find((item) => item.id === openId) ?? exampleRequests[0];
+
+  function openRequest(id: string) {
+    setOpenId(id);
+    setScreen("request");
   }
 
-  async function stopAll() {
-    const response = await fetch("/api/stop", { method: "POST" });
-    const body = (await response.json()) as { reports?: { state: string }[]; asOf?: string };
-    const counts = (body.reports ?? []).map((report) => report.state).join(", ") || "no live runs";
-    setStopNote(`${counts}. As of ${body.asOf ?? board.asOf}`);
-    const next = await fetch("/api/board").then((item) => item.json() as Promise<BoardSnapshot>);
-    setBoard(next);
+  function goHome() {
+    setScreen("home");
   }
 
   return (
-    <div className="shell" data-ready={ready ? "1" : "0"}>
-      <header className="top">
-        <div className="brand">Dexter.</div>
-        <button className="stop" type="button" onClick={() => void stopAll()}>STOP ALL</button>
-        <div className="meta">
-          <span>Run slots {board.slotsUsed} of {board.slotCap}</span>
-          <span>Quota {board.quotas}</span>
-          <span>Spent this month {board.spend}</span>
-          <span>As of {board.asOf}</span>
+    <div className="tower" data-ready={ready ? "1" : "0"} data-example="1">
+      <header className="bar">
+        <button className="word" type="button" onClick={goHome}>
+          DEXTER
+        </button>
+        <div className="counts" aria-label="Example counts">
+          {exampleCounts.map((item) => (
+            <span className="count" key={item.label}>
+              <span className="cw">{item.label}</span> <span className="cn">{item.value}</span>
+            </span>
+          ))}
         </div>
+        <button className="halt" type="button">
+          STOP ALL
+        </button>
       </header>
-      <nav className="tabs" aria-label="Sections">
-        {(["chat", "board", "swarm", "inbox"] as const).map((name) => (
-          <button key={name} type="button" aria-pressed={tab === name} onClick={() => setTab(name)}>
-            {name}
+
+      <div className="phone-brand">
+        <button className="word" type="button" onClick={goHome}>
+          DEXTER
+        </button>
+        <div className="ex">{EXAMPLE_LABEL}</div>
+      </div>
+      <button className="pstop" type="button">
+        STOP ALL
+      </button>
+      <nav className="phone-tabs" aria-label="Sections">
+        {TABS.map((item) => (
+          <button
+            key={item.id}
+            className={tab === item.id ? "tab on" : "tab"}
+            type="button"
+            aria-pressed={tab === item.id}
+            onClick={() => {
+              setTab(item.id);
+              setScreen("home");
+            }}
+          >
+            {item.label}
           </button>
         ))}
       </nav>
-      <main className="grid">
-        <section className={`panel ${tab === "board" ? "show" : ""}`} data-panel="board">
-          <h2>Request board</h2>
-          <Column title="Needs you" cards={board.columns.needsYou} />
-          <Column title="Active" cards={board.columns.active} />
-          <Column title="Queued" cards={board.columns.queued} />
-          <Column title="Done" cards={board.columns.done} />
-        </section>
-        <section className={`panel ${tab === "swarm" ? "show" : ""}`} data-panel="swarm">
-          <h2>Swarm view</h2>
-          {board.swarm.length === 0 ? <p className="empty">No tasks drawn.</p> : (
-            <ul>
-              {board.swarm.map((node) => (
-                <li key={node.id} data-testid="swarm-node">
-                  {node.persona} · {node.state} · {node.model ?? "no model"} · {node.pool ?? "no pool"} · {node.routingReason ?? "no reason"}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <section className={`panel ${tab === "chat" || tab === "inbox" ? "show" : ""}`} data-panel="chat">
-          <h2>{tab === "inbox" ? "Inbox" : "Dexter"}</h2>
-          <div className="chat-log" data-testid="chat-log">
-            {board.messages.map((message, index) => (
-              <div className={`bubble ${message.role}`} key={`${message.at}-${index}`}>
-                {message.body}
+
+      <div className="body">
+        {screen === "request" ? (
+          <>
+            <div className="doc">
+              <div className="ex" style={{ padding: 0 }}>
+                {EXAMPLE_LABEL}
               </div>
-            ))}
-            {draft ? <div className="bubble dexter">{draft}</div> : null}
-          </div>
-          {calls !== null ? <p className="muted" data-testid="model-calls">Model calls {calls}</p> : null}
-          {stopNote ? <p className="muted">{stopNote}</p> : null}
-          <form className="dock" onSubmit={(event) => void send(event)}>
-            <textarea aria-label="Message Dexter" value={text} onChange={(event) => setText(event.target.value)} />
-            <button type="button" onClick={(event) => void send(event)}>Send</button>
-          </form>
-        </section>
-      </main>
+              <h1>{open.title}</h1>
+              <div className="who">{open.owner}</div>
+              <div className="st">{STATUS_COPY[open.status]}</div>
+              {open.body ? <p>{open.body}</p> : null}
+            </div>
+            <div className="desk-pane">
+              <GraphField graph={requestGraph} rules={{ left: true, bottom: true }} />
+            </div>
+          </>
+        ) : (
+          <>
+            <aside className="requests">
+              <div className="ex">{EXAMPLE_LABEL}</div>
+              <RequestRows onOpen={openRequest} />
+            </aside>
+            <div className="desk-pane">
+              <GraphField graph={desktopGraph} rules={{ left: true, right: true, bottom: true }} />
+            </div>
+            <aside className="side">
+              <section className="grp">
+                <div className="gl">Needs you</div>
+                <NeedList />
+              </section>
+              <section className="grp">
+                <div className="gl">Bots</div>
+                <BotList />
+              </section>
+              <section className="grp">
+                <div className="gl">CEO</div>
+                <div className="ceo">{exampleCeo}</div>
+              </section>
+            </aside>
+          </>
+        )}
+
+        <div className="phone-main">
+          {screen === "request" ? (
+            <div className="phone-doc">
+              <h1>{open.title}</h1>
+              <div className="who">{open.owner}</div>
+              <div className="st">{STATUS_COPY[open.status]}</div>
+              {open.body ? <p>{open.body}</p> : null}
+            </div>
+          ) : null}
+          {screen === "home" && tab === "requests" ? <RequestRows onOpen={openRequest} /> : null}
+          {screen === "home" && tab === "swarm" ? <GraphField graph={phoneGraph} rules={{}} /> : null}
+          {screen === "home" && tab === "bots" ? <BotList /> : null}
+          {screen === "home" && tab === "needs" ? <NeedList /> : null}
+        </div>
+      </div>
     </div>
   );
 }
