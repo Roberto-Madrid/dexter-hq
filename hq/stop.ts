@@ -17,7 +17,43 @@ function mapState(state: CancelState): StopReport["state"] {
 }
 
 function isOpenRequest(status: string): boolean {
-  return status === "queued" || status === "running" || status === "needs_you" || status === "paused";
+  return (
+    status === "queued" ||
+    status === "running" ||
+    status === "needs_you" ||
+    status === "paused" ||
+    status === "blocked"
+  );
+}
+
+async function cancelHqRequests(store: HqStore): Promise<void> {
+  try {
+    for (const request of await store.listRequests()) {
+      if (!isOpenRequest(request.status)) continue;
+      try {
+        await store.patchRequest(request.id, { status: "cancelled" });
+      } catch {
+        // Keep the kill switch moving if one HQ row cannot transition.
+      }
+    }
+  } catch {
+    // Listing HQ requests is not required to set the stop flags.
+  }
+}
+
+async function cancelConnectorRequests(connector: ConnectorStore): Promise<void> {
+  try {
+    for (const request of await connector.listRequests()) {
+      if (!isOpenRequest(request.status)) continue;
+      try {
+        await connector.saveRequest({ ...request, status: "cancelled" });
+      } catch {
+        // Connector rows can disagree with HQ snapshot rows; flags still go on.
+      }
+    }
+  } catch {
+    // The tower reads connector requests; missing that table must not block STOP ALL.
+  }
 }
 
 async function recordStopEvent(connector: ConnectorStore, at: string, action: "stop_all" | "resume", result: Record<string, unknown>): Promise<void> {
@@ -37,12 +73,9 @@ async function recordStopEvent(connector: ConnectorStore, at: string, action: "s
 
 async function haltControl(store: HqStore, connector: ConnectorStore | undefined, at: string): Promise<void> {
   await store.setStopped(true);
-  for (const request of await store.listRequests()) {
-    if (isOpenRequest(request.status)) {
-      await store.patchRequest(request.id, { status: "cancelled" });
-    }
-  }
+  await cancelHqRequests(store);
   if (!connector) return;
+  await cancelConnectorRequests(connector);
   try {
     await connector.setStopped(true);
   } catch {

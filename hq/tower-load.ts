@@ -24,14 +24,15 @@ async function optional<T>(fn: () => Promise<T>): Promise<T | undefined> {
 }
 
 async function readConnectorStore(store: ConnectorStore): Promise<ConnectorLive> {
-  const [bots, requests, approvals, events, agents] = await Promise.all([
+  const [bots, requests, approvals, events, agents, stopped] = await Promise.all([
     optional(() => store.listBots()),
     optional(() => store.listRequests()),
     optional(() => store.listApprovals()),
     optional(() => store.listEvents()),
     optional(() => store.listAgents()),
+    optional(() => store.stopped()),
   ]);
-  return { bots, requests, approvals, events, agents };
+  return { bots, requests, approvals, events, agents, stopped: stopped ?? false };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

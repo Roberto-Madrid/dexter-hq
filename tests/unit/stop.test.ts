@@ -158,4 +158,36 @@ describe("STOP ALL", () => {
     expect(after.structuredContent.status).toBe("not-configured");
     expect(after.structuredContent.status).not.toBe("stopped");
   });
+
+  it("cancels connector queued requests the tower shows, not only HQ snapshot rows", async () => {
+    const connector = connectorSeed();
+    const store = new MemoryStore();
+    await store.saveRequest({
+      id: "hq-queued",
+      goal: "HQ snapshot row",
+      crew: "research",
+      tier: "T1",
+      planVersion: 1,
+      definitionOfDone: "cancelled",
+      status: "queued",
+      notices: [],
+      card: null,
+      createdAt: store.now(),
+      updatedAt: store.now(),
+    });
+    await connector.saveRequest({
+      id: "proof-queued",
+      ownerId: OWNER,
+      goal: "Proof request still queued on the tower",
+      status: "queued",
+      card: null,
+      evidence: [],
+      assignedBotId: null,
+      repo: "Roberto-Madrid/dexter-hq",
+      notices: [],
+    });
+    await stopAll(store, hqDeps({ connector, runtimes: {} }));
+    expect((await store.listRequests())[0]?.status).toBe("cancelled");
+    expect((await connector.listRequests())[0]?.status).toBe("cancelled");
+  });
 });

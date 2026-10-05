@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { EXAMPLE_LABEL, exampleBots, exampleCounts } from "../../app/(hq)/example-fixture.ts";
 import {
@@ -157,5 +158,38 @@ describe("control tower snapshot", () => {
     expect(snapshot.bots.items[0]?.state).toBe("live");
     expect(snapshot.needs.source).toBe("example");
     expect(snapshot.needs.items.some((item) => item.text.includes("Vercel production"))).toBe(true);
+  });
+
+  it("fails if the tower can stop and then has no Resume path to /api/resume", () => {
+    const source = readFileSync("app/(hq)/command-center.tsx", "utf8");
+    expect(source).toContain("STOP ALL");
+    expect(source).toContain('"/api/stop"');
+    expect(source).toContain("Resume");
+    expect(source).toContain('"/api/resume"');
+    expect(source).toMatch(/stopped\s*\?\s*\([\s\S]*Resume/);
+    expect(source).not.toMatch(/fetch\(\s*["']https?:\/\//);
+  });
+
+  it("carries the connector stop flag so Resume can render after a reload", () => {
+    const stopped = assembleTower({
+      nowMs: NOW,
+      connector: {
+        stopped: true,
+        bots: [
+          {
+            id: "bot-lead",
+            ownerId: "owner",
+            name: "HQ Dev",
+            kind: "lead",
+            repos: ["Roberto-Madrid/dexter-hq"],
+            tools: ["whoami"],
+            currentTask: null,
+            heartbeatAt: new Date(NOW - 10_000).toISOString(),
+          },
+        ],
+      },
+    });
+    expect(stopped.stopped).toBe(true);
+    expect(exampleTowerSnapshot().stopped).toBe(false);
   });
 });

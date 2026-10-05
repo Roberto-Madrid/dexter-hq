@@ -49,3 +49,29 @@ test("phone keeps STOP ALL on every tab and the open request", async ({ page }) 
   await expect(page.getByText("Production still tracks main. v5 is the integration branch.")).toBeVisible();
   await expect(page.getByRole("button", { name: "STOP ALL" })).toBeVisible();
 });
+
+test("signed-in owner can resume from the tower after STOP ALL", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("**/api/stop", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ reports: [], asOf: "2026-10-04T12:00:00.000Z" }),
+    });
+  });
+  await page.route("**/api/resume", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ resumed: true, asOf: "2026-10-04T12:00:01.000Z" }),
+    });
+  });
+  await signIn(page);
+  await expect(page.getByRole("button", { name: "Resume" })).toHaveCount(0);
+  await page.getByRole("button", { name: "STOP ALL" }).first().click();
+  await expect(page.getByRole("button", { name: "Resume" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "STOP ALL" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Resume" }).first().click();
+  await expect(page.getByRole("button", { name: "Resume" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "STOP ALL" })).toBeVisible();
+});
