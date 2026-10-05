@@ -193,6 +193,92 @@ function ringRadius(size: { width: number; height: number }, count: number, inne
   return Math.min(minDim * 0.42, Math.max(minDim * 0.34, needed));
 }
 
+export const PHONE_SWARM_VIEWPORT = { width: 390, height: 844 };
+export const PHONE_SWARM_CHROME = 132;
+
+function isPhoneSwarm(size: { width: number; height: number }): boolean {
+  return size.width <= 390;
+}
+
+function phoneRingRadius(size: { width: number; height: number }): number {
+  const cx = size.width / 2;
+  const cy = size.height / 2;
+  return Math.max(72, Math.min(cx, cy) - 78);
+}
+
+function pointInBox(
+  x: number,
+  y: number,
+  box: { left: number; top: number; width: number; height: number },
+): boolean {
+  return x >= box.left && x <= box.left + box.width && y >= box.top && y <= box.top + box.height;
+}
+
+function segmentsCross(
+  a1x: number,
+  a1y: number,
+  a2x: number,
+  a2y: number,
+  b1x: number,
+  b1y: number,
+  b2x: number,
+  b2y: number,
+): boolean {
+  const d = (a2x - a1x) * (b2y - b1y) - (a2y - a1y) * (b2x - b1x);
+  if (d === 0) return false;
+  const t = ((b1x - a1x) * (b2y - b1y) - (b1y - a1y) * (b2x - b1x)) / d;
+  const u = ((b1x - a1x) * (a2y - a1y) - (b1y - a1y) * (a2x - a1x)) / d;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+export function edgeCrossesLabel(
+  line: { x1: number; y1: number; x2: number; y2: number },
+  box: { left: number; top: number; width: number; height: number },
+): boolean {
+  if (box.width <= 0 || box.height <= 0) return false;
+  if (pointInBox(line.x1, line.y1, box) || pointInBox(line.x2, line.y2, box)) return true;
+  const right = box.left + box.width;
+  const bottom = box.top + box.height;
+  return (
+    segmentsCross(line.x1, line.y1, line.x2, line.y2, box.left, box.top, right, box.top) ||
+    segmentsCross(line.x1, line.y1, line.x2, line.y2, right, box.top, right, bottom) ||
+    segmentsCross(line.x1, line.y1, line.x2, line.y2, right, bottom, box.left, bottom) ||
+    segmentsCross(line.x1, line.y1, line.x2, line.y2, box.left, bottom, box.left, box.top)
+  );
+}
+
+function insetToward(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  radius: number,
+): { x: number; y: number } {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const t = Math.min(radius / len, 0.45);
+  return { x: from.x + dx * t, y: from.y + dy * t };
+}
+
+function clipSegmentPastBox(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  box: { left: number; top: number; width: number; height: number },
+): { x: number; y: number } {
+  const line = { x1: from.x, y1: from.y, x2: to.x, y2: to.y };
+  if (!edgeCrossesLabel(line, box)) return from;
+  let lo = 0;
+  let hi = 1;
+  for (let step = 0; step < 24; step += 1) {
+    const mid = (lo + hi) / 2;
+    const x = from.x + (to.x - from.x) * mid;
+    const y = from.y + (to.y - from.y) * mid;
+    const next = { x1: x, y1: y, x2: to.x, y2: to.y };
+    if (edgeCrossesLabel(next, box) || pointInBox(x, y, box)) lo = mid;
+    else hi = mid;
+  }
+  return { x: from.x + (to.x - from.x) * hi, y: from.y + (to.y - from.y) * hi };
+}
+
 type PlacedLabel = {
   left: number;
   top: number;
@@ -205,6 +291,71 @@ type PlacedLabel = {
   angle: number;
 };
 
+function hubLabel(
+  node: SwarmNode,
+  point: { x: number; y: number },
+): PlacedLabel {
+  const lines = [node.label.trim() || "Dexter"];
+  const box = labelSize(lines);
+  return {
+    left: point.x + 12,
+    top: point.y - 6,
+    width: Math.max(box.width, 34),
+    height: box.height,
+    align: "left",
+    color: INK,
+    weight: 500,
+    lines,
+    angle: 0,
+  };
+}
+
+function labelOutsideDot(
+  node: SwarmNode,
+  point: { x: number; y: number; angle: number },
+  size: { width: number; height: number },
+  nodeR: number,
+  wrap: boolean,
+): PlacedLabel | null {
+  const lines = wrap ? wrapLabel(node.label) : [node.label.trim()].filter(Boolean);
+  if (lines.length === 0) return null;
+  const box = labelSize(lines);
+  const color = toneFill(node.tone) === DIM ? DIM : toneFill(node.tone);
+  const cos = Math.cos(point.angle);
+  const sin = Math.sin(point.angle);
+  const gap = nodeR + 6;
+  const ax = point.x + cos * gap;
+  const ay = point.y + sin * gap;
+  let align: PlacedLabel["align"] = "left";
+  let left = ax;
+  let top = ay - box.height / 2;
+  if (Math.abs(cos) >= Math.abs(sin)) {
+    if (cos < 0) {
+      align = "right";
+      left = ax - box.width;
+    }
+  } else {
+    align = "center";
+    left = ax - box.width / 2;
+    top = sin < 0 ? ay - box.height : ay;
+  }
+  const footer = 36;
+  if (left < 8 || top < 8 || left + box.width > size.width - 8 || top + box.height > size.height - footer) {
+    return null;
+  }
+  return {
+    left,
+    top,
+    width: box.width,
+    height: box.height,
+    align,
+    color,
+    weight: 400,
+    lines,
+    angle: point.angle,
+  };
+}
+
 function labelForNode(
   node: SwarmNode,
   point: { x: number; y: number; angle: number },
@@ -214,17 +365,7 @@ function labelForNode(
   const box = labelSize(lines);
   const color = toneFill(node.tone) === DIM ? DIM : node.parentId ? toneFill(node.tone) : INK;
   if (!node.parentId) {
-    return {
-      left: point.x + 12,
-      top: point.y - 6,
-      width: Math.max(box.width, 34),
-      height: box.height,
-      align: "left",
-      color: INK,
-      weight: 500,
-      lines,
-      angle: 0,
-    };
+    return hubLabel(node, point);
   }
   const pad = 10;
   const cos = Math.cos(point.angle);
@@ -304,6 +445,7 @@ export function graphFromSwarm(
     roots.find((node) => node.id === DEXTER_HUB_ID) ??
     roots[0];
   placed.set(root.id, { x: cx, y: cy, angle: 0 });
+  const phone = isPhoneSwarm(size);
   const first = [...(children.get(root.id) ?? []), ...roots.filter((node) => node.id !== root.id)];
   const inner = first.filter((node) => node.ring !== 2);
   const outer = first.filter((node) => node.ring === 2);
@@ -313,30 +455,74 @@ export function graphFromSwarm(
   }
   const ring2 = outer.length > 0 ? outer : nested;
   const ring1 = inner;
-  placeOnRing(ring1, placed, cx, cy, ringRadius(size, ring1.length, true, ring2.length > 0));
-  if (ring2.length > 0) {
-    placeOnRing(ring2, placed, cx, cy, ringRadius(size, ring2.length, false, true));
+  if (phone) {
+    const leaves = nodes.filter((node) => node.id !== root.id);
+    placeOnRing(leaves, placed, cx, cy, phoneRingRadius(size));
+  } else {
+    placeOnRing(ring1, placed, cx, cy, ringRadius(size, ring1.length, true, ring2.length > 0));
+    if (ring2.length > 0) {
+      placeOnRing(ring2, placed, cx, cy, ringRadius(size, ring2.length, false, true));
+    }
   }
   for (const node of nodes) {
     if (placed.has(node.id)) continue;
     placed.set(node.id, { x: cx, y: cy + ringRadius(size, 1, true, false), angle: Math.PI / 2 });
   }
+  const hubR = 4.5;
+  const spokeR = 3.5;
+  const hub = hubLabel(root, placed.get(root.id) ?? { x: cx, y: cy });
+  const hubBox = { left: hub.left, top: hub.top, width: hub.width, height: hub.height };
   const lines = nodes.flatMap((node) => {
     const parentId = node.parentId && byId.has(node.parentId) ? node.parentId : node.id === root.id ? null : root.id;
     if (!parentId) return [];
     const from = placed.get(parentId);
     const to = placed.get(node.id);
     if (!from || !to) return [];
-    return [{ x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: toneFill(node.tone) }];
+    if (!phone) return [{ x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: toneFill(node.tone) }];
+    const start = clipSegmentPastBox(insetToward(from, to, hubR), to, hubBox);
+    const end = insetToward(to, from, spokeR);
+    return [{ x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: toneFill(node.tone) }];
   });
-  const labels = nodes.map((node) => {
+  const labels: PlacedLabel[] = nodes.map((node) => {
     const point = placed.get(node.id) ?? { x: cx, y: cy, angle: 0 };
-    return labelForNode(node, point, size);
+    if (!phone) return labelForNode(node, point, size);
+    if (node.id === root.id) return hubLabel(node, point);
+    return {
+      left: point.x,
+      top: point.y,
+      width: 0,
+      height: 0,
+      align: "left" as const,
+      color: DIM,
+      weight: 400 as const,
+      lines: [] as string[],
+      angle: point.angle,
+    };
   });
-  separateLabels(
-    labels.filter((label) => label.weight !== 500),
-    size,
-  );
+  if (phone) {
+    const kept: PlacedLabel[] = [];
+    for (let index = 0; index < nodes.length; index += 1) {
+      const node = nodes[index];
+      if (node.id === root.id) continue;
+      const point = placed.get(node.id);
+      if (!point) continue;
+      const candidate = labelOutsideDot(node, point, size, spokeR, false);
+      if (!candidate) continue;
+      const box = { left: candidate.left, top: candidate.top, width: candidate.width, height: candidate.height };
+      if (kept.some((label) => boxesOverlap(label, box, 4))) continue;
+      if (labels.some((label, labelIndex) => labelIndex !== index && label.lines.length > 0 && boxesOverlap(label, box, 4))) {
+        continue;
+      }
+      if (lines.some((line) => edgeCrossesLabel(line, box))) continue;
+      labels[index] = candidate;
+      kept.push(candidate);
+    }
+  } else {
+    separateLabels(
+      labels.filter((label) => label.weight !== 500),
+      size,
+    );
+  }
   return {
     width: size.width,
     height: size.height,
@@ -548,7 +734,11 @@ export function assembleTower(input: TowerInputs): TowerSnapshot {
     ? {
         source: "live" as const,
         desktop: graphFromSwarm(swarmNodes, { width: 860, height: 860 }, swarmStatus),
-        phone: graphFromSwarm(swarmNodes, { width: 390, height: 712 }, swarmStatus),
+        phone: graphFromSwarm(
+          swarmNodes,
+          { width: PHONE_SWARM_VIEWPORT.width, height: PHONE_SWARM_VIEWPORT.height - PHONE_SWARM_CHROME },
+          swarmStatus,
+        ),
         request: graphFromSwarm(
           swarmNodes.filter((node) => !node.parentId || node.ring === 1).slice(0, 3),
           { width: 960, height: 860 },
