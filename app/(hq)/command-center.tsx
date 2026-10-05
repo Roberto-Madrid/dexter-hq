@@ -11,6 +11,7 @@ import {
   type TowerRequest,
   type TowerSnapshot,
 } from "./tower-model";
+import { resumeClearsStop } from "./control-result";
 
 type Tab = "requests" | "swarm" | "bots" | "needs";
 type Screen = "home" | "request";
@@ -187,6 +188,10 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
     controlBusy.current = true;
     try {
       const response = await fetch(path, { method: "POST", credentials: "same-origin" });
+      if (path === "/api/resume") {
+        const body: unknown = await response.json().catch(() => null);
+        return resumeClearsStop(response.status, body);
+      }
       return response.ok;
     } catch {
       return false;

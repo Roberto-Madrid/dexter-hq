@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { EXAMPLE_LABEL, exampleBots, exampleCounts } from "../../app/(hq)/example-fixture.ts";
+import { resumeClearsStop } from "../../app/(hq)/control-result.ts";
 import {
   assembleTower,
   exampleLabels,
@@ -168,6 +169,15 @@ describe("control tower snapshot", () => {
     expect(source).toContain('"/api/resume"');
     expect(source).toMatch(/stopped\s*\?\s*\([\s\S]*Resume/);
     expect(source).not.toMatch(/fetch\(\s*["']https?:\/\//);
+  });
+
+  it("does not treat HTTP 200 with resumed false as a successful resume", () => {
+    expect(resumeClearsStop(200, { resumed: false, asOf: "2026-10-04T12:00:00.000Z" })).toBe(false);
+    expect(resumeClearsStop(200, { resumed: true })).toBe(true);
+    expect(resumeClearsStop(401, { resumed: true })).toBe(false);
+    const source = readFileSync("app/(hq)/command-center.tsx", "utf8");
+    expect(source).toContain("resumeClearsStop");
+    expect(source).not.toMatch(/\/api\/resume[\s\S]{0,80}return response\.ok/);
   });
 
   it("carries the connector stop flag so Resume can render after a reload", () => {

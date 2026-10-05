@@ -79,3 +79,27 @@ test("signed-in owner can resume from the tower after STOP ALL", async ({ page }
   await expect(shown(page.getByRole("button", { name: "Resume" }))).toHaveCount(0);
   await expect(shown(page.getByRole("button", { name: "STOP ALL" }))).toBeVisible();
 });
+
+test("a 200 with resumed false does not hide Resume", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("**/api/stop", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ reports: [], asOf: "2026-10-04T12:00:00.000Z" }),
+    });
+  });
+  await page.route("**/api/resume", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ resumed: false, asOf: "2026-10-04T12:00:01.000Z" }),
+    });
+  });
+  await signIn(page);
+  await shown(page.getByRole("button", { name: "STOP ALL" })).click();
+  await expect(shown(page.getByRole("button", { name: "Resume" }))).toBeVisible();
+  await shown(page.getByRole("button", { name: "Resume" })).click();
+  await expect(shown(page.getByRole("button", { name: "Resume" }))).toBeVisible();
+  await expect(shown(page.getByRole("button", { name: "STOP ALL" }))).toBeVisible();
+});
