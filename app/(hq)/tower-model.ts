@@ -261,30 +261,53 @@ function insetToward(
   return { x: from.x + dx * t, y: from.y + dy * t };
 }
 
-function clipSegmentPastBox(
-  from: { x: number; y: number },
-  to: { x: number; y: number },
+function padBox(
   box: { left: number; top: number; width: number; height: number },
-): { x: number; y: number } {
-  const padded = { left: box.left - 1, top: box.top - 1, width: box.width + 2, height: box.height + 2 };
-  const line = { x1: from.x, y1: from.y, x2: to.x, y2: to.y };
-  if (!edgeCrossesLabel(line, padded)) return from;
-  let lo = 0;
-  let hi = 1;
-  for (let step = 0; step < 24; step += 1) {
-    const mid = (lo + hi) / 2;
-    const x = from.x + (to.x - from.x) * mid;
-    const y = from.y + (to.y - from.y) * mid;
-    const next = { x1: x, y1: y, x2: to.x, y2: to.y };
-    if (edgeCrossesLabel(next, padded) || pointInBox(x, y, padded)) lo = mid;
-    else hi = mid;
+  pad: number,
+): { left: number; top: number; width: number; height: number } {
+  return { left: box.left - pad, top: box.top - pad, width: box.width + pad * 2, height: box.height + pad * 2 };
+}
+
+function circleHitsBox(
+  cx: number,
+  cy: number,
+  radius: number,
+  box: { left: number; top: number; width: number; height: number },
+  pad = 2,
+): boolean {
+  const closestX = Math.min(box.left + box.width, Math.max(box.left, cx));
+  const closestY = Math.min(box.top + box.height, Math.max(box.top, cy));
+  return Math.hypot(cx - closestX, cy - closestY) < radius + pad;
+}
+
+function phoneSpokeSegments(
+  hub: { x: number; y: number },
+  spoke: { x: number; y: number },
+  stroke: string,
+  hubBox: { left: number; top: number; width: number; height: number },
+): { x1: number; y1: number; x2: number; y2: number; stroke: string }[] {
+  const hubEnd = insetToward(hub, spoke, HUB_R);
+  const spokeEnd = insetToward(spoke, hub, SPOKE_R);
+  const straight = { x1: hubEnd.x, y1: hubEnd.y, x2: spokeEnd.x, y2: spokeEnd.y, stroke };
+  const clear = padBox(hubBox, 1);
+  if (!edgeCrossesLabel(straight, clear)) return [straight];
+  const box = padBox(hubBox, 2);
+  const routeAbove = spoke.y <= box.top + box.height / 2;
+  const waypoint = {
+    x: box.left - 1,
+    y: routeAbove ? box.top - 2 : box.top + box.height + 2,
+  };
+  let innerHub = insetToward(hub, waypoint, HUB_R);
+  let inner = { x1: innerHub.x, y1: innerHub.y, x2: waypoint.x, y2: waypoint.y, stroke };
+  let outer = { x1: waypoint.x, y1: waypoint.y, x2: spokeEnd.x, y2: spokeEnd.y, stroke };
+  for (let step = 0; step < 6 && (edgeCrossesLabel(inner, clear) || edgeCrossesLabel(outer, clear)); step += 1) {
+    waypoint.y += routeAbove ? -3 : 3;
+    waypoint.x = Math.min(waypoint.x, box.left - 1);
+    innerHub = insetToward(hub, waypoint, HUB_R);
+    inner = { x1: innerHub.x, y1: innerHub.y, x2: waypoint.x, y2: waypoint.y, stroke };
+    outer = { x1: waypoint.x, y1: waypoint.y, x2: spokeEnd.x, y2: spokeEnd.y, stroke };
   }
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const extra = 2 / len;
-  const t = Math.min(1, hi + extra);
-  return { x: from.x + dx * t, y: from.y + dy * t };
+  return [inner, outer];
 }
 
 type PlacedLabel = {
@@ -486,9 +509,17 @@ export function graphFromSwarm(
     const to = placed.get(node.id);
     if (!from || !to) return [];
     if (!phone) return [{ x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: toneFill(node.tone) }];
-    const start = clipSegmentPastBox(insetToward(from, to, from === placed.get(root.id) ? HUB_R : SPOKE_R), to, hubBox);
+    return phoneSpokeSegments(from, to, toneFill(node.tone), hubBox);
+  });
+  const radials = nodes.flatMap((node) => {
+    const parentId = node.parentId && byId.has(node.parentId) ? node.parentId : node.id === root.id ? null : root.id;
+    if (!parentId) return [];
+    const from = placed.get(parentId);
+    const to = placed.get(node.id);
+    if (!from || !to) return [];
+    const start = insetToward(from, to, from === placed.get(root.id) ? HUB_R : SPOKE_R);
     const end = insetToward(to, from, to === placed.get(root.id) ? HUB_R : SPOKE_R);
-    return [{ x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: toneFill(node.tone) }];
+    return [{ x1: start.x, y1: start.y, x2: end.x, y2: end.y }];
   });
   const labels: PlacedLabel[] = nodes.map((node) => {
     const point = placed.get(node.id) ?? { x: cx, y: cy, angle: 0 };
@@ -513,14 +544,34 @@ export function graphFromSwarm(
       if (node.id === root.id) continue;
       const point = placed.get(node.id);
       if (!point) continue;
-      const candidate = labelOutsideDot(node, point, size, SPOKE_R, false);
-      if (!candidate) continue;
-      const box = { left: candidate.left, top: candidate.top, width: candidate.width, height: candidate.height };
-      if (kept.some((label) => boxesOverlap(label, box, 4))) continue;
-      if (labels.some((label, labelIndex) => labelIndex !== index && label.lines.length > 0 && boxesOverlap(label, box, 4))) {
-        continue;
+      const base = labelOutsideDot(node, point, size, SPOKE_R, false);
+      if (!base) continue;
+      let candidate: PlacedLabel | null = null;
+      const blocked = (box: { left: number; top: number; width: number; height: number }) =>
+        kept.some((label) => boxesOverlap(label, box, 4)) ||
+        labels.some((label, labelIndex) => labelIndex !== index && label.lines.length > 0 && boxesOverlap(label, box, 4)) ||
+        radials.some((line) => edgeCrossesLabel(line, box)) ||
+        lines.some((line) => edgeCrossesLabel(line, box));
+      const hitsNeighbor = (box: { left: number; top: number; width: number; height: number }) =>
+        nodes.some((other) => {
+          if (other.id === node.id || other.id === root.id) return false;
+          const otherPoint = placed.get(other.id);
+          if (!otherPoint) return false;
+          return circleHitsBox(otherPoint.x, otherPoint.y, SPOKE_R, box, 3);
+        });
+      for (let extra = 0; extra <= 28; extra += 4) {
+        const next = extra === 0 ? base : labelOutsideDot(node, point, size, SPOKE_R + extra, false);
+        if (!next) continue;
+        const box = { left: next.left, top: next.top, width: next.width, height: next.height };
+        if (blocked(box)) {
+          if (extra === 0) break;
+          continue;
+        }
+        if (hitsNeighbor(box)) continue;
+        candidate = next;
+        break;
       }
-      if (lines.some((line) => edgeCrossesLabel(line, box))) continue;
+      if (!candidate) continue;
       labels[index] = candidate;
       kept.push(candidate);
     }

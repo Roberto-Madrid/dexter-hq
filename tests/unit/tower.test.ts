@@ -359,7 +359,7 @@ describe("control tower snapshot", () => {
     }
   });
 
-  it("at 390×844 starts every edge outside the hub label and keeps the two outer titles", () => {
+  it("at 390×844 reaches the hub dot without crossing Dexter and keeps two clear titles", () => {
     const filler = [
       "Tower graph matches the approved layout",
       "Stage 1 Council endpoint",
@@ -408,6 +408,35 @@ describe("control tower snapshot", () => {
     expect(childTitles).toContain("English carpool skill (cost)");
     expect(childTitles).toEqual(["stage1-proof", "English carpool skill (cost)"]);
     expect(graph.labels.filter((label, index) => index > 0 && label.lines.length === 0)).toHaveLength(19);
+    const hubNode = graph.nodes[0];
+    const childNodes = graph.nodes.slice(1);
+    const ends = graph.lines.flatMap((line) => [
+      { x: line.x1, y: line.y1 },
+      { x: line.x2, y: line.y2 },
+    ]);
+    const hubEnds = ends.filter((end) => Math.abs(Math.hypot(end.x - hubNode.cx, end.y - hubNode.cy) - hubNode.r) < 0.05);
+    expect(hubEnds.length).toBe(childNodes.length);
+    for (const child of childNodes) {
+      const onSpoke = ends.some((end) => Math.abs(Math.hypot(end.x - child.cx, end.y - child.cy) - child.r) < 0.05);
+      expect(onSpoke).toBe(true);
+    }
+    const titled = graph.labels
+      .map((label, index) => ({ label, node: graph.nodes[index] }))
+      .filter((item, index) => index > 0 && item.label.lines.length > 0);
+    for (const item of titled) {
+      const box = {
+        left: item.label.left,
+        top: item.label.top,
+        width: item.label.width,
+        height: item.label.lines.length * 13,
+      };
+      for (const other of childNodes) {
+        if (other === item.node) continue;
+        const closestX = Math.min(box.left + box.width, Math.max(box.left, other.cx));
+        const closestY = Math.min(box.top + box.height, Math.max(box.top, other.cy));
+        expect(Math.hypot(other.cx - closestX, other.cy - closestY)).toBeGreaterThan(other.r + 2);
+      }
+    }
   });
 
   it("fails if the tower can stop and then has no Resume path to /api/resume", () => {
