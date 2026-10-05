@@ -1,0 +1,26 @@
+
+> test
+> vitest run tests/unit tests/security
+
+
+ RUN  v3.2.4 /workspace
+
+ ✓ tests/unit/g3.test.ts (12 tests) 47ms
+ ✓ tests/unit/mcp.test.ts (7 tests) 66ms
+ ✓ tests/unit/ceo-run.test.ts (4 tests) 210ms
+ ✓ tests/unit/checks.test.ts (2 tests) 28ms
+ ✓ tests/unit/connector-council.test.ts (3 tests) 28ms
+ ✓ tests/unit/approval.test.ts (5 tests) 41ms
+ ✓ tests/unit/kernel.test.ts (20 tests) 16ms
+ ✓ tests/unit/tower.test.ts (7 tests) 8ms
+ ✓ tests/unit/stop.test.ts (3 tests) 6ms
+ ✓ tests/unit/council-seat.test.ts (2 tests) 8ms
+ ✓ tests/unit/snapshot-db.test.ts (2 tests) 5ms
+ ✓ tests/unit/ceo-command.test.ts (4 tests) 5ms
+ ✓ tests/security/injection.test.ts (2 tests) 3ms
+
+ Test Files  13 passed (13)
+      Tests  73 passed (73)
+   Start at  00:12:57
+   Duration  1.27s (transform 433ms, setup 0ms, collect 1.23s, tests 471ms, environment 2ms, prepare 774ms)
+

@@ -241,6 +241,7 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
           {view.counts.map((item) => (
             <span className="count" data-source={item.source} key={item.label}>
               <span className="cw">{item.label}</span> <span className="cn">{item.value}</span>
+              {item.detail ? <span className="cd"> {item.detail}</span> : null}
               {item.source === "example" && mixedCounts ? <span className="ex-mark">{EXAMPLE_LABEL}</span> : null}
             </span>
           ))}

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="860" viewBox="0 0 860 860">
+  <rect width="860" height="860" fill="#ffffff"/>
+  <line x1="430" y1="430" x2="430" y2="275.20000000000005" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="430" y2="137.59999999999997" stroke="#B45309" stroke-width="1"/>
+  <line x1="430" y1="430" x2="524.9421247954494" y2="153.44303852673443" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="609.5957971904588" y2="199.2553150524945" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="674.7874782439634" y2="270.0723585650024" stroke="#B45309" stroke-width="1"/>
+  <line x1="430" y1="430" x2="713.4526377606603" y2="358.2200435600303" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="721.4013057551504" y2="454.14620061611" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="697.7721207139389" y2="547.4557421685283" stroke="#B45309" stroke-width="1"/>
+  <line x1="430" y1="430" x2="645.1256714808237" y2="628.0371315433667" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="569.1670177240403" y2="687.1581248527774" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="478.12745819808663" y2="718.4120451149561" stroke="#B45309" stroke-width="1"/>
+  <line x1="430" y1="430" x2="381.8725418019134" y2="718.4120451149561" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="290.8329822759598" y2="687.1581248527775" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="214.8743285191763" y2="628.0371315433667" stroke="#B45309" stroke-width="1"/>
+  <line x1="430" y1="430" x2="162.22787928606112" y2="547.4557421685281" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="138.5986942448497" y2="454.1462006161101" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="146.54736223933975" y2="358.2200435600304" stroke="#B45309" stroke-width="1"/>
+  <line x1="430" y1="430" x2="185.21252175603655" y2="270.07235856500245" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="250.40420280954126" y2="199.25531505249435" stroke="#0E7490" stroke-width="1"/>
+  <line x1="430" y1="430" x2="335.0578752045505" y2="153.44303852673443" stroke="#B45309" stroke-width="1"/>
+  <circle cx="430" cy="430" r="4.5" fill="#0E7490"/>
+  <circle cx="430" cy="275.20000000000005" r="3.5" fill="#0E7490"/>
+  <circle cx="430" cy="137.59999999999997" r="3.5" fill="#B45309"/>
+  <circle cx="524.9421247954494" cy="153.44303852673443" r="3.5" fill="#0E7490"/>
+  <circle cx="609.5957971904588" cy="199.2553150524945" r="3.5" fill="#0E7490"/>
+  <circle cx="674.7874782439634" cy="270.0723585650024" r="3.5" fill="#B45309"/>
+  <circle cx="713.4526377606603" cy="358.2200435600303" r="3.5" fill="#0E7490"/>
+  <circle cx="721.4013057551504" cy="454.14620061611" r="3.5" fill="#0E7490"/>
+  <circle cx="697.7721207139389" cy="547.4557421685283" r="3.5" fill="#B45309"/>
+  <circle cx="645.1256714808237" cy="628.0371315433667" r="3.5" fill="#0E7490"/>
+  <circle cx="569.1670177240403" cy="687.1581248527774" r="3.5" fill="#0E7490"/>
+  <circle cx="478.12745819808663" cy="718.4120451149561" r="3.5" fill="#B45309"/>
+  <circle cx="381.8725418019134" cy="718.4120451149561" r="3.5" fill="#0E7490"/>
+  <circle cx="290.8329822759598" cy="687.1581248527775" r="3.5" fill="#0E7490"/>
+  <circle cx="214.8743285191763" cy="628.0371315433667" r="3.5" fill="#B45309"/>
+  <circle cx="162.22787928606112" cy="547.4557421685281" r="3.5" fill="#0E7490"/>
+  <circle cx="138.5986942448497" cy="454.1462006161101" r="3.5" fill="#0E7490"/>
+  <circle cx="146.54736223933975" cy="358.2200435600304" r="3.5" fill="#B45309"/>
+  <circle cx="185.21252175603655" cy="270.07235856500245" r="3.5" fill="#0E7490"/>
+  <circle cx="250.40420280954126" cy="199.25531505249435" r="3.5" fill="#0E7490"/>
+  <circle cx="335.0578752045505" cy="153.44303852673443" r="3.5" fill="#B45309"/>
+  <text x="442" y="435" fill="#102026" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="500" text-anchor="start"><tspan x="442" dy="0">Dexter</tspan></text>
+  <text x="430" y="265.20000000000005" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="middle"><tspan x="430" dy="0">stage1-proof</tspan></text>
+  <text x="430" y="94.59999999999997" fill="#B45309" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="middle"><tspan x="430" dy="0">Resume after STOP</tspan><tspan x="430" dy="13">ALL</tspan></text>
+  <text x="524.9421247954494" y="130.44303852673443" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="middle"><tspan x="524.9421247954494" dy="0">Needs-you approval</tspan><tspan x="524.9421247954494" dy="13">executor</tspan></text>
+  <text x="619.5957971904588" y="203.7553150524945" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="start"><tspan x="619.5957971904588" dy="0">Stage 1 STOP ALL</tspan></text>
+  <text x="684.7874782439634" y="268.0723585650024" fill="#B45309" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="start"><tspan x="684.7874782439634" dy="0">Stage 1 dashboard</tspan><tspan x="684.7874782439634" dy="13">panels</tspan></text>
+  <text x="723.4526377606603" y="356.2200435600303" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="start"><tspan x="723.4526377606603" dy="0">Token police</tspan><tspan x="723.4526377606603" dy="13">development</tspan></text>
+  <text x="731.4013057551504" y="452.14620061611" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="start"><tspan x="731.4013057551504" dy="0">chore: denser home</tspan><tspan x="731.4013057551504" dy="13">familia</tspan></text>
+  <text x="707.7721207139389" y="545.4557421685283" fill="#B45309" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="start"><tspan x="707.7721207139389" dy="0">English carpool</tspan><tspan x="707.7721207139389" dy="13">skill (cost)</tspan></text>
+  <text x="655.1256714808237" y="626.0371315433667" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="start"><tspan x="655.1256714808237" dy="0">English AGENTS.md +</tspan><tspan x="655.1256714808237" dy="13">carpool.mdc</tspan></text>
+  <text x="579.1670177240403" y="691.6581248527774" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="start"><tspan x="579.1670177240403" dy="0">chore: familia 20px</tspan></text>
+  <text x="478.12745819808663" y="737.4120451149561" fill="#B45309" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="middle"><tspan x="478.12745819808663" dy="0">Dexter initial</tspan><tspan x="478.12745819808663" dy="13">product</tspan></text>
+  <text x="376.9347040934914" y="767.0028842170378" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="middle"><tspan x="376.9347040934914" dy="0">Fix familia announce</tspan></text>
+  <text x="280.8329822759598" y="691.6581248527775" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="end"><tspan x="280.8329822759598" dy="0">Stage 0 MCP stub</tspan></text>
+  <text x="204.8743285191763" y="626.0371315433667" fill="#B45309" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="end"><tspan x="204.8743285191763" dy="0">Stage 1 connector</tspan><tspan x="204.8743285191763" dy="13">tools</tspan></text>
+  <text x="152.22787928606112" y="545.4557421685281" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="end"><tspan x="152.22787928606112" dy="0">Add pickup_state</tspan><tspan x="152.22787928606112" dy="13">revoke</tspan></text>
+  <text x="130" y="452.1462006161101" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="end"><tspan x="130" dy="0">chore: bump familia</tspan><tspan x="130" dy="13">base</tspan></text>
+  <text x="136.54736223933975" y="356.2200435600304" fill="#B45309" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="end"><tspan x="136.54736223933975" dy="0">One Council seat B</tspan><tspan x="136.54736223933975" dy="13">through path</tspan></text>
+  <text x="175.21252175603655" y="274.57235856500245" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="end"><tspan x="175.21252175603655" dy="0">Light control tower</tspan></text>
+  <text x="240.40420280954126" y="197.25531505249435" fill="#0E7490" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="end"><tspan x="240.40420280954126" dy="0">Stage 1 Council</tspan><tspan x="240.40420280954126" dy="13">endpoint</tspan></text>
+  <text x="335.0578752045505" y="143.44303852673443" fill="#B45309" font-size="11" font-family="IBM Plex Sans, sans-serif" font-weight="400" text-anchor="middle"><tspan x="335.0578752045505" dy="0">DEXTER.</tspan></text>
+  <text x="16" y="844" fill="#5C6B73" font-size="11" font-family="IBM Plex Mono, monospace">Growing from Dexter · 14 of 20 links live</text>
+</svg>

@@ -147,6 +147,11 @@
   color: var(--ink);
 }
 
+.tower .cd {
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--muted);
+}
+
 .tower .halt-group {
   margin-left: auto;
   display: flex;
