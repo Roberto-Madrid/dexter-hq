@@ -57,27 +57,29 @@ function GraphField({
           <circle key={`n-${index}`} cx={node.cx} cy={node.cy} r={node.r} fill={node.fill} />
         ))}
       </svg>
-      {graph.labels.map((label, index) => (
-        <div
-          className="nl"
-          key={`l-${index}`}
-          style={{
-            left: `${(label.left / graph.width) * 100}%`,
-            top: `${(label.top / graph.height) * 100}%`,
-            width: `${(label.width / graph.width) * 100}%`,
-            textAlign: label.align,
-            color: label.color,
-            fontWeight: label.weight,
-          }}
-        >
-          {label.lines.map((line, lineIndex) => (
-            <span key={lineIndex}>
-              {lineIndex > 0 ? <br /> : null}
-              {line}
-            </span>
-          ))}
-        </div>
-      ))}
+      {graph.labels.map((label, index) =>
+        label.lines.length === 0 ? null : (
+          <div
+            className="nl"
+            key={`l-${index}`}
+            style={{
+              left: `${(label.left / graph.width) * 100}%`,
+              top: `${(label.top / graph.height) * 100}%`,
+              width: `${(label.width / graph.width) * 100}%`,
+              textAlign: label.align,
+              color: label.color,
+              fontWeight: label.weight,
+            }}
+          >
+            {label.lines.map((line, lineIndex) => (
+              <span key={lineIndex}>
+                {lineIndex > 0 ? <br /> : null}
+                {line}
+              </span>
+            ))}
+          </div>
+        ),
+      )}
       <div className="gst">{graph.status}</div>
       {example ? <div className="ex graph-ex">{EXAMPLE_LABEL}</div> : null}
       {rules.left ? <div className="rule-l" /> : null}

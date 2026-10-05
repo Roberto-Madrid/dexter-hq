@@ -4,9 +4,12 @@ import { EXAMPLE_LABEL, exampleBots, exampleCounts } from "../../app/(hq)/exampl
 import { resumeClearsStop } from "../../app/(hq)/control-result.ts";
 import {
   assembleTower,
+  edgeCrossesLabel,
   exampleLabels,
   exampleTowerSnapshot,
   graphFromSwarm,
+  PHONE_SWARM_CHROME,
+  PHONE_SWARM_VIEWPORT,
   usesExampleFixtures,
 } from "../../app/(hq)/tower-model.ts";
 import { createMemoryConnectorStore } from "../../hq/connector-store.ts";
@@ -282,6 +285,141 @@ describe("control tower snapshot", () => {
     expect(overlaps).toBe(0);
     const uniqueLeft = new Set(lower.map((label) => Math.round(label.left)));
     expect(uniqueLeft.size).toBeGreaterThan(2);
+  });
+
+  it("at 390×844 keeps Dexter centered and never lets an edge cross a label", () => {
+    const titles = [
+      "Tower graph matches the approved layout",
+      "Stage 1 Council endpoint",
+      "Resume after STOP ALL",
+      "Needs-you approval executor",
+      "Stage 1 STOP ALL",
+      "Stage 1 dashboard panels",
+      "Token police development",
+      "chore: denser home + familia 20px base font",
+      "English carpool skill (cost)",
+      "English AGENTS.md + carpool.mdc",
+      "chore: familia 20px, denser home, fix hydration",
+      "Dexter initial product",
+      "chore: ws transport for Supabase admin on Node 20",
+      "Fix familia anuncios open animation + mid-flow restore",
+      "Stage 0 MCP stub",
+      "Stage 1 connector tools",
+      "Add pickup_state revoke migration",
+      "chore: bump /familia base font to 17px",
+      "One Council seat B through path",
+      "Light control tower",
+      "stage1-proof",
+    ];
+    const nodes = [
+      { id: "dexter", label: "Dexter", parentId: null, tone: "live" as const },
+      ...titles.map((label, index) => ({
+        id: `n-${index}`,
+        label,
+        parentId: "dexter",
+        tone: "forming" as const,
+        ring: (index === titles.length - 1 ? 1 : 2) as 1 | 2,
+      })),
+    ];
+    const sizes = [PHONE_SWARM_VIEWPORT, { width: 390, height: PHONE_SWARM_VIEWPORT.height - PHONE_SWARM_CHROME }];
+    for (const size of sizes) {
+      const graph = graphFromSwarm(nodes, size, "Growing from Dexter · 0 of 21 links live");
+      expect(graph.nodes).toHaveLength(22);
+      expect(graph.nodes[0]).toMatchObject({ cx: size.width / 2, cy: size.height / 2 });
+      expect(graph.labels[0]?.lines).toEqual(["Dexter"]);
+      const boxes = graph.labels
+        .filter((label) => label.lines.length > 0)
+        .map((label) => ({
+          left: label.left,
+          top: label.top,
+          width: label.width,
+          height: label.lines.length * 13,
+        }));
+      for (const line of graph.lines) {
+        for (const box of boxes) {
+          expect(edgeCrossesLabel(line, box)).toBe(false);
+        }
+      }
+      for (let i = 0; i < boxes.length; i += 1) {
+        for (let j = i + 1; j < boxes.length; j += 1) {
+          const a = boxes[i];
+          const b = boxes[j];
+          const hit = !(
+            a.left + a.width + 3 <= b.left ||
+            b.left + b.width + 3 <= a.left ||
+            a.top + a.height + 3 <= b.top ||
+            b.top + b.height + 3 <= a.top
+          );
+          expect(hit).toBe(false);
+        }
+      }
+      expect(graph.labels.filter((label) => label.lines.length === 1).length).toBeGreaterThan(0);
+      expect(graph.labels.every((label) => label.lines.length <= 1)).toBe(true);
+      expect(graph.nodes.length - 1).toBe(21);
+    }
+  });
+
+  it("at 390×844 stops both ends of each edge at their dots, including the hub", () => {
+    const titles = [
+      "Tower graph matches the approved layout",
+      "Stage 1 Council endpoint",
+      "Resume after STOP ALL",
+      "Needs-you approval executor",
+      "Stage 1 STOP ALL",
+      "Stage 1 dashboard panels",
+      "Token police development",
+      "chore: denser home + familia 20px base font",
+      "English carpool skill (cost)",
+      "English AGENTS.md + carpool.mdc",
+      "chore: familia 20px, denser home, fix hydration",
+      "Dexter initial product",
+      "chore: ws transport for Supabase admin on Node 20",
+      "Fix familia anuncios open animation + mid-flow restore",
+      "Stage 0 MCP stub",
+      "Stage 1 connector tools",
+      "Add pickup_state revoke migration",
+      "chore: bump /familia base font to 17px",
+      "One Council seat B through path",
+      "Light control tower",
+      "stage1-proof",
+    ];
+    const nodes = [
+      { id: "dexter", label: "Dexter", parentId: null, tone: "live" as const },
+      ...titles.map((label, index) => ({
+        id: `n-${index}`,
+        label,
+        parentId: "dexter",
+        tone: "forming" as const,
+        ring: (index === titles.length - 1 ? 1 : 2) as 1 | 2,
+      })),
+    ];
+    const graph = graphFromSwarm(nodes, PHONE_SWARM_VIEWPORT, "Growing from Dexter · 0 of 21 links live");
+    expect(graph.lines).toHaveLength(21);
+    const hub = graph.nodes[0];
+    expect(hub).toMatchObject({ cx: 195, cy: 422, r: 4.5 });
+    for (const line of graph.lines) {
+      for (const end of [
+        { x: line.x1, y: line.y1 },
+        { x: line.x2, y: line.y2 },
+      ]) {
+        const nearest = graph.nodes
+          .map((node) => ({ node, dist: Math.hypot(end.x - node.cx, end.y - node.cy) }))
+          .sort((a, b) => a.dist - b.dist)[0];
+        expect(nearest.dist).toBeCloseTo(nearest.node.r, 5);
+      }
+    }
+    const hubEnds = graph.lines.map((line) => {
+      const d1 = Math.hypot(line.x1 - hub.cx, line.y1 - hub.cy);
+      const d2 = Math.hypot(line.x2 - hub.cx, line.y2 - hub.cy);
+      return Math.min(d1, d2);
+    });
+    expect(hubEnds.every((dist) => Math.abs(dist - hub.r) < 1e-6)).toBe(true);
+    const dexter = graph.labels[0];
+    expect(dexter?.lines).toEqual(["Dexter"]);
+    const dexterBox = { left: dexter.left, top: dexter.top, width: dexter.width, height: dexter.lines.length * 13 };
+    for (const line of graph.lines) {
+      expect(edgeCrossesLabel(line, dexterBox)).toBe(false);
+    }
   });
 
   it("fails if the tower can stop and then has no Resume path to /api/resume", () => {
