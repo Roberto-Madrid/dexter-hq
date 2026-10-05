@@ -36,7 +36,7 @@ export type PostType =
   | "handoff";
 export type FindingStatus = "claimed" | "verified" | "stale";
 export type Sensitivity = "none" | "client" | "personal";
-export type CancelState = "confirmed" | "requested" | "unsupported";
+export type CancelState = "confirmed" | "requested" | "unsupported" | "unconfirmed";
 
 export type Caps = {
   nativeUnits?: number;

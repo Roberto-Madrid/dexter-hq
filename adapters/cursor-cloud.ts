@@ -64,9 +64,10 @@ export function createCursorCloud(options: {
     async cancel(handle: RunHandle): Promise<CancelResult> {
       const [agentId, runId] = handle.id.split(":");
       const response = await fetchImpl(`${base}/v1/agents/${agentId}/runs/${runId}/cancel`, { method: "POST", headers });
+      if (response.ok) return { state: "confirmed" };
       if (response.status === 404) return { state: "unsupported" };
       if (response.status >= 500) return { state: "requested" };
-      return { state: "confirmed" };
+      return { state: "unconfirmed" };
     },
     async followup(handle: RunHandle, text: string): Promise<RunHandle> {
       const [agentId] = handle.id.split(":");

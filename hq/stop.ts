@@ -131,6 +131,7 @@ async function cancelRuntime(
   runtime: HqDeps["runtimes"][string],
   reports: StopReport[],
   seen: Set<string>,
+  confirmed: Set<string>,
 ): Promise<void> {
   let runs: { id: string; runtime: string }[] = [];
   try {
@@ -144,6 +145,7 @@ async function cancelRuntime(
     try {
       const result = await runtime.cancel({ id: run.id, runtime: run.runtime });
       seen.add(run.id);
+      if (result.state === "confirmed") confirmed.add(run.id);
       reports.push({ id: run.id, runtime: run.runtime, state: mapState(result.state) });
     } catch {
       reports.push({ id: run.id, runtime: run.runtime, state: "unconfirmed" });
@@ -151,7 +153,12 @@ async function cancelRuntime(
   }
 }
 
-async function cancelConnectorAgents(deps: HqDeps, reports: StopReport[], seen: Set<string>): Promise<void> {
+async function cancelConnectorAgents(
+  deps: HqDeps,
+  reports: StopReport[],
+  seen: Set<string>,
+  confirmed: Set<string>,
+): Promise<void> {
   const connector = deps.connector;
   const runtime = deps.runtimes[CURSOR_RUNTIME];
   if (!connector || !runtime) return;
@@ -168,16 +175,18 @@ async function cancelConnectorAgents(deps: HqDeps, reports: StopReport[], seen: 
       try {
         const result = await runtime.cancel({ id, runtime: CURSOR_RUNTIME });
         seen.add(id);
+        if (result.state === "confirmed") confirmed.add(id);
         reports.push({ id, runtime: CURSOR_RUNTIME, state: mapState(result.state) });
       } catch {
         reports.push({ id, runtime: CURSOR_RUNTIME, state: "unconfirmed" });
         continue;
       }
     }
+    if (!confirmed.has(id)) continue;
     try {
       await connector.saveAgent({ ...agent, status: "cancelled" });
     } catch {
-      // Caps still drop on the next list if this write fails; cancel already ran.
+      // Caps stay occupied if this write fails; the next STOP ALL can retry.
     }
   }
 }
@@ -192,10 +201,11 @@ export async function stopAll(store: HqStore, deps: HqDeps): Promise<{ reports: 
     await reportCursorWithoutKey(store, deps.connector, reports);
   }
   const seen = new Set<string>();
+  const confirmed = new Set<string>();
   for (const [name, runtime] of Object.entries(deps.runtimes)) {
-    await cancelRuntime(name, runtime, reports, seen);
+    await cancelRuntime(name, runtime, reports, seen, confirmed);
   }
-  await cancelConnectorAgents(deps, reports, seen);
+  await cancelConnectorAgents(deps, reports, seen, confirmed);
   return { reports, asOf };
 }
 
