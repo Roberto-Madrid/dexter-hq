@@ -49,6 +49,17 @@ function runIdFromBody(body: Record<string, unknown>): string | null {
   return textId(asRecord(body.run).id) ?? textId(body.id) ?? textId(asRecord(body.agent).latestRunId);
 }
 
+function shortErrorCode(body: unknown): string | undefined {
+  const record = asRecord(body);
+  for (const key of ["code", "error", "error_code"] as const) {
+    const value = record[key];
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(trimmed)) return trimmed;
+  }
+  return undefined;
+}
+
 export function createCursorCloud(options: {
   apiKey: string;
   fetchImpl?: FetchLike;
@@ -61,18 +72,20 @@ export function createCursorCloud(options: {
   const fetchImpl = options.fetchImpl ?? fetch;
   const base = options.base ?? "https://api.cursor.com";
   const ownerId = options.ownerId ?? "owner";
-  const headers = { Accept: "application/json", Authorization: `Bearer ${options.apiKey}`, "Content-Type": "application/json" };
+  const authHeaders = { Accept: "application/json", Authorization: `Bearer ${options.apiKey}` };
+  const jsonHeaders = { ...authHeaders, "Content-Type": "application/json" };
 
   function cancelUrl(agentId: string, runId: string): string {
     return `${base}/v1/agents/${encodeURIComponent(agentId)}/runs/${encodeURIComponent(runId)}/cancel`;
   }
 
   async function postCancel(agentId: string, runId: string): Promise<Response> {
-    return fetchImpl(cancelUrl(agentId, runId), { method: "POST", headers });
+    // Documented cancel is POST with no body. Do not send Content-Type: application/json.
+    return fetchImpl(cancelUrl(agentId, runId), { method: "POST", headers: authHeaders });
   }
 
   async function latestRunId(agentId: string): Promise<string | null> {
-    const response = await fetchImpl(`${base}/v1/agents/${encodeURIComponent(agentId)}`, { headers });
+    const response = await fetchImpl(`${base}/v1/agents/${encodeURIComponent(agentId)}`, { headers: authHeaders });
     if (!response.ok) return null;
     const body = asRecord(await readJson(response));
     const agent = asRecord(body.agent ?? body);
@@ -80,10 +93,12 @@ export function createCursorCloud(options: {
   }
 
   async function classifyCancel(response: Response): Promise<CancelResult> {
-    if (response.ok) return { state: "confirmed" };
-    if (response.status === 404) return { state: "unsupported" };
-    if (response.status >= 500) return { state: "requested" };
-    return { state: "unconfirmed" };
+    const errorCode = shortErrorCode(await readJson(response));
+    const httpStatus = response.status;
+    if (response.ok) return { state: "confirmed", httpStatus };
+    if (httpStatus === 404) return { state: "unsupported", httpStatus, ...(errorCode ? { errorCode } : {}) };
+    if (httpStatus >= 500) return { state: "requested", httpStatus, ...(errorCode ? { errorCode } : {}) };
+    return { state: "unconfirmed", httpStatus, ...(errorCode ? { errorCode } : {}) };
   }
 
   return {
@@ -91,7 +106,7 @@ export function createCursorCloud(options: {
       const agentId = `bc-${randomUUID()}`;
       const response = await fetchImpl(`${base}/v1/agents`, {
         method: "POST",
-        headers,
+        headers: jsonHeaders,
         body: JSON.stringify({
           agentId,
           name: spec.idempotencyKey,
@@ -107,7 +122,7 @@ export function createCursorCloud(options: {
     async status(handle: RunHandle): Promise<RunStatus> {
       const { agentId, runId } = parseHandle(handle.id);
       if (!runId) return { state: "unknown", usage: {} };
-      const response = await fetchImpl(`${base}/v1/agents/${encodeURIComponent(agentId)}/runs/${encodeURIComponent(runId)}`, { headers });
+      const response = await fetchImpl(`${base}/v1/agents/${encodeURIComponent(agentId)}/runs/${encodeURIComponent(runId)}`, { headers: authHeaders });
       const body = asRecord(await readJson(response));
       const run = asRecord(body.run ?? body);
       return { state: String(run.status ?? "unknown"), usage: {} };
@@ -117,7 +132,7 @@ export function createCursorCloud(options: {
       const firstRun = runId ?? (await latestRunId(agentId));
       if (!agentId || !firstRun) return { state: "unconfirmed" };
       const first = await postCancel(agentId, firstRun);
-      if (first.ok) return { state: "confirmed" };
+      if (first.ok) return classifyCancel(first);
       if (first.status === 409 || first.status === 404) {
         const refreshed = await latestRunId(agentId);
         if (refreshed && refreshed !== firstRun) {
@@ -130,7 +145,7 @@ export function createCursorCloud(options: {
       const { agentId } = parseHandle(handle.id);
       const response = await fetchImpl(`${base}/v1/agents/${encodeURIComponent(agentId)}/runs`, {
         method: "POST",
-        headers,
+        headers: jsonHeaders,
         body: JSON.stringify({ prompt: { text } }),
       });
       const body = asRecord(await readJson(response));
@@ -140,7 +155,7 @@ export function createCursorCloud(options: {
     },
     async collect(handle: RunHandle): Promise<Artifact[]> {
       const { agentId } = parseHandle(handle.id);
-      const response = await fetchImpl(`${base}/v1/agents/${encodeURIComponent(agentId)}/artifacts`, { headers });
+      const response = await fetchImpl(`${base}/v1/agents/${encodeURIComponent(agentId)}/artifacts`, { headers: authHeaders });
       const body = asRecord(await readJson(response));
       const list = body.artifacts ?? body.items ?? [];
       if (!Array.isArray(list)) return [];
@@ -159,7 +174,7 @@ export function createCursorCloud(options: {
       });
     },
     async listInProgress(): Promise<{ id: string; runtime: string }[]> {
-      const response = await fetchImpl(`${base}/v1/agents`, { headers });
+      const response = await fetchImpl(`${base}/v1/agents`, { headers: authHeaders });
       const body = asRecord(await readJson(response));
       const list = body.agents ?? body.items ?? [];
       if (!Array.isArray(list)) return [];

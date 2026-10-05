@@ -293,7 +293,9 @@ describe("STOP ALL", () => {
         new MemoryStore(),
         hqDeps({ connector, runtimes: { "cursor-cloud": cursorCancelStatus(item.status) } }),
       );
-      expect(result.reports).toEqual([{ id: "bc-paid:run-9", runtime: "cursor-cloud", state: item.report }]);
+      expect(result.reports).toEqual([
+        { id: "bc-paid:run-9", runtime: "cursor-cloud", state: item.report, httpStatus: item.status },
+      ]);
       expect((await connector.listAgents())[0]?.status).toBe("launched");
     }
   });
@@ -339,7 +341,10 @@ describe("STOP ALL", () => {
         return new Response(JSON.stringify({ items: [] }), { status: 200 });
       },
     });
-    expect(await cursor.cancel({ id: "bc-paid:run-9", runtime: "cursor-cloud" })).toEqual({ state: "confirmed" });
+    expect(await cursor.cancel({ id: "bc-paid:run-9", runtime: "cursor-cloud" })).toEqual({
+      state: "confirmed",
+      httpStatus: 200,
+    });
     expect(calls.some((line) => line.includes("/runs/run-9/cancel"))).toBe(true);
     expect(calls.some((line) => line.endsWith("/v1/agents/bc-paid"))).toBe(true);
     expect(calls.some((line) => line.includes("/runs/run-live/cancel"))).toBe(true);
@@ -347,7 +352,9 @@ describe("STOP ALL", () => {
     const connector = connectorSeed();
     await connector.saveAgent(launchedAgent());
     const result = await stopAll(new MemoryStore(), hqDeps({ connector, runtimes: { "cursor-cloud": cursor } }));
-    expect(result.reports).toEqual([{ id: "bc-paid:run-9", runtime: "cursor-cloud", state: "stopped" }]);
+    expect(result.reports).toEqual([
+      { id: "bc-paid:run-9", runtime: "cursor-cloud", state: "stopped", httpStatus: 200 },
+    ]);
     expect((await connector.listAgents())[0]?.status).toBe("cancelled");
   });
 
@@ -359,7 +366,9 @@ describe("STOP ALL", () => {
       hqDeps({ connector, runtimes: { "cursor-cloud": cursorCancelStatus(200) } }),
     );
     const event = (await connector.listEvents()).find((item) => item.action === "stop_all");
-    expect(result.reports).toEqual([{ id: "bc-paid:run-9", runtime: "cursor-cloud", state: "stopped" }]);
+    expect(result.reports).toEqual([
+      { id: "bc-paid:run-9", runtime: "cursor-cloud", state: "stopped", httpStatus: 200 },
+    ]);
     expect(event?.result).toEqual({
       status: "stopped",
       tokens: "suspended",
@@ -386,9 +395,45 @@ describe("STOP ALL", () => {
     const cursor500 = cursorCancelStatus(500);
     const cursor200 = cursorCancelStatus(200);
     const handle = { id: "bc-paid:run-9", runtime: "cursor-cloud" as const };
-    expect(await cursor401.cancel(handle)).toEqual({ state: "unconfirmed" });
-    expect(await cursor404.cancel(handle)).toEqual({ state: "unsupported" });
-    expect(await cursor500.cancel(handle)).toEqual({ state: "requested" });
-    expect(await cursor200.cancel(handle)).toEqual({ state: "confirmed" });
+    expect(await cursor401.cancel(handle)).toEqual({ state: "unconfirmed", httpStatus: 401 });
+    expect(await cursor404.cancel(handle)).toEqual({ state: "unsupported", httpStatus: 404 });
+    expect(await cursor500.cancel(handle)).toEqual({ state: "requested", httpStatus: 500 });
+    expect(await cursor200.cancel(handle)).toEqual({ state: "confirmed", httpStatus: 200 });
+  });
+
+  it("cancels without a JSON content-type or body and records HTTP diagnostics", async () => {
+    const cancels: { headers: HeadersInit | undefined; body: BodyInit | null | undefined }[] = [];
+    const cursor = createCursorCloud({
+      apiKey: "test-key",
+      base: "https://example.com",
+      fetchImpl: async (input, init) => {
+        const url = String(input);
+        if ((init?.method ?? "GET") === "POST" && url.includes("/cancel")) {
+          cancels.push({ headers: init?.headers, body: init?.body });
+          return new Response(JSON.stringify({ code: "invalid_json", message: "secret-token-value" }), { status: 400 });
+        }
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      },
+    });
+    const handle = { id: "bc-paid:run-9", runtime: "cursor-cloud" as const };
+    expect(await cursor.cancel(handle)).toEqual({
+      state: "unconfirmed",
+      httpStatus: 400,
+      errorCode: "invalid_json",
+    });
+    expect(cancels).toHaveLength(1);
+    expect(cancels[0]?.body).toBeUndefined();
+    const raw = cancels[0]?.headers;
+    const names = raw instanceof Headers ? [...raw.keys()] : Object.keys(raw ?? {});
+    expect(names.some((name) => name.toLowerCase() === "content-type")).toBe(false);
+
+    const connector = connectorSeed();
+    await connector.saveAgent(launchedAgent());
+    const result = await stopAll(new MemoryStore(), hqDeps({ connector, runtimes: { "cursor-cloud": cursor } }));
+    expect(result.reports).toEqual([
+      { id: "bc-paid:run-9", runtime: "cursor-cloud", state: "unconfirmed", httpStatus: 400, errorCode: "invalid_json" },
+    ]);
+    expect(JSON.stringify(result.reports)).not.toContain("secret-token-value");
+    expect((await connector.listAgents())[0]?.status).toBe("launched");
   });
 });

@@ -44,6 +44,8 @@ export const StopReportSchema = z.object({
   id: z.string(),
   runtime: z.string(),
   state: z.enum(["stopping", "stopped", "unconfirmed"]),
+  httpStatus: z.number().int().min(100).max(599).optional(),
+  errorCode: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/).optional(),
 });
 
 export const StopResultSchema = z.object({
