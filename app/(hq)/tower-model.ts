@@ -27,7 +27,7 @@ import {
 
 export type DataSource = "live" | "example";
 
-export type TowerCount = { label: string; value: string; source: DataSource };
+export type TowerCount = { label: string; value: string; source: DataSource; detail?: string };
 
 export type TowerRequest = {
   id: string;
@@ -53,6 +53,7 @@ export type SwarmNode = {
   label: string;
   parentId: string | null;
   tone: "live" | "forming" | "dim";
+  ring?: 1 | 2;
 };
 
 export type TowerSnapshot = {
@@ -74,6 +75,24 @@ export type TowerSnapshot = {
 export const STALE_MS = 5 * 60 * 1000;
 const CEO_ACTIONS = new Set(["open_request", "assign", "request_council", "update_request"]);
 const ACTIVE_AGENT = new Set(["launched", "running", "starting", "CREATING", "RUNNING", "queued"]);
+const DONE_AGENT = new Set([
+  "FINISHED",
+  "ERROR",
+  "FAILED",
+  "CANCELLED",
+  "EXPIRED",
+  "STOPPED",
+  "finished",
+  "done",
+  "failed",
+  "cancelled",
+  "stopped",
+  "complete",
+  "COMPLETED",
+]);
+const DEXTER_HUB_ID = "dexter";
+const LABEL_CHAR_W = 6.4;
+const LABEL_LINE_H = 13;
 
 export type ConnectorLive = {
   stopped?: boolean;
@@ -102,6 +121,161 @@ function toneFill(tone: SwarmNode["tone"]): string {
   return DIM;
 }
 
+function isActiveStatus(status?: string): boolean {
+  return Boolean(status && ACTIVE_AGENT.has(status));
+}
+
+function agentTone(status?: string): SwarmNode["tone"] {
+  if (!status) return "forming";
+  if (ACTIVE_AGENT.has(status)) return "live";
+  if (DONE_AGENT.has(status)) return "dim";
+  return "forming";
+}
+
+function wrapLabel(text: string, maxChars = 20): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [""];
+  if (trimmed.length <= maxChars) return [trimmed];
+  const words = trimmed.split(/\s+/);
+  if (words.length === 1) {
+    return [trimmed.slice(0, maxChars), trimmed.slice(maxChars)];
+  }
+  const lines = ["", ""];
+  for (const word of words) {
+    const slot = lines[0] && lines[0].length + word.length + 1 > maxChars ? 1 : 0;
+    lines[slot] = lines[slot] ? `${lines[slot]} ${word}` : word;
+  }
+  return lines.filter(Boolean).slice(0, 2);
+}
+
+function labelSize(lines: string[]): { width: number; height: number } {
+  const width = Math.min(160, Math.max(24, ...lines.map((line) => Math.ceil(line.length * LABEL_CHAR_W))));
+  return { width, height: lines.length * LABEL_LINE_H };
+}
+
+function boxesOverlap(
+  a: { left: number; top: number; width: number; height: number },
+  b: { left: number; top: number; width: number; height: number },
+  gap = 3,
+): boolean {
+  return !(
+    a.left + a.width + gap <= b.left ||
+    b.left + b.width + gap <= a.left ||
+    a.top + a.height + gap <= b.top ||
+    b.top + b.height + gap <= a.top
+  );
+}
+
+function placeOnRing(
+  items: SwarmNode[],
+  placed: Map<string, { x: number; y: number; angle: number }>,
+  cx: number,
+  cy: number,
+  radius: number,
+): void {
+  const count = Math.max(items.length, 1);
+  items.forEach((item, index) => {
+    const angle = -Math.PI / 2 + (2 * Math.PI * index) / count;
+    placed.set(item.id, {
+      x: cx + Math.cos(angle) * radius,
+      y: cy + Math.sin(angle) * radius,
+      angle,
+    });
+  });
+}
+
+function ringRadius(size: { width: number; height: number }, count: number, inner: boolean, hasOuter: boolean): number {
+  const minDim = Math.min(size.width, size.height);
+  if (count <= 0) return minDim * 0.22;
+  const needed = (count * 56) / (2 * Math.PI);
+  if (inner && hasOuter) return Math.min(minDim * 0.24, Math.max(minDim * 0.18, needed * 0.55));
+  if (inner) return Math.min(minDim * 0.38, Math.max(minDim * 0.24, needed));
+  return Math.min(minDim * 0.42, Math.max(minDim * 0.34, needed));
+}
+
+type PlacedLabel = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  align: "left" | "right" | "center";
+  color: string;
+  weight: 400 | 500;
+  lines: string[];
+  angle: number;
+};
+
+function labelForNode(
+  node: SwarmNode,
+  point: { x: number; y: number; angle: number },
+  size: { width: number; height: number },
+): PlacedLabel {
+  const lines = wrapLabel(node.label);
+  const box = labelSize(lines);
+  const color = toneFill(node.tone) === DIM ? DIM : node.parentId ? toneFill(node.tone) : INK;
+  if (!node.parentId) {
+    return {
+      left: point.x + 12,
+      top: point.y - 6,
+      width: Math.max(box.width, 34),
+      height: box.height,
+      align: "left",
+      color: INK,
+      weight: 500,
+      lines,
+      angle: 0,
+    };
+  }
+  const pad = 10;
+  const cos = Math.cos(point.angle);
+  const sin = Math.sin(point.angle);
+  let align: PlacedLabel["align"] = "left";
+  let left = point.x + pad;
+  let top = point.y - box.height / 2;
+  if (Math.abs(cos) < 0.42) {
+    align = "center";
+    left = point.x - box.width / 2;
+    top = sin < 0 ? point.y - 8 - box.height : point.y + 8;
+  } else if (cos < 0) {
+    align = "right";
+    left = point.x - pad - box.width;
+  }
+  const maxLeft = size.width - box.width - 8;
+  const maxTop = size.height - box.height - 36;
+  return {
+    left: Math.min(maxLeft, Math.max(8, left)),
+    top: Math.min(maxTop, Math.max(8, top)),
+    width: box.width,
+    height: box.height,
+    align,
+    color,
+    weight: 400,
+    lines,
+    angle: point.angle,
+  };
+}
+
+function separateLabels(labels: PlacedLabel[], size: { width: number; height: number }): void {
+  for (let pass = 0; pass < 8; pass += 1) {
+    let moved = false;
+    for (let i = 0; i < labels.length; i += 1) {
+      for (let j = i + 1; j < labels.length; j += 1) {
+        const a = labels[i];
+        const b = labels[j];
+        if (!boxesOverlap(a, b)) continue;
+        const push = 10;
+        const target = Math.abs(Math.sin(b.angle)) >= Math.abs(Math.sin(a.angle)) ? b : a;
+        target.left += Math.cos(target.angle) * push;
+        target.top += Math.sin(target.angle) * push;
+        target.left = Math.min(size.width - target.width - 8, Math.max(8, target.left));
+        target.top = Math.min(size.height - target.height - 36, Math.max(8, target.top));
+        moved = true;
+      }
+    }
+    if (!moved) return;
+  }
+}
+
 export function graphFromSwarm(
   nodes: SwarmNode[],
   size: { width: number; height: number },
@@ -121,39 +295,48 @@ export function graphFromSwarm(
     list.push(node);
     children.set(node.parentId, list);
   }
-  const placed = new Map<string, { x: number; y: number }>();
+  const placed = new Map<string, { x: number; y: number; angle: number }>();
   if (roots.length === 0) {
     return { width: size.width, height: size.height, status, lines: [], nodes: [], labels: [] };
   }
-  const root = roots[0];
-  placed.set(root.id, { x: cx, y: cy });
-  const radius = Math.min(size.width, size.height) * 0.22;
-  const first = children.get(root.id) ?? roots.slice(1);
-  first.forEach((child, index) => {
-    const angle = -Math.PI / 2 + (2 * Math.PI * index) / Math.max(first.length, 1);
-    const x = cx + Math.cos(angle) * radius;
-    const y = cy + Math.sin(angle) * radius;
-    placed.set(child.id, { x, y });
-    const grand = children.get(child.id) ?? [];
-    grand.forEach((item, grandIndex) => {
-      const spread = (grandIndex - (grand.length - 1) / 2) * 0.28;
-      placed.set(item.id, {
-        x: cx + Math.cos(angle + spread) * radius * 1.7,
-        y: cy + Math.sin(angle + spread) * radius * 1.7,
-      });
-    });
-  });
+  const root =
+    roots.find((node) => node.label.trim().toLowerCase() === "dexter") ??
+    roots.find((node) => node.id === DEXTER_HUB_ID) ??
+    roots[0];
+  placed.set(root.id, { x: cx, y: cy, angle: 0 });
+  const first = [...(children.get(root.id) ?? []), ...roots.filter((node) => node.id !== root.id)];
+  const inner = first.filter((node) => node.ring !== 2);
+  const outer = first.filter((node) => node.ring === 2);
+  const nested: SwarmNode[] = [];
+  for (const child of first) {
+    nested.push(...(children.get(child.id) ?? []));
+  }
+  const ring2 = outer.length > 0 ? outer : nested;
+  const ring1 = inner;
+  placeOnRing(ring1, placed, cx, cy, ringRadius(size, ring1.length, true, ring2.length > 0));
+  if (ring2.length > 0) {
+    placeOnRing(ring2, placed, cx, cy, ringRadius(size, ring2.length, false, true));
+  }
   for (const node of nodes) {
     if (placed.has(node.id)) continue;
-    placed.set(node.id, { x: cx, y: cy + radius });
+    placed.set(node.id, { x: cx, y: cy + ringRadius(size, 1, true, false), angle: Math.PI / 2 });
   }
   const lines = nodes.flatMap((node) => {
-    if (!node.parentId) return [];
-    const from = placed.get(node.parentId);
+    const parentId = node.parentId && byId.has(node.parentId) ? node.parentId : node.id === root.id ? null : root.id;
+    if (!parentId) return [];
+    const from = placed.get(parentId);
     const to = placed.get(node.id);
     if (!from || !to) return [];
     return [{ x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: toneFill(node.tone) }];
   });
+  const labels = nodes.map((node) => {
+    const point = placed.get(node.id) ?? { x: cx, y: cy, angle: 0 };
+    return labelForNode(node, point, size);
+  });
+  separateLabels(
+    labels.filter((label) => label.weight !== 500),
+    size,
+  );
   return {
     width: size.width,
     height: size.height,
@@ -163,18 +346,15 @@ export function graphFromSwarm(
       const point = placed.get(node.id) ?? { x: cx, y: cy };
       return { cx: point.x, cy: point.y, r: node.parentId ? 3.5 : 4.5, fill: toneFill(node.tone) };
     }),
-    labels: nodes.map((node) => {
-      const point = placed.get(node.id) ?? { x: cx, y: cy };
-      return {
-        left: point.x + 12,
-        top: point.y - 6,
-        width: Math.min(140, size.width - point.x - 16),
-        align: "left" as const,
-        color: toneFill(node.tone) === DIM ? DIM : node.parentId ? toneFill(node.tone) : INK,
-        weight: node.parentId ? (400 as const) : (500 as const),
-        lines: [node.label],
-      };
-    }),
+    labels: labels.map((label) => ({
+      left: label.left,
+      top: label.top,
+      width: label.width,
+      align: label.align,
+      color: label.color,
+      weight: label.weight,
+      lines: label.lines,
+    })),
   };
 }
 
@@ -316,72 +496,91 @@ export function assembleTower(input: TowerInputs): TowerSnapshot {
       ? { source: "live" as const, items: ceoEvents.slice(0, 5).map(ceoLine) }
       : example.ceo;
 
+  const hasSwarmMembers = Boolean(botsLive) || agents.length > 0 || cursorRuns.length > 0;
   const swarmNodes: SwarmNode[] = [];
-  if (botsLive) {
-    const ceoBot = botsLive.find((bot) => bot.kind === "ceo") ?? botsLive[0];
-    for (const bot of botsLive) {
+  if (hasSwarmMembers) {
+    const ceoBot =
+      botsLive?.find((bot) => bot.kind === "ceo") ??
+      botsLive?.find((bot) => bot.name.trim().toLowerCase() === "dexter");
+    const rootId = ceoBot?.id ?? DEXTER_HUB_ID;
+    swarmNodes.push({
+      id: rootId,
+      label: "Dexter",
+      parentId: null,
+      tone: ceoBot ? botTone(botState(ceoBot, input.nowMs)) : "live",
+    });
+    for (const bot of botsLive ?? []) {
+      if (bot.id === rootId) continue;
       swarmNodes.push({
         id: bot.id,
         label: bot.name,
-        parentId: bot.id === ceoBot.id ? null : ceoBot.id,
+        parentId: rootId,
         tone: botTone(botState(bot, input.nowMs)),
+        ring: 1,
       });
     }
     for (const agent of agents) {
       swarmNodes.push({
         id: agent.id,
         label: agent.role,
-        parentId: botById.has(agent.botId) ? agent.botId : ceoBot.id,
-        tone: ACTIVE_AGENT.has(agent.status) ? "live" : "forming",
+        parentId: rootId,
+        tone: agentTone(agent.status),
+        ring: 2,
+      });
+    }
+    for (const run of cursorRuns) {
+      const known = agents.some((agent) => agent.cursorHandle === run.id || agent.id === run.id);
+      if (known) continue;
+      swarmNodes.push({
+        id: run.id,
+        label: run.name?.trim() || shortId(run.id),
+        parentId: rootId,
+        tone: agentTone(run.status),
+        ring: 2,
       });
     }
   }
-  for (const run of cursorRuns) {
-    const known = agents.some((agent) => agent.cursorHandle === run.id || agent.id === run.id);
-    if (known) continue;
-    swarmNodes.push({
-      id: run.id,
-      label: run.name?.trim() || shortId(run.id),
-      parentId: swarmNodes.find((node) => node.parentId === null)?.id ?? null,
-      tone: "live",
-    });
-  }
 
   const liveSwarm = swarmNodes.length > 0;
-  const liveLinks = swarmNodes.filter((node) => node.tone === "live").length;
-  const rootLabel = swarmNodes.find((node) => node.parentId === null)?.label ?? "Swarm";
-  const swarmStatus = `${rootLabel} · ${liveLinks} of ${swarmNodes.length} links live`;
+  const liveLinks = swarmNodes.filter((node) => node.parentId && node.tone === "live").length;
+  const swarmStatus = `Growing from Dexter · ${liveLinks} of ${Math.max(swarmNodes.length - 1, 0)} links live`;
   const swarm = liveSwarm
     ? {
         source: "live" as const,
         desktop: graphFromSwarm(swarmNodes, { width: 860, height: 860 }, swarmStatus),
         phone: graphFromSwarm(swarmNodes, { width: 390, height: 712 }, swarmStatus),
-        request: graphFromSwarm(swarmNodes.slice(0, 3), { width: 960, height: 860 }, swarmStatus),
+        request: graphFromSwarm(
+          swarmNodes.filter((node) => !node.parentId || node.ring === 1).slice(0, 3),
+          { width: 960, height: 860 },
+          swarmStatus,
+        ),
         nodes: swarmNodes,
       }
     : { ...example.swarm, desktop: { ...desktopGraph, status: SWARM_STATUS } };
 
   const activeAgents = new Set<string>();
   for (const agent of agents) {
-    if (ACTIVE_AGENT.has(agent.status)) activeAgents.add(agent.cursorHandle ?? agent.id);
+    if (isActiveStatus(agent.status)) activeAgents.add(agent.cursorHandle ?? agent.id);
   }
-  for (const run of cursorRuns) activeAgents.add(run.id);
-  const agentsLive = Array.isArray(connector?.agents) || cursor != null;
+  for (const run of cursorRuns) {
+    if (!isActiveStatus(run.status)) continue;
+    activeAgents.add(run.id);
+  }
+  const liveContext = connector != null || cursor != null;
+  const agentsLive = liveContext;
   const healthLive = Boolean(botsLive);
   const councilLive = Array.isArray(connector?.events);
-  const cursorUsageLive = Boolean(cursor?.usageText);
+  const cursorUsage = cursor?.usageText?.trim() || "";
 
   const counts: TowerCount[] = [
-    {
-      label: "Agents",
-      value: agentsLive ? `${activeAgents.size}/${cap}` : example.counts[0].value,
-      source: agentsLive ? "live" : "example",
-    },
-    {
-      label: "Cursor",
-      value: cursorUsageLive && cursor?.usageText ? cursor.usageText : example.counts[1].value,
-      source: cursorUsageLive ? "live" : "example",
-    },
+    agentsLive
+      ? { label: "Agents", value: String(activeAgents.size), detail: `of ${cap}`, source: "live" }
+      : { label: "Agents", value: example.counts[0].value, source: "example" },
+    cursorUsage
+      ? { label: "Cursor", value: cursorUsage, source: "live" }
+      : liveContext
+        ? { label: "Cursor", value: "unknown", source: "live" }
+        : { label: "Cursor", value: example.counts[1].value, source: "example" },
     {
       label: "Council",
       value: councilLive ? String(weekCouncil(connector?.events ?? [], input.nowMs)) : example.counts[2].value,
