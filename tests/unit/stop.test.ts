@@ -402,7 +402,7 @@ describe("STOP ALL", () => {
   });
 
   it("cancels without a JSON content-type or body and records HTTP diagnostics", async () => {
-    const cancels: { headers: HeadersInit | undefined; body: BodyInit | null | undefined }[] = [];
+    const cancels: { headers?: unknown; body?: unknown }[] = [];
     const cursor = createCursorCloud({
       apiKey: "test-key",
       base: "https://example.com",
