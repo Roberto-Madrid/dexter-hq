@@ -7,7 +7,9 @@ import {
   createMemoryConnectorStore,
   hashBotToken,
 } from "../../hq/connector.ts";
-import type { HqDeps } from "../../hq/deps.ts";
+import { createCursorCloud } from "../../adapters/cursor-cloud.ts";
+import type { HqDeps, ListedRuntime } from "../../hq/deps.ts";
+import type { RunHandle } from "../../kernel/types.ts";
 import { MemoryStore } from "../../hq/memory.ts";
 import { resumeAll, stopAll } from "../../hq/stop.ts";
 import { createScriptedCeo } from "../../hq/scripted-ceo.ts";
@@ -189,5 +191,74 @@ describe("STOP ALL", () => {
     await stopAll(store, hqDeps({ connector, runtimes: {} }));
     expect((await store.listRequests())[0]?.status).toBe("cancelled");
     expect((await connector.listRequests())[0]?.status).toBe("cancelled");
+  });
+
+  it("treats lowercase Cursor agent statuses as in progress", async () => {
+    const cursor = createCursorCloud({
+      apiKey: "test-key",
+      base: "https://example.com",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            agents: [
+              { id: "bc-a", runId: "r1", status: "running" },
+              { id: "bc-b", runId: "r2", status: "CREATING" },
+              { id: "bc-c", runId: "r3", status: "Creating" },
+              { id: "bc-d", runId: "r4", status: "queued" },
+              { id: "bc-e", runId: "r5", status: "FINISHED" },
+              { id: "bc-f", runId: "r6", status: "finished" },
+            ],
+          }),
+          { status: 200 },
+        ),
+    });
+    expect((await cursor.listInProgress()).map((item) => item.id).sort()).toEqual([
+      "bc-a:r1",
+      "bc-b:r2",
+      "bc-c:r3",
+      "bc-d:r4",
+    ]);
+  });
+
+  it("cancels a launched connector agent when listInProgress is empty", async () => {
+    const cancelled: string[] = [];
+    const runtime: ListedRuntime = {
+      async start() {
+        return { id: "unused", runtime: "cursor-cloud" };
+      },
+      async status() {
+        return { state: "running", usage: {} };
+      },
+      async cancel(handle: RunHandle) {
+        cancelled.push(handle.id);
+        return { state: "confirmed" };
+      },
+      async collect() {
+        return [];
+      },
+      async listInProgress() {
+        return [];
+      },
+    };
+    const connector = connectorSeed();
+    await connector.saveAgent({
+      id: "agent-1",
+      ownerId: OWNER,
+      botId: BOT,
+      cursorHandle: "bc-paid:run-9",
+      repo: "owner/demo",
+      role: "builder",
+      family: "composer",
+      status: "launched",
+      idempotencyKey: "paid-1",
+      result: { status: "launched" },
+    });
+    const store = new MemoryStore();
+    const result = await stopAll(store, hqDeps({ connector, runtimes: { "cursor-cloud": runtime } }));
+    expect(cancelled).toEqual(["bc-paid:run-9"]);
+    expect(result.reports).toEqual([{ id: "bc-paid:run-9", runtime: "cursor-cloud", state: "stopped" }]);
+    expect((await connector.listAgents())[0]?.status).toBe("cancelled");
+    expect(await store.stopped()).toBe(true);
+    expect(await connector.stopped()).toBe(true);
   });
 });
