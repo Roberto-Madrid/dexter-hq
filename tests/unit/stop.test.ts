@@ -7,7 +7,9 @@ import {
   createMemoryConnectorStore,
   hashBotToken,
 } from "../../hq/connector.ts";
-import type { HqDeps } from "../../hq/deps.ts";
+import { createCursorCloud } from "../../adapters/cursor-cloud.ts";
+import type { HqDeps, ListedRuntime } from "../../hq/deps.ts";
+import type { RunHandle } from "../../kernel/types.ts";
 import { MemoryStore } from "../../hq/memory.ts";
 import { resumeAll, stopAll } from "../../hq/stop.ts";
 import { createScriptedCeo } from "../../hq/scripted-ceo.ts";
@@ -57,6 +59,35 @@ function connectorSeed(suspended = false) {
         suspended,
       },
     ],
+  });
+}
+
+function launchedAgent() {
+  return {
+    id: "agent-1",
+    ownerId: OWNER,
+    botId: BOT,
+    cursorHandle: "bc-paid:run-9",
+    repo: "owner/demo",
+    role: "builder",
+    family: "composer",
+    status: "launched",
+    idempotencyKey: "paid-1",
+    result: { status: "launched" },
+  };
+}
+
+function cursorCancelStatus(status: number): ListedRuntime {
+  return createCursorCloud({
+    apiKey: "test-key",
+    base: "https://example.com",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      if ((init?.method ?? "GET") === "POST" && url.includes("/cancel")) {
+        return new Response(null, { status });
+      }
+      return new Response(JSON.stringify({ agents: [] }), { status: 200 });
+    },
   });
 }
 
@@ -189,5 +220,93 @@ describe("STOP ALL", () => {
     await stopAll(store, hqDeps({ connector, runtimes: {} }));
     expect((await store.listRequests())[0]?.status).toBe("cancelled");
     expect((await connector.listRequests())[0]?.status).toBe("cancelled");
+  });
+
+  it("treats lowercase Cursor agent statuses as in progress", async () => {
+    const cursor = createCursorCloud({
+      apiKey: "test-key",
+      base: "https://example.com",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            agents: [
+              { id: "bc-a", runId: "r1", status: "running" },
+              { id: "bc-b", runId: "r2", status: "CREATING" },
+              { id: "bc-c", runId: "r3", status: "Creating" },
+              { id: "bc-d", runId: "r4", status: "queued" },
+              { id: "bc-e", runId: "r5", status: "FINISHED" },
+              { id: "bc-f", runId: "r6", status: "finished" },
+            ],
+          }),
+          { status: 200 },
+        ),
+    });
+    expect((await cursor.listInProgress()).map((item) => item.id).sort()).toEqual([
+      "bc-a:r1",
+      "bc-b:r2",
+      "bc-c:r3",
+      "bc-d:r4",
+    ]);
+  });
+
+  it("cancels a launched connector agent when listInProgress is empty", async () => {
+    const cancelled: string[] = [];
+    const runtime: ListedRuntime = {
+      async start() {
+        return { id: "unused", runtime: "cursor-cloud" };
+      },
+      async status() {
+        return { state: "running", usage: {} };
+      },
+      async cancel(handle: RunHandle) {
+        cancelled.push(handle.id);
+        return { state: "confirmed" };
+      },
+      async collect() {
+        return [];
+      },
+      async listInProgress() {
+        return [];
+      },
+    };
+    const connector = connectorSeed();
+    await connector.saveAgent(launchedAgent());
+    const store = new MemoryStore();
+    const result = await stopAll(store, hqDeps({ connector, runtimes: { "cursor-cloud": runtime } }));
+    expect(cancelled).toEqual(["bc-paid:run-9"]);
+    expect(result.reports).toEqual([{ id: "bc-paid:run-9", runtime: "cursor-cloud", state: "stopped" }]);
+    expect((await connector.listAgents())[0]?.status).toBe("cancelled");
+    expect(await store.stopped()).toBe(true);
+    expect(await connector.stopped()).toBe(true);
+  });
+
+  it("leaves a launched row live when Cursor cancel is not confirmed", async () => {
+    const cases: { status: number; report: "unconfirmed" | "stopping" }[] = [
+      { status: 401, report: "unconfirmed" },
+      { status: 404, report: "unconfirmed" },
+      { status: 500, report: "stopping" },
+    ];
+    for (const item of cases) {
+      const connector = connectorSeed();
+      await connector.saveAgent(launchedAgent());
+      const result = await stopAll(
+        new MemoryStore(),
+        hqDeps({ connector, runtimes: { "cursor-cloud": cursorCancelStatus(item.status) } }),
+      );
+      expect(result.reports).toEqual([{ id: "bc-paid:run-9", runtime: "cursor-cloud", state: item.report }]);
+      expect((await connector.listAgents())[0]?.status).toBe("launched");
+    }
+  });
+
+  it("confirms Cursor cancel only on 2xx", async () => {
+    const cursor401 = cursorCancelStatus(401);
+    const cursor404 = cursorCancelStatus(404);
+    const cursor500 = cursorCancelStatus(500);
+    const cursor200 = cursorCancelStatus(200);
+    const handle = { id: "bc-paid:run-9", runtime: "cursor-cloud" as const };
+    expect(await cursor401.cancel(handle)).toEqual({ state: "unconfirmed" });
+    expect(await cursor404.cancel(handle)).toEqual({ state: "unsupported" });
+    expect(await cursor500.cancel(handle)).toEqual({ state: "requested" });
+    expect(await cursor200.cancel(handle)).toEqual({ state: "confirmed" });
   });
 });

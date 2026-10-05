@@ -3,6 +3,12 @@ import type { Artifact, CancelResult, RunHandle, RunSpec, RunStatus, Runtime } f
 
 type FetchLike = typeof fetch;
 
+const IN_PROGRESS = new Set(["running", "creating", "queued", "starting"]);
+
+function isInProgressStatus(status: unknown): boolean {
+  return IN_PROGRESS.has(String(status ?? "RUNNING").trim().toLowerCase());
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
@@ -58,9 +64,10 @@ export function createCursorCloud(options: {
     async cancel(handle: RunHandle): Promise<CancelResult> {
       const [agentId, runId] = handle.id.split(":");
       const response = await fetchImpl(`${base}/v1/agents/${agentId}/runs/${runId}/cancel`, { method: "POST", headers });
+      if (response.ok) return { state: "confirmed" };
       if (response.status === 404) return { state: "unsupported" };
       if (response.status >= 500) return { state: "requested" };
-      return { state: "confirmed" };
+      return { state: "unconfirmed" };
     },
     async followup(handle: RunHandle, text: string): Promise<RunHandle> {
       const [agentId] = handle.id.split(":");
@@ -100,7 +107,7 @@ export function createCursorCloud(options: {
       if (!Array.isArray(list)) return [];
       return list
         .map((item) => asRecord(item))
-        .filter((item) => String(item.status ?? "RUNNING") === "RUNNING")
+        .filter((item) => isInProgressStatus(item.status))
         .map((item) => ({ id: `${String(item.id)}:${String(item.runId ?? item.id)}`, runtime: "cursor-cloud" }));
     },
   };

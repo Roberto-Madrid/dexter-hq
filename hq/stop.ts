@@ -130,6 +130,8 @@ async function cancelRuntime(
   name: string,
   runtime: HqDeps["runtimes"][string],
   reports: StopReport[],
+  seen: Set<string>,
+  confirmed: Set<string>,
 ): Promise<void> {
   let runs: { id: string; runtime: string }[] = [];
   try {
@@ -139,11 +141,52 @@ async function cancelRuntime(
     return;
   }
   for (const run of runs) {
+    if (seen.has(run.id)) continue;
     try {
       const result = await runtime.cancel({ id: run.id, runtime: run.runtime });
+      seen.add(run.id);
+      if (result.state === "confirmed") confirmed.add(run.id);
       reports.push({ id: run.id, runtime: run.runtime, state: mapState(result.state) });
     } catch {
       reports.push({ id: run.id, runtime: run.runtime, state: "unconfirmed" });
+    }
+  }
+}
+
+async function cancelConnectorAgents(
+  deps: HqDeps,
+  reports: StopReport[],
+  seen: Set<string>,
+  confirmed: Set<string>,
+): Promise<void> {
+  const connector = deps.connector;
+  const runtime = deps.runtimes[CURSOR_RUNTIME];
+  if (!connector || !runtime) return;
+  let agents: ConnectorAgent[] = [];
+  try {
+    agents = await connector.listAgents();
+  } catch {
+    return;
+  }
+  for (const agent of agents) {
+    if (!connectorCursorLive(agent) || !agent.cursorHandle) continue;
+    const id = agent.cursorHandle;
+    if (!seen.has(id)) {
+      try {
+        const result = await runtime.cancel({ id, runtime: CURSOR_RUNTIME });
+        seen.add(id);
+        if (result.state === "confirmed") confirmed.add(id);
+        reports.push({ id, runtime: CURSOR_RUNTIME, state: mapState(result.state) });
+      } catch {
+        reports.push({ id, runtime: CURSOR_RUNTIME, state: "unconfirmed" });
+        continue;
+      }
+    }
+    if (!confirmed.has(id)) continue;
+    try {
+      await connector.saveAgent({ ...agent, status: "cancelled" });
+    } catch {
+      // Caps stay occupied if this write fails; the next STOP ALL can retry.
     }
   }
 }
@@ -157,9 +200,12 @@ export async function stopAll(store: HqStore, deps: HqDeps): Promise<{ reports: 
   if (!deps.runtimes[CURSOR_RUNTIME]) {
     await reportCursorWithoutKey(store, deps.connector, reports);
   }
+  const seen = new Set<string>();
+  const confirmed = new Set<string>();
   for (const [name, runtime] of Object.entries(deps.runtimes)) {
-    await cancelRuntime(name, runtime, reports);
+    await cancelRuntime(name, runtime, reports, seen, confirmed);
   }
+  await cancelConnectorAgents(deps, reports, seen, confirmed);
   return { reports, asOf };
 }
 
