@@ -1,5 +1,5 @@
 import type { StopReport } from "../kernel/contracts.ts";
-import type { CancelState } from "../kernel/types.ts";
+import type { CancelResult, CancelState } from "../kernel/types.ts";
 import type { ConnectorAgent, ConnectorStore } from "./connector-store.ts";
 import type { HqDeps } from "./deps.ts";
 import type { HqStore, RunRow } from "./model.ts";
@@ -14,6 +14,13 @@ function mapState(state: CancelState): StopReport["state"] {
   if (state === "confirmed") return "stopped";
   if (state === "requested") return "stopping";
   return "unconfirmed";
+}
+
+function stopReport(id: string, runtime: string, result: CancelResult): StopReport {
+  const report: StopReport = { id, runtime, state: mapState(result.state) };
+  if (typeof result.httpStatus === "number") report.httpStatus = result.httpStatus;
+  if (result.errorCode) report.errorCode = result.errorCode;
+  return report;
 }
 
 function isOpenRequest(status: string): boolean {
@@ -159,7 +166,7 @@ async function cancelRuntime(
       const result = await runtime.cancel({ id: run.id, runtime: run.runtime });
       remember(seen, run.id);
       if (result.state === "confirmed") remember(confirmed, run.id);
-      reports.push({ id: run.id, runtime: run.runtime, state: mapState(result.state) });
+      reports.push(stopReport(run.id, run.runtime, result));
     } catch {
       reports.push({ id: run.id, runtime: run.runtime, state: "unconfirmed" });
     }
@@ -189,7 +196,7 @@ async function cancelConnectorAgents(
         const result = await runtime.cancel({ id, runtime: CURSOR_RUNTIME });
         remember(seen, id);
         if (result.state === "confirmed") remember(confirmed, id);
-        reports.push({ id, runtime: CURSOR_RUNTIME, state: mapState(result.state) });
+        reports.push(stopReport(id, CURSOR_RUNTIME, result));
       } catch {
         reports.push({ id, runtime: CURSOR_RUNTIME, state: "unconfirmed" });
         continue;

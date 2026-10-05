@@ -11045,7 +11045,9 @@ var ChatResultSchema = external_exports.object({
 var StopReportSchema = external_exports.object({
   id: external_exports.string(),
   runtime: external_exports.string(),
-  state: external_exports.enum(["stopping", "stopped", "unconfirmed"])
+  state: external_exports.enum(["stopping", "stopped", "unconfirmed"]),
+  httpStatus: external_exports.number().int().min(100).max(599).optional(),
+  errorCode: external_exports.string().regex(/^[A-Za-z0-9._-]{1,64}$/).optional()
 });
 var StopResultSchema = external_exports.object({
   reports: external_exports.array(StopReportSchema),

@@ -296,6 +296,8 @@ export type RunStatus = {
 
 export type CancelResult = {
   state: CancelState;
+  httpStatus?: number;
+  errorCode?: string;
 };
 
 export interface Runtime {
