@@ -147,22 +147,36 @@
   color: var(--ink);
 }
 
-.tower .halt {
+.tower .halt-group {
   margin-left: auto;
+  display: flex;
+  height: 40px;
+  position: relative;
+  z-index: 1;
+}
+
+.tower .halt,
+.tower .resume {
   height: 40px;
   padding: 0 16px;
   display: flex;
   align-items: center;
-  background: var(--stop);
-  color: var(--stop-text);
   font-size: 13px;
   line-height: 13px;
   font-weight: 500;
   letter-spacing: 0.06em;
-  position: relative;
-  z-index: 1;
   animation: none;
   transition: none;
+}
+
+.tower .halt {
+  background: var(--stop);
+  color: var(--stop-text);
+}
+
+.tower .resume {
+  background: var(--live);
+  color: var(--stop-text);
 }
 
 .tower .body {
@@ -406,7 +420,9 @@
 }
 
 .tower .phone-brand,
+.tower .phone-stop,
 .tower .pstop,
+.tower .presume,
 .tower .phone-tabs,
 .tower .phone-main {
   display: none;
@@ -451,26 +467,42 @@
     padding: 0;
   }
 
-  .tower .pstop {
+  .tower .phone-stop {
     display: flex;
     width: 100%;
     height: 36px;
     flex: 0 0 36px;
+    position: sticky;
+    top: 0;
+    z-index: 4;
+  }
+
+  .tower .pstop,
+  .tower .presume {
+    display: flex;
+    flex: 1;
+    width: auto;
+    height: 36px;
     align-items: center;
     justify-content: center;
     margin-left: 0;
     padding: 0;
-    background: var(--stop);
-    color: var(--stop-text);
     font-size: 13px;
     line-height: 13px;
     font-weight: 500;
     letter-spacing: 0.06em;
-    position: sticky;
-    top: 0;
-    z-index: 4;
     animation: none;
     transition: none;
+  }
+
+  .tower .pstop {
+    background: var(--stop);
+    color: var(--stop-text);
+  }
+
+  .tower .presume {
+    background: var(--live);
+    color: var(--stop-text);
   }
 
   .tower .phone-tabs {

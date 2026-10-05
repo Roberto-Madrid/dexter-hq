@@ -11,6 +11,7 @@ import {
   type TowerRequest,
   type TowerSnapshot,
 } from "./tower-model";
+import { resumeClearsStop } from "./control-result";
 
 type Tab = "requests" | "swarm" | "bots" | "needs";
 type Screen = "home" | "request";
@@ -159,7 +160,9 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
   const [screen, setScreen] = useState<Screen>("home");
   const [openId, setOpenId] = useState(view.requests.items[0]?.id ?? "");
   const [settled, setSettled] = useState<Record<string, "approved" | "denied">>({});
+  const [stopped, setStopped] = useState(view.stopped);
   const busy = useRef(false);
+  const controlBusy = useRef(false);
 
   useEffect(() => {
     setReady(true);
@@ -180,8 +183,29 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
     setScreen("home");
   }
 
-  function halt() {
-    void fetch("/api/stop", { method: "POST" });
+  async function postControl(path: "/api/stop" | "/api/resume"): Promise<boolean> {
+    if (controlBusy.current) return false;
+    controlBusy.current = true;
+    try {
+      const response = await fetch(path, { method: "POST", credentials: "same-origin" });
+      if (path === "/api/resume") {
+        const body: unknown = await response.json().catch(() => null);
+        return resumeClearsStop(response.status, body);
+      }
+      return response.ok;
+    } catch {
+      return false;
+    } finally {
+      controlBusy.current = false;
+    }
+  }
+
+  async function halt() {
+    if (await postControl("/api/stop")) setStopped(true);
+  }
+
+  async function resume() {
+    if (await postControl("/api/resume")) setStopped(false);
   }
 
   async function decide(id: string, decision: "approved" | "denied") {
@@ -221,9 +245,16 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
             </span>
           ))}
         </div>
-        <button className="halt" type="button" onClick={halt}>
-          STOP ALL
-        </button>
+        <div className="halt-group">
+          {stopped ? (
+            <button className="resume" type="button" onClick={() => void resume()}>
+              Resume
+            </button>
+          ) : null}
+          <button className="halt" type="button" onClick={() => void halt()}>
+            STOP ALL
+          </button>
+        </div>
       </header>
 
       <div className="phone-brand">
@@ -232,9 +263,16 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
         </button>
         {example ? <div className="ex">{EXAMPLE_LABEL}</div> : null}
       </div>
-      <button className="pstop" type="button" onClick={halt}>
-        STOP ALL
-      </button>
+      <div className="phone-stop">
+        {stopped ? (
+          <button className="presume" type="button" onClick={() => void resume()}>
+            Resume
+          </button>
+        ) : null}
+        <button className="pstop" type="button" onClick={() => void halt()}>
+          STOP ALL
+        </button>
+      </div>
       <nav className="phone-tabs" aria-label="Sections">
         {TABS.map((item) => (
           <button

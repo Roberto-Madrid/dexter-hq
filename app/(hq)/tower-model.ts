@@ -56,6 +56,7 @@ export type SwarmNode = {
 };
 
 export type TowerSnapshot = {
+  stopped: boolean;
   counts: TowerCount[];
   requests: TowerPanel<TowerRequest>;
   needs: TowerPanel<TowerNeed>;
@@ -75,6 +76,7 @@ const CEO_ACTIONS = new Set(["open_request", "assign", "request_council", "updat
 const ACTIVE_AGENT = new Set(["launched", "running", "starting", "CREATING", "RUNNING", "queued"]);
 
 export type ConnectorLive = {
+  stopped?: boolean;
   bots?: ConnectorBot[];
   requests?: ConnectorRequest[];
   approvals?: ConnectorApproval[];
@@ -220,6 +222,7 @@ function weekCouncil(events: ConnectorEvent[], nowMs: number): number {
 
 export function exampleTowerSnapshot(): TowerSnapshot {
   return {
+    stopped: false,
     counts: exampleCounts.map((item) => ({ ...item, source: "example" })),
     requests: { source: "example", items: exampleRequests.map((item) => ({ ...item })) },
     needs: {
@@ -393,5 +396,5 @@ export function assembleTower(input: TowerInputs): TowerSnapshot {
     },
   ];
 
-  return { counts, requests, needs, bots, ceo, swarm };
+  return { stopped: Boolean(connector?.stopped), counts, requests, needs, bots, ceo, swarm };
 }
