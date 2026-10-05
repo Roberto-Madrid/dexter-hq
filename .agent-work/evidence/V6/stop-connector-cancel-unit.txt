@@ -1,0 +1,12 @@
+
+ RUN  v3.2.4 /workspace
+
+ ✓ tests/unit/stop.test.ts (6 tests) 17ms
+ ✓ tests/unit/g3.test.ts (12 tests) 45ms
+ ✓ tests/unit/mcp.test.ts (7 tests) 71ms
+
+ Test Files  3 passed (3)
+      Tests  25 passed (25)
+   Start at  20:51:59
+   Duration  437ms (transform 270ms, setup 0ms, collect 662ms, tests 133ms, environment 0ms, prepare 169ms)
+
