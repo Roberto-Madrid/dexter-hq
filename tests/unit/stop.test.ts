@@ -298,6 +298,88 @@ describe("STOP ALL", () => {
     }
   });
 
+  it("lists ACTIVE Cloud agents by latestRunId and skips IDLE and ARCHIVED", async () => {
+    const cursor = createCursorCloud({
+      apiKey: "test-key",
+      base: "https://example.com",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            items: [
+              { id: "bc-active", status: "ACTIVE", latestRunId: "run-live" },
+              { id: "bc-idle", status: "IDLE", latestRunId: "run-old" },
+              { id: "bc-archived", status: "ARCHIVED", latestRunId: "run-done" },
+              { id: "bc-missing", status: "ACTIVE" },
+            ],
+          }),
+          { status: 200 },
+        ),
+    });
+    expect(await cursor.listInProgress()).toEqual([{ id: "bc-active:run-live", runtime: "cursor-cloud" }]);
+  });
+
+  it("refreshes latestRunId after a stale cancel and confirms only on 2xx", async () => {
+    const calls: string[] = [];
+    const cursor = createCursorCloud({
+      apiKey: "test-key",
+      base: "https://example.com",
+      fetchImpl: async (input, init) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        calls.push(`${method} ${url}`);
+        if (method === "POST" && url.includes("/runs/run-9/cancel")) {
+          return new Response(JSON.stringify({ code: "run_not_cancellable" }), { status: 409 });
+        }
+        if (method === "POST" && url.includes("/runs/run-live/cancel")) {
+          return new Response(JSON.stringify({ id: "run-live" }), { status: 200 });
+        }
+        if (method === "GET" && url.endsWith("/v1/agents/bc-paid")) {
+          return new Response(JSON.stringify({ id: "bc-paid", status: "ACTIVE", latestRunId: "run-live" }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      },
+    });
+    expect(await cursor.cancel({ id: "bc-paid:run-9", runtime: "cursor-cloud" })).toEqual({ state: "confirmed" });
+    expect(calls.some((line) => line.includes("/runs/run-9/cancel"))).toBe(true);
+    expect(calls.some((line) => line.endsWith("/v1/agents/bc-paid"))).toBe(true);
+    expect(calls.some((line) => line.includes("/runs/run-live/cancel"))).toBe(true);
+
+    const connector = connectorSeed();
+    await connector.saveAgent(launchedAgent());
+    const result = await stopAll(new MemoryStore(), hqDeps({ connector, runtimes: { "cursor-cloud": cursor } }));
+    expect(result.reports).toEqual([{ id: "bc-paid:run-9", runtime: "cursor-cloud", state: "stopped" }]);
+    expect((await connector.listAgents())[0]?.status).toBe("cancelled");
+  });
+
+  it("stores STOP ALL reports and asOf on the stop_all event", async () => {
+    const connector = connectorSeed();
+    await connector.saveAgent(launchedAgent());
+    const result = await stopAll(
+      new MemoryStore(),
+      hqDeps({ connector, runtimes: { "cursor-cloud": cursorCancelStatus(200) } }),
+    );
+    const event = (await connector.listEvents()).find((item) => item.action === "stop_all");
+    expect(result.reports).toEqual([{ id: "bc-paid:run-9", runtime: "cursor-cloud", state: "stopped" }]);
+    expect(event?.result).toEqual({
+      status: "stopped",
+      tokens: "suspended",
+      reports: result.reports,
+      asOf: result.asOf,
+    });
+    expect((await connector.listAgents())[0]?.status).toBe("cancelled");
+  });
+
+  it("does not invent a :followup run id when the follow-up body is unexpected", async () => {
+    const cursor = createCursorCloud({
+      apiKey: "test-key",
+      base: "https://example.com",
+      fetchImpl: async () => new Response(JSON.stringify({ status: "ok" }), { status: 200 }),
+    });
+    await expect(cursor.followup({ id: "bc-paid:run-9", runtime: "cursor-cloud" }, "ping")).rejects.toThrow(
+      "followup_parse_failed",
+    );
+  });
+
   it("confirms Cursor cancel only on 2xx", async () => {
     const cursor401 = cursorCancelStatus(401);
     const cursor404 = cursorCancelStatus(404);

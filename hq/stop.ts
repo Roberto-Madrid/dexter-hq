@@ -71,7 +71,7 @@ async function recordStopEvent(connector: ConnectorStore, at: string, action: "s
   }
 }
 
-async function haltControl(store: HqStore, connector: ConnectorStore | undefined, at: string): Promise<void> {
+async function haltControl(store: HqStore, connector: ConnectorStore | undefined): Promise<void> {
   await store.setStopped(true);
   await cancelHqRequests(store);
   if (!connector) return;
@@ -86,7 +86,6 @@ async function haltControl(store: HqStore, connector: ConnectorStore | undefined
   } catch {
     // bot_tokens may be absent until migration 0008 is applied by the owner.
   }
-  await recordStopEvent(connector, at, "stop_all", { status: "stopped", tokens: "suspended" });
 }
 
 function unconfirmed(id: string): StopReport {
@@ -126,6 +125,20 @@ async function reportCursorWithoutKey(store: HqStore, connector: ConnectorStore 
   }
 }
 
+function cancelKeys(id: string): string[] {
+  const idx = id.indexOf(":");
+  if (idx <= 0) return [id];
+  return [id, id.slice(0, idx)];
+}
+
+function alreadyTracked(set: Set<string>, id: string): boolean {
+  return cancelKeys(id).some((key) => set.has(key));
+}
+
+function remember(set: Set<string>, id: string): void {
+  for (const key of cancelKeys(id)) set.add(key);
+}
+
 async function cancelRuntime(
   name: string,
   runtime: HqDeps["runtimes"][string],
@@ -141,11 +154,11 @@ async function cancelRuntime(
     return;
   }
   for (const run of runs) {
-    if (seen.has(run.id)) continue;
+    if (alreadyTracked(seen, run.id)) continue;
     try {
       const result = await runtime.cancel({ id: run.id, runtime: run.runtime });
-      seen.add(run.id);
-      if (result.state === "confirmed") confirmed.add(run.id);
+      remember(seen, run.id);
+      if (result.state === "confirmed") remember(confirmed, run.id);
       reports.push({ id: run.id, runtime: run.runtime, state: mapState(result.state) });
     } catch {
       reports.push({ id: run.id, runtime: run.runtime, state: "unconfirmed" });
@@ -171,18 +184,18 @@ async function cancelConnectorAgents(
   for (const agent of agents) {
     if (!connectorCursorLive(agent) || !agent.cursorHandle) continue;
     const id = agent.cursorHandle;
-    if (!seen.has(id)) {
+    if (!alreadyTracked(seen, id)) {
       try {
         const result = await runtime.cancel({ id, runtime: CURSOR_RUNTIME });
-        seen.add(id);
-        if (result.state === "confirmed") confirmed.add(id);
+        remember(seen, id);
+        if (result.state === "confirmed") remember(confirmed, id);
         reports.push({ id, runtime: CURSOR_RUNTIME, state: mapState(result.state) });
       } catch {
         reports.push({ id, runtime: CURSOR_RUNTIME, state: "unconfirmed" });
         continue;
       }
     }
-    if (!confirmed.has(id)) continue;
+    if (!alreadyTracked(confirmed, id)) continue;
     try {
       await connector.saveAgent({ ...agent, status: "cancelled" });
     } catch {
@@ -194,7 +207,7 @@ async function cancelConnectorAgents(
 export async function stopAll(store: HqStore, deps: HqDeps): Promise<{ reports: StopReport[]; asOf: string }> {
   const asOf = store.now();
   if (deps.controlReachable) {
-    await haltControl(store, deps.connector, asOf);
+    await haltControl(store, deps.connector);
   }
   const reports: StopReport[] = [];
   if (!deps.runtimes[CURSOR_RUNTIME]) {
@@ -206,6 +219,14 @@ export async function stopAll(store: HqStore, deps: HqDeps): Promise<{ reports: 
     await cancelRuntime(name, runtime, reports, seen, confirmed);
   }
   await cancelConnectorAgents(deps, reports, seen, confirmed);
+  if (deps.controlReachable && deps.connector) {
+    await recordStopEvent(deps.connector, asOf, "stop_all", {
+      status: "stopped",
+      tokens: "suspended",
+      reports,
+      asOf,
+    });
+  }
   return { reports, asOf };
 }
 
