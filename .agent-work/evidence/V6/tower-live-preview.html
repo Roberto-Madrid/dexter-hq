@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Live tower preview</title>
+    <style>
+      html, body { margin: 0; background: #f4f7f8; font-family: "IBM Plex Sans", sans-serif; color: #102026; }
+      .bar { height: 40px; display: flex; align-items: stretch; border-bottom: 1px solid #d5dee3; }
+      .word { align-self: center; padding-left: 16px; font-size: 13px; font-weight: 500; letter-spacing: 0.22em; }
+      .counts { align-self: center; display: flex; gap: 24px; margin-left: 24px; font-size: 13px; }
+      .cw { color: #5c6b73; }
+      .cn { font-family: "IBM Plex Mono", monospace; }
+      .cd { font-family: "IBM Plex Mono", monospace; color: #5c6b73; }
+      .halt { margin-left: auto; height: 40px; padding: 0 16px; background: #9e2a2b; color: #f7f4ef; border: 0; font-size: 13px; font-weight: 500; letter-spacing: 0.06em; }
+      .field { background: #fff; }
+      img { display: block; width: 100%; height: auto; }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <div class="word">DEXTER</div>
+      <div class="counts" aria-label="Live counts">
+        <span><span class="cw">Agents</span> <span class="cn">2</span><span class="cd"> of 3</span></span>
+        <span><span class="cw">Cursor</span> <span class="cn">unknown</span></span>
+        <span><span class="cw">Council</span> <span class="cn">0</span></span>
+        <span><span class="cw">Health</span> <span class="cn">1/1</span></span>
+      </div>
+      <button class="halt" type="button">STOP ALL</button>
+    </div>
+    <div class="field">
+      <img src="./tower-graph-live.svg" alt="Live swarm grown from Dexter" />
+    </div>
+  </body>
+</html>
