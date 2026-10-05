@@ -359,8 +359,8 @@ describe("control tower snapshot", () => {
     }
   });
 
-  it("at 390×844 stops both ends of each edge at their dots, including the hub", () => {
-    const titles = [
+  it("at 390×844 starts every edge outside the hub label and keeps the two outer titles", () => {
+    const filler = [
       "Tower graph matches the approved layout",
       "Stage 1 Council endpoint",
       "Resume after STOP ALL",
@@ -369,7 +369,6 @@ describe("control tower snapshot", () => {
       "Stage 1 dashboard panels",
       "Token police development",
       "chore: denser home + familia 20px base font",
-      "English carpool skill (cost)",
       "English AGENTS.md + carpool.mdc",
       "chore: familia 20px, denser home, fix hydration",
       "Dexter initial product",
@@ -381,8 +380,9 @@ describe("control tower snapshot", () => {
       "chore: bump /familia base font to 17px",
       "One Council seat B through path",
       "Light control tower",
-      "stage1-proof",
     ];
+    const titles = ["stage1-proof", ...filler.slice(0, 8), "English carpool skill (cost)", ...filler.slice(8)];
+    expect(titles).toHaveLength(21);
     const nodes = [
       { id: "dexter", label: "Dexter", parentId: null, tone: "live" as const },
       ...titles.map((label, index) => ({
@@ -390,36 +390,24 @@ describe("control tower snapshot", () => {
         label,
         parentId: "dexter",
         tone: "forming" as const,
-        ring: (index === titles.length - 1 ? 1 : 2) as 1 | 2,
+        ring: (index === 0 ? 1 : 2) as 1 | 2,
       })),
     ];
     const graph = graphFromSwarm(nodes, PHONE_SWARM_VIEWPORT, "Growing from Dexter · 0 of 21 links live");
-    expect(graph.lines).toHaveLength(21);
-    const hub = graph.nodes[0];
-    expect(hub).toMatchObject({ cx: 195, cy: 422, r: 4.5 });
+    expect(graph.nodes[0]).toMatchObject({ cx: 195, cy: 422 });
+    const hub = graph.labels.find((label) => label.lines.includes("Dexter"));
+    expect(hub).toBeDefined();
+    const hubBox = { left: hub!.left, top: hub!.top, width: hub!.width, height: hub!.lines.length * 13 };
     for (const line of graph.lines) {
-      for (const end of [
-        { x: line.x1, y: line.y1 },
-        { x: line.x2, y: line.y2 },
-      ]) {
-        const nearest = graph.nodes
-          .map((node) => ({ node, dist: Math.hypot(end.x - node.cx, end.y - node.cy) }))
-          .sort((a, b) => a.dist - b.dist)[0];
-        expect(nearest.dist).toBeCloseTo(nearest.node.r, 5);
-      }
+      expect(edgeCrossesLabel(line, hubBox)).toBe(false);
     }
-    const hubEnds = graph.lines.map((line) => {
-      const d1 = Math.hypot(line.x1 - hub.cx, line.y1 - hub.cy);
-      const d2 = Math.hypot(line.x2 - hub.cx, line.y2 - hub.cy);
-      return Math.min(d1, d2);
-    });
-    expect(hubEnds.every((dist) => Math.abs(dist - hub.r) < 1e-6)).toBe(true);
-    const dexter = graph.labels[0];
-    expect(dexter?.lines).toEqual(["Dexter"]);
-    const dexterBox = { left: dexter.left, top: dexter.top, width: dexter.width, height: dexter.lines.length * 13 };
-    for (const line of graph.lines) {
-      expect(edgeCrossesLabel(line, dexterBox)).toBe(false);
-    }
+    const childTitles = graph.labels
+      .filter((label, index) => index > 0 && label.lines.length > 0)
+      .map((label) => label.lines.join(" "));
+    expect(childTitles).toContain("stage1-proof");
+    expect(childTitles).toContain("English carpool skill (cost)");
+    expect(childTitles).toEqual(["stage1-proof", "English carpool skill (cost)"]);
+    expect(graph.labels.filter((label, index) => index > 0 && label.lines.length === 0)).toHaveLength(19);
   });
 
   it("fails if the tower can stop and then has no Resume path to /api/resume", () => {

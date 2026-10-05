@@ -261,6 +261,32 @@ function insetToward(
   return { x: from.x + dx * t, y: from.y + dy * t };
 }
 
+function clipSegmentPastBox(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  box: { left: number; top: number; width: number; height: number },
+): { x: number; y: number } {
+  const padded = { left: box.left - 1, top: box.top - 1, width: box.width + 2, height: box.height + 2 };
+  const line = { x1: from.x, y1: from.y, x2: to.x, y2: to.y };
+  if (!edgeCrossesLabel(line, padded)) return from;
+  let lo = 0;
+  let hi = 1;
+  for (let step = 0; step < 24; step += 1) {
+    const mid = (lo + hi) / 2;
+    const x = from.x + (to.x - from.x) * mid;
+    const y = from.y + (to.y - from.y) * mid;
+    const next = { x1: x, y1: y, x2: to.x, y2: to.y };
+    if (edgeCrossesLabel(next, padded) || pointInBox(x, y, padded)) lo = mid;
+    else hi = mid;
+  }
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const extra = 2 / len;
+  const t = Math.min(1, hi + extra);
+  return { x: from.x + dx * t, y: from.y + dy * t };
+}
+
 type PlacedLabel = {
   left: number;
   top: number;
@@ -336,40 +362,6 @@ function labelOutsideDot(
     lines,
     angle: point.angle,
   };
-}
-
-function wrapAngle(angle: number): number {
-  return Math.atan2(Math.sin(angle), Math.cos(angle));
-}
-
-function phoneHubLabel(
-  node: SwarmNode,
-  hub: { x: number; y: number },
-  size: { width: number; height: number },
-  leafCount: number,
-  edges: { x1: number; y1: number; x2: number; y2: number }[],
-): PlacedLabel {
-  const n = Math.max(leafCount, 1);
-  const step = (2 * Math.PI) / n;
-  const bisectors = Array.from({ length: n }, (_, index) => -Math.PI / 2 + step / 2 + step * index).sort(
-    (a, b) => Math.abs(wrapAngle(a)) - Math.abs(wrapAngle(b)),
-  );
-  for (const angle of bisectors) {
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const textWidth = Math.max(labelSize([node.label.trim() || "Dexter"]).width, 34);
-    const textHeight = LABEL_LINE_H;
-    const halfTan = Math.abs(cos) >= Math.abs(sin) ? textHeight / 2 : textWidth / 2;
-    const slot = Math.sin(Math.PI / n) || 1;
-    const need = (halfTan + 3) / slot;
-    const nodeR = Math.max(HUB_R, need - 6);
-    const candidate = labelOutsideDot(node, { x: hub.x, y: hub.y, angle }, size, nodeR, false);
-    if (!candidate) continue;
-    const box = { left: candidate.left, top: candidate.top, width: candidate.width, height: candidate.height };
-    if (edges.some((line) => edgeCrossesLabel(line, box))) continue;
-    return { ...candidate, color: INK, weight: 500 };
-  }
-  return hubLabel(node, hub);
 }
 
 function labelForNode(
@@ -484,6 +476,9 @@ export function graphFromSwarm(
     if (placed.has(node.id)) continue;
     placed.set(node.id, { x: cx, y: cy + ringRadius(size, 1, true, false), angle: Math.PI / 2 });
   }
+  const hubPoint = placed.get(root.id) ?? { x: cx, y: cy };
+  const hub = hubLabel(root, hubPoint);
+  const hubBox = { left: hub.left, top: hub.top, width: hub.width, height: hub.height };
   const lines = nodes.flatMap((node) => {
     const parentId = node.parentId && byId.has(node.parentId) ? node.parentId : node.id === root.id ? null : root.id;
     if (!parentId) return [];
@@ -491,23 +486,14 @@ export function graphFromSwarm(
     const to = placed.get(node.id);
     if (!from || !to) return [];
     if (!phone) return [{ x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: toneFill(node.tone) }];
-    const start = insetToward(from, to, from === placed.get(root.id) ? HUB_R : SPOKE_R);
+    const start = clipSegmentPastBox(insetToward(from, to, from === placed.get(root.id) ? HUB_R : SPOKE_R), to, hubBox);
     const end = insetToward(to, from, to === placed.get(root.id) ? HUB_R : SPOKE_R);
     return [{ x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: toneFill(node.tone) }];
   });
-  const hubPoint = placed.get(root.id) ?? { x: cx, y: cy };
   const labels: PlacedLabel[] = nodes.map((node) => {
     const point = placed.get(node.id) ?? { x: cx, y: cy, angle: 0 };
     if (!phone) return labelForNode(node, point, size);
-    if (node.id === root.id) {
-      return phoneHubLabel(
-        node,
-        hubPoint,
-        size,
-        nodes.filter((item) => item.id !== root.id).length,
-        lines,
-      );
-    }
+    if (node.id === root.id) return hub;
     return {
       left: point.x,
       top: point.y,
