@@ -21,6 +21,7 @@ import { parseCouncilVerdict, runCriticSeat } from "./council-seat.ts";
 import {
   PINNED_CHECKER_WORKFLOW,
   applyCheckEvidence,
+  checkerPassedCurrentSha,
   checksConfigured,
   checksMoveRequestReady,
   createGhChecker,
@@ -423,6 +424,11 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
     await record(deps, auth, "update_request", id ?? "missing", body);
     return toolResult(body, true);
   }
+  if (!botMayMutateRequest(auth, row)) {
+    const body = { status: "refused", reason: "not_own_request", requestId: row.id };
+    await record(deps, auth, "update_request", row.id, body);
+    return toolResult(body, true);
+  }
   if (status && !(REQUEST_STATES as readonly string[]).includes(status)) {
     const body = { status: "refused", reason: "invalid_status" };
     await record(deps, auth, "update_request", row.id, body);
@@ -438,6 +444,11 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
     : row.evidence;
   if (status === "done" && evidence.length === 0) {
     const body = { status: "refused", reason: "done_requires_evidence" };
+    await record(deps, auth, "update_request", row.id, body);
+    return toolResult(body, true);
+  }
+  if (status === "done" && !checkerPassedCurrentSha(row)) {
+    const body = { status: "refused", reason: "done_requires_checks", requestId: row.id };
     await record(deps, auth, "update_request", row.id, body);
     return toolResult(body, true);
   }
@@ -540,6 +551,11 @@ async function handleCouncil(deps: ConnectorDeps, auth: ConnectorAuth, args: Rec
 }
 
 async function handleAssign(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
+  if (auth.kind !== "ceo") {
+    const body = { status: "refused", reason: "ceo_only" };
+    await record(deps, auth, "assign", "scope", body);
+    return toolResult(body, true);
+  }
   const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
   const botId = textArg(args, "botId") ?? textArg(args, "bot_id");
   const request = requestId ? await deps.store.getRequest(requestId) : null;
@@ -559,6 +575,11 @@ async function handleAssign(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
   const body = { status: "assigned", requestId: request.id, botId: bot.id };
   await record(deps, auth, "assign", request.id, body);
   return toolResult(body);
+}
+
+function botMayMutateRequest(auth: ConnectorAuth, request: { assignedBotId: string | null }): boolean {
+  if (auth.kind === "ceo") return true;
+  return request.assignedBotId === auth.id;
 }
 
 function botMayCheckRequest(
@@ -643,6 +664,7 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
         repo,
         hostRepo: dispatched.hostRepo,
         dispatchedAt: at,
+        passed: false,
       };
     }
 
@@ -652,6 +674,8 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
       ? await deps.checker.outcome({ githubRunId, sha, repo, nonce: checkRun.nonce })
       : { state: "queued" as const, conclusion: null, githubRunId: null, evidence: [] };
     if (outcome.githubRunId) checkRun = { ...checkRun, githubRunId: outcome.githubRunId };
+    const ready = checksMoveRequestReady(outcome);
+    checkRun = { ...checkRun, passed: ready };
     const evidence = evidenceFromOutcome({
       workflow: PINNED_CHECKER_WORKFLOW,
       sha,
@@ -661,7 +685,6 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
       githubRunId: checkRun.githubRunId,
       outcome,
     });
-    const ready = checksMoveRequestReady(outcome);
     const next = applyCheckEvidence(request, evidence, ready, { sha, repo });
     next.checkRun = checkRun;
     await deps.store.saveRequest(next);

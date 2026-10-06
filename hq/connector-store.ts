@@ -67,6 +67,7 @@ export type ConnectorCheckRun = {
   repo: string;
   hostRepo: string;
   dispatchedAt: string;
+  passed: boolean;
 };
 
 export type ConnectorRequest = {

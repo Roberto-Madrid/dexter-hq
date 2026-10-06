@@ -490,5 +490,6 @@ function parseCheckRun(value: unknown): ConnectorRequest["checkRun"] {
     repo: row.repo,
     hostRepo: typeof row.hostRepo === "string" ? row.hostRepo : "",
     dispatchedAt: typeof row.dispatchedAt === "string" ? row.dispatchedAt : "",
+    passed: row.passed === true,
   };
 }

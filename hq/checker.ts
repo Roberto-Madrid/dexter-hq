@@ -102,13 +102,18 @@ export function evidenceFromOutcome(input: {
   rows.push(`checker:state:${input.outcome.state}`);
   for (const item of PINNED_CHECKS) {
     const hit = input.outcome.evidence.find((row) => row === `checker:${item}:pass` || row === `checker:${item}:fail`);
-    rows.push(hit ?? `checker:${item}:pinned`);
+    if (hit) rows.push(hit);
   }
   return [...rows, ...input.outcome.evidence.filter((item) => !rows.includes(item) && !item.startsWith("checker:github_run:"))];
 }
 
 export function checksMoveRequestReady(outcome: CheckerOutcome): boolean {
   return outcome.state === "completed" && outcome.conclusion === "success";
+}
+
+export function checkerPassedCurrentSha(request: ConnectorRequest): boolean {
+  const run = request.checkRun;
+  return Boolean(run?.passed && run.sha && run.githubRunId);
 }
 
 export function applyCheckEvidence(

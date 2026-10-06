@@ -30,8 +30,10 @@ import type { PlanCard } from "../../kernel/types.ts";
 const OWNER = "11111111-1111-4111-8111-111111111111";
 const BOT = "22222222-2222-4222-8222-222222222222";
 const OTHER = "33333333-3333-4333-8333-333333333333";
+const CEO = "44444444-4444-4444-8444-444444444444";
 const TOKEN = "unit-quality-token";
 const OTHER_TOKEN = "unit-other-token";
+const CEO_TOKEN = "unit-ceo-token";
 const NOW = "2026-10-06T05:00:00.000Z";
 const SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -39,6 +41,7 @@ const SCOPES = [
   "whoami",
   "open_request",
   "update_request",
+  "assign",
   "launch_agent",
   "request_checks",
   "get_context",
@@ -104,10 +107,21 @@ function storeForLead() {
         currentTask: null,
         heartbeatAt: null,
       },
+      {
+        id: CEO,
+        ownerId: OWNER,
+        name: "unit-ceo",
+        kind: "ceo",
+        repos: ["owner/demo"],
+        tools: SCOPES,
+        currentTask: null,
+        heartbeatAt: null,
+      },
     ],
     tokens: [
       { tokenHash: hashBotToken(TOKEN), botId: BOT, scopes: SCOPES },
       { tokenHash: hashBotToken(OTHER_TOKEN), botId: OTHER, scopes: SCOPES },
+      { tokenHash: hashBotToken(CEO_TOKEN), botId: CEO, scopes: SCOPES },
     ],
   });
 }
@@ -649,6 +663,7 @@ describe("Stage 2 quality loop", () => {
     expect(workflow).not.toContain("judge/checker-sample");
     expect(workflow).toContain("ref: ${{ inputs.target_sha }}");
     expect(workflow).toContain("path: subject");
+    expect(workflow).toContain("persist-credentials: false");
     expect(workflow).toContain("nonce:");
   });
 
@@ -734,8 +749,8 @@ describe("Stage 2 quality loop", () => {
       evidence: ["checker:github_run:4242"],
       status: "ready_for_review",
     });
-    expect(planted.structuredContent.reason).toBe("ready_requires_checks");
-    await callConnectorTool(deps, other, "update_request", {
+    expect(planted.structuredContent.reason).toBe("not_own_request");
+    await callConnectorTool(deps, auth, "update_request", {
       requestId,
       evidence: ["checker:github_run:4242", "note"],
     });
@@ -803,5 +818,130 @@ describe("Stage 2 quality loop", () => {
     expect((await store.getRequest(requestId))?.checkRun?.sha).toBe(nextSha);
     expect((await store.getRequest(requestId))?.checkRun?.githubRunId).toBe("2002");
     expect((await store.getRequest(requestId))?.checkRun?.nonce).not.toBe(firstNonce);
+  });
+
+  it("refuses another bot setting done, and fake evidence cannot skip the checker", async () => {
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: passingChecker(), checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const other = await store.authenticate(hashBotToken(OTHER_TOKEN));
+    const opened = await callConnectorTool(deps, auth, "open_request", {
+      goal: "Finish it",
+      repo: "owner/demo",
+      card: card(),
+    });
+    const requestId = String(opened.structuredContent.requestId);
+    const stolen = await callConnectorTool(deps, other, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["x"],
+    });
+    expect(stolen.structuredContent).toMatchObject({ status: "refused", reason: "not_own_request" });
+    const empty = await callConnectorTool(deps, auth, "update_request", {
+      requestId,
+      status: "done",
+      evidence: [],
+    });
+    expect(empty.structuredContent.reason).toBe("done_requires_evidence");
+    const fake = await callConnectorTool(deps, auth, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["x"],
+    });
+    expect(fake.structuredContent.reason).toBe("done_requires_checks");
+    expect((await store.getRequest(requestId))?.status).not.toBe("done");
+  });
+
+  it("allows done after a checker pass on the current sha, then blocks it after a sha change", async () => {
+    const checker: CheckerGateway = {
+      async dispatch(input) {
+        return {
+          dispatched: true,
+          githubRunId: input.sha === SHA ? "1001" : "2002",
+          sha: input.sha,
+          nonce: input.nonce,
+          url: "https://example.test/run",
+          workflow: PINNED_CHECKER_WORKFLOW,
+          hostRepo: "owner/workers",
+          trustedRef: "main",
+        };
+      },
+      async find(input) {
+        return input.sha === SHA ? "1001" : "2002";
+      },
+      async outcome(input) {
+        if (input.sha === SHA) {
+          return {
+            state: "completed",
+            conclusion: "success",
+            githubRunId: input.githubRunId,
+            evidence: ["checker:build:pass", "checker:lint:pass", "checker:playwright:pass"],
+          };
+        }
+        return { state: "in_progress", conclusion: null, githubRunId: input.githubRunId, evidence: [] };
+      },
+    };
+    const store = storeForLead();
+    const deps = depsFor(store, { checker, checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const opened = await callConnectorTool(deps, auth, "open_request", {
+      goal: "Land it",
+      repo: "owner/demo",
+      card: card(),
+    });
+    const requestId = String(opened.structuredContent.requestId);
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    const done = await callConnectorTool(deps, auth, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(done.structuredContent).toMatchObject({ status: "updated", requestStatus: "done" });
+
+    const next = await callConnectorTool(deps, auth, "open_request", {
+      goal: "Land again",
+      repo: "owner/demo",
+      card: card(),
+    });
+    const requestB = String(next.structuredContent.requestId);
+    await callConnectorTool(deps, auth, "request_checks", { requestId: requestB, repo: "owner/demo", sha: SHA });
+    expect((await store.getRequest(requestB))?.status).toBe("ready_for_review");
+    const nextSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    await callConnectorTool(deps, auth, "request_checks", {
+      requestId: requestB,
+      repo: "owner/demo",
+      sha: nextSha,
+    });
+    const blocked = await callConnectorTool(deps, auth, "update_request", {
+      requestId: requestB,
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(blocked.structuredContent.reason).toBe("done_requires_checks");
+    expect((await store.getRequest(requestB))?.status).toBe("verifying");
+  });
+
+  it("limits assign to the CEO and lets the CEO update a request", async () => {
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: passingChecker(), checkerConfigured: true });
+    const lead = await store.authenticate(hashBotToken(TOKEN));
+    const ceo = await store.authenticate(hashBotToken(CEO_TOKEN));
+    const opened = await callConnectorTool(deps, lead, "open_request", {
+      goal: "Assign later",
+      repo: "owner/demo",
+      card: card(),
+    });
+    const requestId = String(opened.structuredContent.requestId);
+    const refused = await callConnectorTool(deps, lead, "assign", { requestId, botId: OTHER });
+    expect(refused.structuredContent.reason).toBe("ceo_only");
+    const assigned = await callConnectorTool(deps, ceo, "assign", { requestId, botId: BOT });
+    expect(assigned.structuredContent).toMatchObject({ status: "assigned", botId: BOT });
+    await callConnectorTool(deps, lead, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    const done = await callConnectorTool(deps, ceo, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(done.structuredContent).toMatchObject({ status: "updated", requestStatus: "done" });
   });
 });
