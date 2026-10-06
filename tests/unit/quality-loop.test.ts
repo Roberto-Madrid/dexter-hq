@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { assembleTower } from "../../app/(hq)/tower-model.ts";
 import { decideApproval } from "../../hq/approval.ts";
@@ -37,6 +38,7 @@ const SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SCOPES = [
   "whoami",
   "open_request",
+  "update_request",
   "launch_agent",
   "request_checks",
   "get_context",
@@ -134,11 +136,15 @@ function passingChecker(): CheckerGateway {
         dispatched: true,
         githubRunId: "1001",
         sha: input.sha,
+        nonce: input.nonce,
         url: "https://example.test/1001",
         workflow: PINNED_CHECKER_WORKFLOW,
         hostRepo: "owner/workers",
         trustedRef: "main",
       };
+    },
+    async find() {
+      return "1001";
     },
     async outcome(input) {
       return {
@@ -158,18 +164,22 @@ function queuedChecker(): CheckerGateway {
         dispatched: true,
         githubRunId: "1002",
         sha: input.sha,
+        nonce: input.nonce,
         url: "https://example.test/1002",
         workflow: PINNED_CHECKER_WORKFLOW,
         hostRepo: "owner/workers",
         trustedRef: "main",
       };
     },
+    async find() {
+      return "1002";
+    },
     async outcome(input) {
       return {
         state: "in_progress",
         conclusion: null,
         githubRunId: input.githubRunId,
-        evidence: [`checker:github_run:${input.githubRunId}`],
+        evidence: [],
       };
     },
   };
@@ -266,45 +276,58 @@ describe("Stage 2 quality loop", () => {
   });
 
   it("looks up the exact GitHub run id for checker.yml and the commit, not a name substring", async () => {
+    const nonce = "nonce-hq-1";
+    const name = checkerRunName({ repo: "owner/demo", sha: SHA, nonce });
     const calls: { url: string; body: string }[] = [];
+    let listed = 0;
     const checker = createGhChecker({
       token: "unit-token",
       hostRepo: "owner/workers",
       apiBase: "https://example.test",
-      now: () => Date.parse("2026-10-06T05:00:00.000Z"),
+      findAttempts: 1,
       fetchImpl: async (input, init) => {
         const url = String(input);
         calls.push({ url, body: String(init?.body ?? "") });
         if (url.endsWith("/dispatches")) return new Response(null, { status: 204 });
         if (url.includes(`/workflows/${PINNED_CHECKER_WORKFLOW}/runs`)) {
+          listed += 1;
+          const visible = listed > 1;
           return Response.json({
             workflow_runs: [
               {
                 id: 1,
                 name: "deploy prod",
-                path: ".github/workflows/deploy.yml",
-                head_sha: SHA,
+                path: "evil/.github/workflows/checker.yml",
+                event: "push",
+                head_branch: "evil",
                 status: "completed",
                 conclusion: "success",
                 created_at: "2026-10-06T05:00:00.000Z",
               },
-              {
-                id: 99,
-                name: checkerRunName(SHA),
-                path: PINNED_CHECKER_PATH,
-                head_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-                status: "in_progress",
-                conclusion: null,
-                created_at: "2026-10-06T05:00:00.000Z",
-              },
+              ...(visible
+                ? [
+                    {
+                      id: 99,
+                      name,
+                      path: PINNED_CHECKER_PATH,
+                      event: "workflow_dispatch",
+                      head_branch: "main",
+                      status: "in_progress",
+                      conclusion: null,
+                      created_at: "2026-10-06T05:00:01.000Z",
+                    },
+                  ]
+                : []),
             ],
           });
         }
         if (url.endsWith("/actions/runs/99")) {
           return Response.json({
             id: 99,
-            name: checkerRunName(SHA),
+            name,
             path: PINNED_CHECKER_PATH,
+            event: "workflow_dispatch",
+            head_branch: "main",
             status: "in_progress",
             conclusion: null,
             html_url: "https://example.test/99",
@@ -313,35 +336,39 @@ describe("Stage 2 quality loop", () => {
         return new Response("missing", { status: 404 });
       },
     });
-    const dispatched = await checker.dispatch({ repo: "owner/demo", sha: SHA });
-    expect(calls[0]?.url).toBe(
+    const dispatched = await checker.dispatch({ repo: "owner/demo", sha: SHA, nonce });
+    const post = calls.find((call) => call.url.endsWith("/dispatches"));
+    expect(post?.url).toBe(
       `https://example.test/repos/owner/workers/actions/workflows/${PINNED_CHECKER_WORKFLOW}/dispatches`,
     );
-    const dispatchedBody = JSON.parse(calls[0]?.body || "{}") as {
-      ref: string;
-      inputs: Record<string, string>;
-    };
+    const dispatchedBody = JSON.parse(post?.body || "{}") as { ref: string; inputs: Record<string, string> };
     expect(dispatchedBody.ref).toBe("main");
-    expect(dispatchedBody.inputs).toEqual({ target_repo: "owner/demo", target_sha: SHA });
-    expect(dispatchedBody.inputs.run_id).toBeUndefined();
+    expect(dispatchedBody.inputs).toEqual({ target_repo: "owner/demo", target_sha: SHA, nonce });
     expect(dispatched.githubRunId).toBe("99");
-    const outcome = await checker.outcome({ githubRunId: "99", sha: SHA });
+    const outcome = await checker.outcome({ githubRunId: "99", sha: SHA, repo: "owner/demo", nonce });
     expect(outcome.state).toBe("in_progress");
-    expect(outcome.conclusion).toBeNull();
     expect(checksMoveRequestReady(outcome)).toBe(false);
 
+    const expected = { repo: "owner/demo", sha: SHA, nonce, githubRunId: "99" };
     expect(
       matchPinnedCheckerRun(
-        { id: 1, name: "deploy prod", path: ".github/workflows/deploy.yml" },
-        { githubRunId: "e", sha: SHA },
+        { id: 1, name: "deploy prod", path: "evil/.github/workflows/checker.yml", event: "push", head_branch: "evil" },
+        expected,
       ),
     ).toBe(false);
     expect(
-      findDispatchedCheckerRun(
-        [{ id: 1, name: "deploy prod", path: ".github/workflows/deploy.yml", created_at: "2026-10-06T05:00:00.000Z" }],
-        { sha: "e", sinceMs: 0 },
+      matchPinnedCheckerRun(
+        { id: 99, name, path: PINNED_CHECKER_PATH, event: "push", head_branch: "main" },
+        expected,
       ),
-    ).toBeNull();
+    ).toBe(false);
+    expect(
+      matchPinnedCheckerRun(
+        { id: 99, name, path: PINNED_CHECKER_PATH, event: "workflow_dispatch", head_branch: "evil" },
+        expected,
+      ),
+    ).toBe(false);
+    expect(findDispatchedCheckerRun([{ id: 1, name: "deploy prod", path: PINNED_CHECKER_PATH, event: "push", head_branch: "main" }], expected)).toBeNull();
   });
 
   it("refuses request_checks for another bot's request and for an out-of-scope repo", async () => {
@@ -606,11 +633,175 @@ describe("Stage 2 quality loop", () => {
         sha: SHA,
         repo: "owner/demo",
         hostRepo: "owner/workers",
+        nonce: "n1",
         githubRunId: "9",
         outcome,
       }),
       false,
+      { sha: SHA, repo: "owner/demo" },
     );
     expect(next.status).toBe("verifying");
+  });
+
+  it("builds and tests subject/ at the target sha, not the judge sample", () => {
+    const workflow = readFileSync("workers/.github/workflows/checker.yml", "utf8");
+    expect(workflow).toContain("working-directory: subject");
+    expect(workflow).not.toContain("judge/checker-sample");
+    expect(workflow).toContain("ref: ${{ inputs.target_sha }}");
+    expect(workflow).toContain("path: subject");
+    expect(workflow).toContain("nonce:");
+  });
+
+  it("does not dispatch again while a check is still appearing", async () => {
+    let dispatches = 0;
+    const checker: CheckerGateway = {
+      async dispatch(input) {
+        dispatches += 1;
+        return {
+          dispatched: true,
+          githubRunId: null,
+          sha: input.sha,
+          nonce: input.nonce,
+          url: null,
+          workflow: PINNED_CHECKER_WORKFLOW,
+          hostRepo: "owner/workers",
+          trustedRef: "main",
+        };
+      },
+      async find() {
+        return null;
+      },
+      async outcome() {
+        return { state: "queued", conclusion: null, githubRunId: null, evidence: [] };
+      },
+    };
+    const store = storeForLead();
+    const deps = depsFor(store, { checker, checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const opened = await callConnectorTool(deps, auth, "open_request", {
+      goal: "Once",
+      repo: "owner/demo",
+      card: card(),
+    });
+    const requestId = String(opened.structuredContent.requestId);
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    expect(dispatches).toBe(1);
+    const nonce = (await store.getRequest(requestId))?.checkRun?.nonce;
+    expect(nonce).toBeTruthy();
+  });
+
+  it("ignores a planted github run id and refuses ready_for_review from update_request", async () => {
+    const seen: string[] = [];
+    const checker: CheckerGateway = {
+      async dispatch(input) {
+        return {
+          dispatched: true,
+          githubRunId: "1001",
+          sha: input.sha,
+          nonce: input.nonce,
+          url: "https://example.test/1001",
+          workflow: PINNED_CHECKER_WORKFLOW,
+          hostRepo: "owner/workers",
+          trustedRef: "main",
+        };
+      },
+      async find() {
+        return "1001";
+      },
+      async outcome(input) {
+        seen.push(input.githubRunId);
+        return {
+          state: "completed",
+          conclusion: "success",
+          githubRunId: input.githubRunId,
+          evidence: ["checker:build:pass", "checker:lint:pass", "checker:playwright:pass"],
+        };
+      },
+    };
+    const store = storeForLead();
+    const deps = depsFor(store, { checker, checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const other = await store.authenticate(hashBotToken(OTHER_TOKEN));
+    const opened = await callConnectorTool(deps, auth, "open_request", {
+      goal: "Do not forge",
+      repo: "owner/demo",
+      card: card(),
+    });
+    const requestId = String(opened.structuredContent.requestId);
+    const planted = await callConnectorTool(deps, other, "update_request", {
+      requestId,
+      evidence: ["checker:github_run:4242"],
+      status: "ready_for_review",
+    });
+    expect(planted.structuredContent.reason).toBe("ready_requires_checks");
+    await callConnectorTool(deps, other, "update_request", {
+      requestId,
+      evidence: ["checker:github_run:4242", "note"],
+    });
+    expect((await store.getRequest(requestId))?.evidence).toEqual(["note"]);
+    expect((await store.getRequest(requestId))?.checkRun).toBeFalsy();
+    const checks = await callConnectorTool(deps, auth, "request_checks", {
+      requestId,
+      repo: "owner/demo",
+      sha: SHA,
+    });
+    expect(seen).toEqual(["1001"]);
+    expect(checks.structuredContent.githubRunId).toBe("1001");
+    expect(checks.structuredContent.githubRunId).not.toBe("4242");
+  });
+
+  it("clears ready_for_review when the commit under check changes", async () => {
+    const checker: CheckerGateway = {
+      async dispatch(input) {
+        return {
+          dispatched: true,
+          githubRunId: input.sha === SHA ? "1001" : "2002",
+          sha: input.sha,
+          nonce: input.nonce,
+          url: "https://example.test/run",
+          workflow: PINNED_CHECKER_WORKFLOW,
+          hostRepo: "owner/workers",
+          trustedRef: "main",
+        };
+      },
+      async find(input) {
+        return input.sha === SHA ? "1001" : "2002";
+      },
+      async outcome(input) {
+        if (input.sha === SHA) {
+          return {
+            state: "completed",
+            conclusion: "success",
+            githubRunId: input.githubRunId,
+            evidence: ["checker:build:pass", "checker:lint:pass", "checker:playwright:pass"],
+          };
+        }
+        return { state: "in_progress", conclusion: null, githubRunId: input.githubRunId, evidence: [] };
+      },
+    };
+    const store = storeForLead();
+    const deps = depsFor(store, { checker, checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const opened = await callConnectorTool(deps, auth, "open_request", {
+      goal: "New sha",
+      repo: "owner/demo",
+      card: card(),
+    });
+    const requestId = String(opened.structuredContent.requestId);
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    expect((await store.getRequest(requestId))?.status).toBe("ready_for_review");
+    const firstNonce = (await store.getRequest(requestId))?.checkRun?.nonce;
+    const nextSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const again = await callConnectorTool(deps, auth, "request_checks", {
+      requestId,
+      repo: "owner/demo",
+      sha: nextSha,
+    });
+    expect(again.structuredContent.ready).toBe(false);
+    expect((await store.getRequest(requestId))?.status).toBe("verifying");
+    expect((await store.getRequest(requestId))?.checkRun?.sha).toBe(nextSha);
+    expect((await store.getRequest(requestId))?.checkRun?.githubRunId).toBe("2002");
+    expect((await store.getRequest(requestId))?.checkRun?.nonce).not.toBe(firstNonce);
   });
 });

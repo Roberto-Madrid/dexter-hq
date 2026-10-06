@@ -8,6 +8,7 @@ export const TRUSTED_CHECKER_REF = "main";
 export type CheckerDispatchInput = {
   repo: string;
   sha: string;
+  nonce: string;
   branch?: string | null;
   pullRequest?: string | null;
 };
@@ -16,6 +17,7 @@ export type CheckerDispatchResult = {
   dispatched: boolean;
   githubRunId: string | null;
   sha: string;
+  nonce: string;
   url: string | null;
   workflow: string;
   hostRepo: string;
@@ -31,7 +33,8 @@ export type CheckerOutcome = {
 
 export type CheckerGateway = {
   dispatch(input: CheckerDispatchInput): Promise<CheckerDispatchResult>;
-  outcome(input: { githubRunId: string; sha: string }): Promise<CheckerOutcome>;
+  find(input: { repo: string; sha: string; nonce: string }): Promise<string | null>;
+  outcome(input: { githubRunId: string; repo: string; sha: string; nonce: string }): Promise<CheckerOutcome>;
 };
 
 type FetchLike = typeof fetch;
@@ -46,48 +49,35 @@ export function checksConfigured(env: Record<string, string | undefined> | NodeJ
   return Boolean(token && host);
 }
 
-export function checkerRunName(sha: string): string {
-  return `dexter-checker ${sha}`;
+export function checkerRunName(input: { repo: string; sha: string; nonce: string }): string {
+  return `dexter-checker ${input.repo} ${input.sha} ${input.nonce}`;
 }
 
 export function workflowPathIsPinned(path: unknown): boolean {
-  const value = typeof path === "string" ? path : "";
-  return value === PINNED_CHECKER_WORKFLOW || value === PINNED_CHECKER_PATH || value.endsWith(`/${PINNED_CHECKER_WORKFLOW}`);
+  return path === PINNED_CHECKER_PATH;
 }
 
-export function recordedGithubRunId(evidence: readonly string[]): string | null {
-  for (let i = evidence.length - 1; i >= 0; i -= 1) {
-    const row = evidence[i];
-    if (row.startsWith("checker:github_run:")) {
-      const id = row.slice("checker:github_run:".length).trim();
-      if (id) return id;
-    }
-  }
-  return null;
+export function sanitizeBotEvidence(items: readonly string[]): string[] {
+  return items.filter((item) => !item.startsWith("checker:github_run:"));
 }
 
 export function matchPinnedCheckerRun(
   run: Record<string, unknown>,
-  expected: { githubRunId: string; sha: string },
+  expected: { githubRunId?: string; repo: string; sha: string; nonce: string; trustedRef?: string },
 ): boolean {
-  if (String(run.id ?? "") !== expected.githubRunId) return false;
+  if (expected.githubRunId && String(run.id ?? "") !== expected.githubRunId) return false;
   if (!workflowPathIsPinned(run.path)) return false;
-  if (String(run.name ?? "") !== checkerRunName(expected.sha)) return false;
+  if (run.event !== "workflow_dispatch") return false;
+  if (String(run.head_branch ?? "") !== (expected.trustedRef ?? TRUSTED_CHECKER_REF)) return false;
+  if (String(run.name ?? "") !== checkerRunName(expected)) return false;
   return true;
 }
 
 export function findDispatchedCheckerRun(
   runs: Record<string, unknown>[],
-  expected: { sha: string; sinceMs: number },
+  expected: { repo: string; sha: string; nonce: string; trustedRef?: string },
 ): Record<string, unknown> | null {
-  const name = checkerRunName(expected.sha);
-  const matched = runs.filter((run) => {
-    if (!workflowPathIsPinned(run.path)) return false;
-    if (String(run.name ?? "") !== name) return false;
-    const created = Date.parse(String(run.created_at ?? ""));
-    if (Number.isNaN(created) || created < expected.sinceMs) return false;
-    return true;
-  });
+  const matched = runs.filter((run) => matchPinnedCheckerRun(run, expected));
   matched.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
   return matched[0] ?? null;
 }
@@ -97,6 +87,7 @@ export function evidenceFromOutcome(input: {
   sha: string;
   repo: string;
   hostRepo: string;
+  nonce: string;
   githubRunId: string | null;
   outcome: CheckerOutcome;
 }): string[] {
@@ -105,15 +96,15 @@ export function evidenceFromOutcome(input: {
     `checker:repo:${input.repo}`,
     `checker:host:${input.hostRepo}`,
     `checker:sha:${input.sha}`,
+    `checker:nonce:${input.nonce}`,
   ];
-  if (input.githubRunId) rows.push(`checker:github_run:${input.githubRunId}`);
   if (input.outcome.conclusion) rows.push(`checker:conclusion:${input.outcome.conclusion}`);
   rows.push(`checker:state:${input.outcome.state}`);
   for (const item of PINNED_CHECKS) {
     const hit = input.outcome.evidence.find((row) => row === `checker:${item}:pass` || row === `checker:${item}:fail`);
     rows.push(hit ?? `checker:${item}:pinned`);
   }
-  return [...rows, ...input.outcome.evidence.filter((item) => !rows.includes(item))];
+  return [...rows, ...input.outcome.evidence.filter((item) => !rows.includes(item) && !item.startsWith("checker:github_run:"))];
 }
 
 export function checksMoveRequestReady(outcome: CheckerOutcome): boolean {
@@ -124,15 +115,19 @@ export function applyCheckEvidence(
   request: ConnectorRequest,
   evidence: string[],
   ready: boolean,
+  check: { sha: string; repo: string },
 ): ConnectorRequest {
-  const merged = [...request.evidence];
-  for (const item of evidence) {
+  const merged = sanitizeBotEvidence([...request.evidence]);
+  for (const item of sanitizeBotEvidence(evidence)) {
     if (!merged.includes(item)) merged.push(item);
   }
   const next: ConnectorRequest = { ...request, evidence: merged };
+  const shaChanged = Boolean(request.checkRun && request.checkRun.sha !== check.sha);
   if (ready && next.status !== "done" && next.status !== "cancelled" && next.status !== "failed") {
     next.status = "ready_for_review";
-  } else if (!ready && (next.status === "queued" || next.status === "running")) {
+  } else if (shaChanged && next.status === "ready_for_review") {
+    next.status = "verifying";
+  } else if (!ready && (next.status === "queued" || next.status === "running" || next.status === "ready_for_review")) {
     next.status = "verifying";
   }
   return next;
@@ -155,11 +150,7 @@ function outcomeFromRun(run: Record<string, unknown>, sha: string): CheckerOutco
     state: parseState(run.status),
     conclusion: parseConclusion(run.conclusion),
     githubRunId,
-    evidence: [
-      `checker:github_run:${githubRunId}`,
-      `checker:sha:${sha}`,
-      ...(html ? [`checker:url:${html}`] : []),
-    ],
+    evidence: [`checker:sha:${sha}`, ...(html ? [`checker:url:${html}`] : [])],
   };
 }
 
@@ -169,13 +160,13 @@ export function createGhChecker(options: {
   trustedRef?: string;
   fetchImpl?: FetchLike;
   apiBase?: string;
-  now?: () => number;
+  findAttempts?: number;
 }): CheckerGateway {
   const fetchImpl = options.fetchImpl ?? fetch;
   const apiBase = options.apiBase ?? "https://api.github.com";
   const hostRepo = options.hostRepo;
   const trustedRef = options.trustedRef ?? TRUSTED_CHECKER_REF;
-  const now = options.now ?? (() => Date.now());
+  const findAttempts = Math.max(1, options.findAttempts ?? 3);
   const headers = {
     Accept: "application/vnd.github+json",
     Authorization: `Bearer ${options.token}`,
@@ -193,9 +184,31 @@ export function createGhChecker(options: {
     return Array.isArray(body.workflow_runs) ? body.workflow_runs.map(asRecord) : [];
   }
 
+  async function find(input: { repo: string; sha: string; nonce: string }): Promise<string | null> {
+    for (let attempt = 0; attempt < findAttempts; attempt += 1) {
+      const runs = await listWorkflowRuns();
+      const match = findDispatchedCheckerRun(runs, { ...input, trustedRef });
+      if (match?.id != null && String(match.id)) return String(match.id);
+    }
+    return null;
+  }
+
   return {
+    find,
     async dispatch(input) {
-      const sinceMs = now() - 2000;
+      const existing = await find(input);
+      if (existing) {
+        return {
+          dispatched: false,
+          githubRunId: existing,
+          sha: input.sha,
+          nonce: input.nonce,
+          url: `${apiBase}/repos/${hostRepo}/actions/runs/${existing}`,
+          workflow: PINNED_CHECKER_WORKFLOW,
+          hostRepo,
+          trustedRef,
+        };
+      }
       const response = await fetchImpl(
         `${apiBase}/repos/${hostRepo}/actions/workflows/${PINNED_CHECKER_WORKFLOW}/dispatches`,
         {
@@ -206,18 +219,18 @@ export function createGhChecker(options: {
             inputs: {
               target_repo: input.repo,
               target_sha: input.sha,
+              nonce: input.nonce,
             },
           }),
         },
       );
       if (response.status >= 300) throw new Error(`checker_dispatch_${response.status}`);
-      const runs = await listWorkflowRuns();
-      const match = findDispatchedCheckerRun(runs, { sha: input.sha, sinceMs });
-      const githubRunId = match ? String(match.id ?? "") || null : null;
+      const githubRunId = await find(input);
       return {
         dispatched: true,
         githubRunId,
         sha: input.sha,
+        nonce: input.nonce,
         url: githubRunId ? `${apiBase}/repos/${hostRepo}/actions/runs/${githubRunId}` : null,
         workflow: PINNED_CHECKER_WORKFLOW,
         hostRepo,
@@ -235,7 +248,7 @@ export function createGhChecker(options: {
         };
       }
       const run = asRecord(await response.json());
-      if (!matchPinnedCheckerRun(run, { githubRunId: input.githubRunId, sha: input.sha })) {
+      if (!matchPinnedCheckerRun(run, { ...input, trustedRef, githubRunId: input.githubRunId })) {
         return {
           state: "unknown",
           conclusion: null,

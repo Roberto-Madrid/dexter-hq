@@ -25,7 +25,7 @@ import {
   checksMoveRequestReady,
   createGhChecker,
   evidenceFromOutcome,
-  recordedGithubRunId,
+  sanitizeBotEvidence,
   type CheckerGateway,
 } from "./checker.ts";
 import { decisionTrail } from "./decision-trail.ts";
@@ -387,7 +387,7 @@ async function handleOpenRequest(deps: ConnectorDeps, auth: ConnectorAuth, args:
     status,
     card: { ...validated.card, notices: validated.notices },
     evidence: [],
-    assignedBotId: null,
+    assignedBotId: auth.id,
     repo: textArg(args, "repo"),
     notices: validated.notices,
   });
@@ -428,7 +428,14 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
     await record(deps, auth, "update_request", row.id, body);
     return toolResult(body, true);
   }
-  const evidence = Array.isArray(args.evidence) ? args.evidence.map((item) => String(item)) : row.evidence;
+  if (status === "ready_for_review") {
+    const body = { status: "refused", reason: "ready_requires_checks" };
+    await record(deps, auth, "update_request", row.id, body);
+    return toolResult(body, true);
+  }
+  const evidence = Array.isArray(args.evidence)
+    ? sanitizeBotEvidence(args.evidence.map((item) => String(item)))
+    : row.evidence;
   if (status === "done" && evidence.length === 0) {
     const body = { status: "refused", reason: "done_requires_evidence" };
     await record(deps, auth, "update_request", row.id, body);
@@ -563,10 +570,7 @@ function botMayCheckRequest(
   if (request.repo && request.repo !== repo) return { ok: false, reason: "repo_mismatch" };
   if (request.repo && !auth.repos.includes(request.repo)) return { ok: false, reason: "repo_out_of_scope" };
   if (request.assignedBotId && request.assignedBotId !== auth.id) return { ok: false, reason: "not_own_request" };
-  if (!request.assignedBotId) {
-    const ownedRepo = request.repo ?? repo;
-    if (!auth.repos.includes(ownedRepo)) return { ok: false, reason: "not_own_request" };
-  }
+  if (!request.assignedBotId) return { ok: false, reason: "not_own_request" };
   return { ok: true };
 }
 
@@ -611,39 +615,64 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
     return toolResult(body, true);
   }
   try {
-    const existingRun = recordedGithubRunId(request.evidence);
-    let githubRunId = existingRun;
-    let hostRepo = process.env.GH_WORKERS_REPO?.trim() || repo;
-    if (!githubRunId) {
+    const at = (deps.now ?? (() => new Date().toISOString()))();
+    let checkRun = request.checkRun ?? null;
+    const shaChanged = Boolean(checkRun && (checkRun.sha !== sha || checkRun.repo !== repo));
+    if (shaChanged) checkRun = null;
+
+    let dispatchedNow = false;
+    if (checkRun) {
+      if (!checkRun.githubRunId) {
+        const found = await deps.checker.find({ repo, sha, nonce: checkRun.nonce });
+        if (found) checkRun = { ...checkRun, githubRunId: found };
+      }
+    } else {
+      const nonce = randomUUID();
       const dispatched = await deps.checker.dispatch({
         repo,
         sha,
+        nonce,
         branch,
         pullRequest,
       });
-      githubRunId = dispatched.githubRunId;
-      hostRepo = dispatched.hostRepo;
+      dispatchedNow = dispatched.dispatched;
+      checkRun = {
+        nonce,
+        githubRunId: dispatched.githubRunId,
+        sha,
+        repo,
+        hostRepo: dispatched.hostRepo,
+        dispatchedAt: at,
+      };
     }
+
+    const hostRepo = checkRun.hostRepo;
+    const githubRunId = checkRun.githubRunId;
     const outcome = githubRunId
-      ? await deps.checker.outcome({ githubRunId, sha })
+      ? await deps.checker.outcome({ githubRunId, sha, repo, nonce: checkRun.nonce })
       : { state: "queued" as const, conclusion: null, githubRunId: null, evidence: [] };
+    if (outcome.githubRunId) checkRun = { ...checkRun, githubRunId: outcome.githubRunId };
     const evidence = evidenceFromOutcome({
       workflow: PINNED_CHECKER_WORKFLOW,
       sha,
       repo,
       hostRepo,
-      githubRunId: outcome.githubRunId ?? githubRunId,
+      nonce: checkRun.nonce,
+      githubRunId: checkRun.githubRunId,
       outcome,
     });
     const ready = checksMoveRequestReady(outcome);
-    const next = applyCheckEvidence(request, evidence, ready);
+    const next = applyCheckEvidence(request, evidence, ready, { sha, repo });
+    next.checkRun = checkRun;
     await deps.store.saveRequest(next);
     const status = ready ? "ready" : outcome.state === "completed" ? "failed" : "in_progress";
     const body = {
       status,
       ready,
+      dispatched: dispatchedNow,
       workflow: PINNED_CHECKER_WORKFLOW,
-      githubRunId: outcome.githubRunId ?? githubRunId,
+      githubRunId: checkRun.githubRunId,
+      nonce: checkRun.nonce,
       sha,
       evidence,
       requestId,

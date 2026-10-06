@@ -50,6 +50,9 @@ export async function launchBlockedByDesignGate(
   if (!input.requestId) return { blocked: true, reason: "request_required" };
   const request = await store.getRequest(input.requestId);
   if (!request) return { blocked: true, reason: "unknown_request" };
+  if (request.assignedBotId && request.assignedBotId !== _auth.id) {
+    return { blocked: true, reason: "not_own_request" };
+  }
   const needed =
     requestRequiresDesign(request.card) || briefRequiresDesignApproval(input.brief, input.args);
   if (!needed) return { blocked: false, reason: null };
