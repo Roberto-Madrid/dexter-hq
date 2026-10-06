@@ -424,6 +424,29 @@
   max-width: 400px;
 }
 
+.tower .why {
+  margin-top: 24px;
+  max-width: 400px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.tower .why summary {
+  cursor: pointer;
+  font-weight: 500;
+  list-style: none;
+}
+
+.tower .why summary::-webkit-details-marker {
+  display: none;
+}
+
+.tower .why .ceo {
+  margin-top: 8px;
+  color: var(--muted);
+}
+
 .tower .phone-brand,
 .tower .phone-stop,
 .tower .pstop,
@@ -616,5 +639,9 @@
     font-size: 13px;
     line-height: 20px;
     max-width: 400px;
+  }
+
+  .tower .phone-doc .why {
+    margin-top: 24px;
   }
 }

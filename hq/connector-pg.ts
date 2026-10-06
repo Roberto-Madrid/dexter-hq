@@ -449,7 +449,7 @@ async function persistRequest(client: pg.Client, row: ConnectorRequest): Promise
       String(row.card?.tier ?? "T1"),
       String(row.card?.definitionOfDone ?? row.goal),
       row.status,
-      { evidence: row.evidence, assignedBotId: row.assignedBotId, repo: row.repo, card: row.card, notices: row.notices },
+      { evidence: row.evidence, assignedBotId: row.assignedBotId, repo: row.repo, card: row.card, notices: row.notices, checkRun: row.checkRun ?? null },
     ],
   );
 }
@@ -475,5 +475,21 @@ async function readRequest(client: pg.Client, id: string): Promise<ConnectorRequ
     assignedBotId: caps.assignedBotId ? String(caps.assignedBotId) : null,
     repo: caps.repo ? String(caps.repo) : null,
     notices: asStringArray(caps.notices),
+    checkRun: parseCheckRun(caps.checkRun),
+  };
+}
+
+function parseCheckRun(value: unknown): ConnectorRequest["checkRun"] {
+  const row = asRecord(value);
+  if (!row) return null;
+  if (typeof row.nonce !== "string" || typeof row.sha !== "string" || typeof row.repo !== "string") return null;
+  return {
+    nonce: row.nonce,
+    githubRunId: typeof row.githubRunId === "string" ? row.githubRunId : null,
+    sha: row.sha,
+    repo: row.repo,
+    hostRepo: typeof row.hostRepo === "string" ? row.hostRepo : "",
+    dispatchedAt: typeof row.dispatchedAt === "string" ? row.dispatchedAt : "",
+    passed: row.passed === true,
   };
 }

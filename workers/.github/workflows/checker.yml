@@ -1,9 +1,11 @@
 name: checker
-run-name: checker-${{ inputs.run_id }}
+run-name: dexter-checker ${{ inputs.target_repo }} ${{ inputs.target_sha }} ${{ inputs.nonce }}
 on:
   workflow_dispatch:
     inputs:
-      run_id: { required: true, type: string }
+      target_repo: { required: true, type: string }
+      target_sha: { required: true, type: string }
+      nonce: { required: true, type: string }
 permissions:
   contents: read
 jobs:
@@ -11,25 +13,40 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Build
-        working-directory: checker-sample
-        run: node build.js
-      - name: Lint
-        working-directory: checker-sample
-        run: node lint.js
-      - name: Playwright screenshot
-        working-directory: checker-sample
-        run: |
-          npm init -y >/dev/null
-          npm install --silent @playwright/test@1.55.0
-          npx playwright install --with-deps chromium
-          npx playwright test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v5
         with:
-          name: checker-${{ inputs.run_id }}
-          path: checker-sample/shots/*.png
-          retention-days: 7
+          repository: ${{ inputs.target_repo }}
+          ref: ${{ inputs.target_sha }}
+          persist-credentials: false
+          path: subject
+      - name: Build
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          if [ -f package.json ]; then
+            npm ci || npm install
+            npm run build --if-present
+          else
+            node build.js
+          fi
+      - name: Lint
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          if [ -f package.json ]; then
+            npm run lint --if-present
+          else
+            node lint.js
+          fi
+      - name: Test
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          if [ -f package.json ]; then
+            npm test
+          else
+            npx --yes @playwright/test@1.55.0 test
+          fi

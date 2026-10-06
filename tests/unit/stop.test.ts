@@ -180,11 +180,23 @@ describe("STOP ALL", () => {
     const active = await connector.authenticate(hash);
     expect(active?.suspended).toBe(false);
 
+    await connector.saveRequest({
+      id: "req-resume",
+      ownerId: OWNER,
+      goal: "Change one label.",
+      status: "queued",
+      card: { crew: "change", newScreen: false, requiresDesignApproval: false },
+      evidence: [],
+      assignedBotId: BOT,
+      repo: "owner/demo",
+      notices: [],
+    });
     const after = await callConnectorTool(deps, active, "launch_agent", {
       repo: "owner/demo",
       role: "builder",
       brief: "Change one label.",
       idempotencyKey: "resume-1",
+      requestId: "req-resume",
     });
     expect(after.structuredContent.status).toBe("not-configured");
     expect(after.structuredContent.status).not.toBe("stopped");

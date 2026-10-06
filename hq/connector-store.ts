@@ -60,6 +60,16 @@ export type ConnectorAgent = {
   result: Record<string, unknown> | null;
 };
 
+export type ConnectorCheckRun = {
+  nonce: string;
+  githubRunId: string | null;
+  sha: string;
+  repo: string;
+  hostRepo: string;
+  dispatchedAt: string;
+  passed: boolean;
+};
+
 export type ConnectorRequest = {
   id: string;
   ownerId: string;
@@ -70,6 +80,7 @@ export type ConnectorRequest = {
   assignedBotId: string | null;
   repo: string | null;
   notices: string[];
+  checkRun?: ConnectorCheckRun | null;
 };
 
 export type ConnectorApproval = {

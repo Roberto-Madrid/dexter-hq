@@ -18,6 +18,20 @@ import {
   type ConnectorToolName,
 } from "./connector-store.ts";
 import { parseCouncilVerdict, runCriticSeat } from "./council-seat.ts";
+import {
+  PINNED_CHECKER_WORKFLOW,
+  applyCheckEvidence,
+  checkerPassedCurrentSha,
+  checksConfigured,
+  checksMoveRequestReady,
+  createGhChecker,
+  evidenceFromOutcome,
+  sanitizeBotEvidence,
+  type CheckerGateway,
+} from "./checker.ts";
+import { decisionTrail } from "./decision-trail.ts";
+import { launchBlockedByDesignGate } from "./design-gate.ts";
+import { composeLaunchBrief } from "./personas.ts";
 
 export { CONNECTOR_TOOLS, createMemoryConnectorStore };
 export type { ConnectorAuth, ConnectorStore, ConnectorToolName };
@@ -40,6 +54,8 @@ export type ConnectorDeps = {
   sheet: RoleSheet;
   cursor: CursorGateway | null;
   cursorConfigured: boolean;
+  checker?: CheckerGateway | null;
+  checkerConfigured?: boolean;
   knownHosts?: readonly string[];
   now?: () => string;
   ownerId?: string;
@@ -190,15 +206,28 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     await record(deps, auth, "launch_agent", role, body);
     return toolResult(body, true);
   }
+  const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
+  const approvalId = textArg(args, "approvalId") ?? textArg(args, "approval_id");
+  const gate = await launchBlockedByDesignGate(deps.store, auth, {
+    role,
+    brief,
+    args,
+    requestId,
+    approvalId,
+  });
+  if (gate.blocked) {
+    const body = { status: "refused", reason: gate.reason ?? "design_approval_required", requestId };
+    await record(deps, auth, "launch_agent", requestId ?? idempotencyKey, body);
+    return toolResult(body, true);
+  }
   const findings = preflight(brief, deps.knownHosts ?? KNOWN_HOSTS);
   if (findings.length > 0) {
-    const body = { status: "needs_you", reason: "preflight", findings };
+    const body = { status: "needs_you", reason: "preflight", findings, requestId };
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
   const agents = await deps.store.listAgents();
   const active = agents.filter((item) => ACTIVE_AGENT.has(item.status));
-  const approvalId = textArg(args, "approvalId") ?? textArg(args, "approval_id");
   let surge = false;
   if (approvalId) {
     const approval = await deps.store.getApproval(approvalId);
@@ -219,7 +248,14 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     }
   }
   if (!deps.cursorConfigured || !deps.cursor) {
-    const body = { status: "not-configured", configured: false, launched: false };
+    const composed = composeLaunchBrief(role, brief);
+    const body = {
+      status: "not-configured",
+      configured: false,
+      launched: false,
+      persona: composed.persona,
+      requestId,
+    };
     const row: ConnectorAgent = {
       id: randomUUID(),
       ownerId: auth.ownerId,
@@ -236,9 +272,18 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
+  const composed = composeLaunchBrief(role, brief);
   try {
-    const handle = await deps.cursor.start({ idempotencyKey, taskId: idempotencyKey, brief });
-    const body = { status: "launched", launched: true, agentId: handle.id, role, family };
+    const handle = await deps.cursor.start({ idempotencyKey, taskId: idempotencyKey, brief: composed.text });
+    const body = {
+      status: "launched",
+      launched: true,
+      agentId: handle.id,
+      role,
+      family,
+      persona: composed.persona,
+      requestId,
+    };
     const row: ConnectorAgent = {
       id: randomUUID(),
       ownerId: auth.ownerId,
@@ -343,11 +388,29 @@ async function handleOpenRequest(deps: ConnectorDeps, auth: ConnectorAuth, args:
     status,
     card: { ...validated.card, notices: validated.notices },
     evidence: [],
-    assignedBotId: null,
+    assignedBotId: auth.id,
     repo: textArg(args, "repo"),
     notices: validated.notices,
   });
-  const body = { status: "opened", requestId: id, requestStatus: status, notices: validated.notices };
+  let designApprovalId: string | null = null;
+  if (validated.card.requiresDesignApproval) {
+    designApprovalId = randomUUID();
+    await deps.store.saveApproval({
+      id: designApprovalId,
+      ownerId: auth.ownerId,
+      action: "design",
+      target: id,
+      status: "pending",
+      requestId: id,
+    });
+  }
+  const body = {
+    status: "opened",
+    requestId: id,
+    requestStatus: status,
+    notices: validated.notices,
+    designApprovalId,
+  };
   await record(deps, auth, "open_request", id, body);
   return toolResult(body);
 }
@@ -361,14 +424,31 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
     await record(deps, auth, "update_request", id ?? "missing", body);
     return toolResult(body, true);
   }
+  if (!botMayMutateRequest(auth, row)) {
+    const body = { status: "refused", reason: "not_own_request", requestId: row.id };
+    await record(deps, auth, "update_request", row.id, body);
+    return toolResult(body, true);
+  }
   if (status && !(REQUEST_STATES as readonly string[]).includes(status)) {
     const body = { status: "refused", reason: "invalid_status" };
     await record(deps, auth, "update_request", row.id, body);
     return toolResult(body, true);
   }
-  const evidence = Array.isArray(args.evidence) ? args.evidence.map((item) => String(item)) : row.evidence;
+  if (status === "ready_for_review") {
+    const body = { status: "refused", reason: "ready_requires_checks" };
+    await record(deps, auth, "update_request", row.id, body);
+    return toolResult(body, true);
+  }
+  const evidence = Array.isArray(args.evidence)
+    ? sanitizeBotEvidence(args.evidence.map((item) => String(item)))
+    : row.evidence;
   if (status === "done" && evidence.length === 0) {
     const body = { status: "refused", reason: "done_requires_evidence" };
+    await record(deps, auth, "update_request", row.id, body);
+    return toolResult(body, true);
+  }
+  if (status === "done" && !checkerPassedCurrentSha(row)) {
+    const body = { status: "refused", reason: "done_requires_checks", requestId: row.id };
     await record(deps, auth, "update_request", row.id, body);
     return toolResult(body, true);
   }
@@ -471,6 +551,11 @@ async function handleCouncil(deps: ConnectorDeps, auth: ConnectorAuth, args: Rec
 }
 
 async function handleAssign(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
+  if (auth.kind !== "ceo") {
+    const body = { status: "refused", reason: "ceo_only" };
+    await record(deps, auth, "assign", "scope", body);
+    return toolResult(body, true);
+  }
   const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
   const botId = textArg(args, "botId") ?? textArg(args, "bot_id");
   const request = requestId ? await deps.store.getRequest(requestId) : null;
@@ -490,6 +575,140 @@ async function handleAssign(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
   const body = { status: "assigned", requestId: request.id, botId: bot.id };
   await record(deps, auth, "assign", request.id, body);
   return toolResult(body);
+}
+
+function botMayMutateRequest(auth: ConnectorAuth, request: { assignedBotId: string | null }): boolean {
+  if (auth.kind === "ceo") return true;
+  return request.assignedBotId === auth.id;
+}
+
+function botMayCheckRequest(
+  auth: ConnectorAuth,
+  request: { assignedBotId: string | null; repo: string | null },
+  repo: string,
+): { ok: true } | { ok: false; reason: string } {
+  if (!auth.repos.includes(repo)) return { ok: false, reason: "repo_out_of_scope" };
+  if (request.repo && request.repo !== repo) return { ok: false, reason: "repo_mismatch" };
+  if (request.repo && !auth.repos.includes(request.repo)) return { ok: false, reason: "repo_out_of_scope" };
+  if (request.assignedBotId && request.assignedBotId !== auth.id) return { ok: false, reason: "not_own_request" };
+  if (!request.assignedBotId) return { ok: false, reason: "not_own_request" };
+  return { ok: true };
+}
+
+async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
+  const repo = textArg(args, "repo");
+  const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
+  const sha = textArg(args, "sha");
+  const branch = textArg(args, "branch");
+  const pullRequest = textArg(args, "pullRequest") ?? textArg(args, "pull_request");
+  if (!requestId) {
+    const body = { status: "refused", reason: "request_required", ready: false };
+    await record(deps, auth, "request_checks", "missing", body);
+    return toolResult(body, true);
+  }
+  const request = await deps.store.getRequest(requestId);
+  if (!request) {
+    const body = { status: "refused", reason: "unknown_request", ready: false, requestId };
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, true);
+  }
+  if (!repo || !sha) {
+    const body = { status: "refused", reason: "repo_and_sha_required", ready: false, requestId };
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, true);
+  }
+  const access = botMayCheckRequest(auth, request, repo);
+  if (!access.ok) {
+    const body = { status: "refused", reason: access.reason, ready: false, requestId };
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, true);
+  }
+  const configured = deps.checkerConfigured ?? Boolean(deps.checker);
+  if (!configured || !deps.checker) {
+    const body = {
+      status: "not-configured",
+      ready: false,
+      configured: false,
+      workflow: PINNED_CHECKER_WORKFLOW,
+      requestId,
+    };
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, true);
+  }
+  try {
+    const at = (deps.now ?? (() => new Date().toISOString()))();
+    let checkRun = request.checkRun ?? null;
+    const shaChanged = Boolean(checkRun && (checkRun.sha !== sha || checkRun.repo !== repo));
+    if (shaChanged) checkRun = null;
+
+    let dispatchedNow = false;
+    if (checkRun) {
+      if (!checkRun.githubRunId) {
+        const found = await deps.checker.find({ repo, sha, nonce: checkRun.nonce });
+        if (found) checkRun = { ...checkRun, githubRunId: found };
+      }
+    } else {
+      const nonce = randomUUID();
+      const dispatched = await deps.checker.dispatch({
+        repo,
+        sha,
+        nonce,
+        branch,
+        pullRequest,
+      });
+      dispatchedNow = dispatched.dispatched;
+      checkRun = {
+        nonce,
+        githubRunId: dispatched.githubRunId,
+        sha,
+        repo,
+        hostRepo: dispatched.hostRepo,
+        dispatchedAt: at,
+        passed: false,
+      };
+    }
+
+    const hostRepo = checkRun.hostRepo;
+    const githubRunId = checkRun.githubRunId;
+    const outcome = githubRunId
+      ? await deps.checker.outcome({ githubRunId, sha, repo, nonce: checkRun.nonce })
+      : { state: "queued" as const, conclusion: null, githubRunId: null, evidence: [] };
+    if (outcome.githubRunId) checkRun = { ...checkRun, githubRunId: outcome.githubRunId };
+    const ready = checksMoveRequestReady(outcome);
+    checkRun = { ...checkRun, passed: ready };
+    const evidence = evidenceFromOutcome({
+      workflow: PINNED_CHECKER_WORKFLOW,
+      sha,
+      repo,
+      hostRepo,
+      nonce: checkRun.nonce,
+      githubRunId: checkRun.githubRunId,
+      outcome,
+    });
+    const next = applyCheckEvidence(request, evidence, ready, { sha, repo });
+    next.checkRun = checkRun;
+    await deps.store.saveRequest(next);
+    const status = ready ? "ready" : outcome.state === "completed" ? "failed" : "in_progress";
+    const body = {
+      status,
+      ready,
+      dispatched: dispatchedNow,
+      workflow: PINNED_CHECKER_WORKFLOW,
+      githubRunId: checkRun.githubRunId,
+      nonce: checkRun.nonce,
+      sha,
+      evidence,
+      requestId,
+      requestStatus: next.status,
+    };
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, status === "failed");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message.slice(0, 80) : "checker_failed";
+    const body = { status: "error", ready: false, reason, requestId, workflow: PINNED_CHECKER_WORKFLOW };
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, true);
+  }
 }
 
 export async function callConnectorTool(
@@ -548,11 +767,7 @@ export async function callConnectorTool(
   if (name === "agent_status" || name === "followup_agent" || name === "cancel_agent") {
     return handleAgentTool(deps, auth, name, args);
   }
-  if (name === "request_checks") {
-    const body = { status: "recorded", ready: false };
-    await record(deps, auth, name, textArg(args, "branch") ?? textArg(args, "pullRequest") ?? "checks", body);
-    return toolResult(body);
-  }
+  if (name === "request_checks") return handleRequestChecks(deps, auth, args);
   if (name === "request_council") return handleCouncil(deps, auth, args);
   if (name === "request_approval") {
     const action = textArg(args, "action") ?? "unknown";
@@ -566,7 +781,7 @@ export async function callConnectorTool(
       status: "pending",
       requestId: textArg(args, "requestId"),
     });
-    const body = { status: "pending", approvalId: id };
+    const body = { status: "pending", approvalId: id, requestId: textArg(args, "requestId") };
     await record(deps, auth, name, id, body);
     return toolResult(body);
   }
@@ -609,15 +824,20 @@ export async function callConnectorTool(
   }
   if (name === "get_context") {
     const repo = textArg(args, "repo");
+    const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
     const posts = await deps.store.listPosts();
     const items = posts.filter((item) => !repo || item.repo === repo);
+    const events = await deps.store.listEvents();
+    const why = requestId ? decisionTrail(events, requestId) : [];
     const body = {
       status: "ok",
       findings: items.filter((item) => item.type === "finding" && item.verified),
       unverified: items.filter((item) => item.type === "finding" && !item.verified).map((item) => item.id),
       deadEnds: items.filter((item) => item.type === "dead_end"),
+      why,
+      requestId,
     };
-    await record(deps, auth, name, repo ?? "all", { count: items.length });
+    await record(deps, auth, name, requestId ?? repo ?? "all", { count: items.length, why: why.length });
     return toolResult(body);
   }
   const body = { status: "error", reason: "unknown_tool" };
@@ -627,12 +847,23 @@ export async function callConnectorTool(
 
 export function createDefaultConnectorDeps(overrides?: Partial<ConnectorDeps>): ConnectorDeps {
   const key = process.env.CURSOR_API_KEY;
+  const ghToken = process.env.GH_HQ_TOKEN?.trim();
+  const hostRepo = process.env.GH_WORKERS_REPO?.trim();
   const sheet = overrides?.sheet ?? parseRoleSheet(loadConnectorSheetText());
+  const checker =
+    overrides && "checker" in overrides
+      ? (overrides.checker ?? null)
+      : ghToken && hostRepo
+        ? createGhChecker({ token: ghToken, hostRepo })
+        : null;
   return {
     store: overrides?.store ?? createMemoryConnectorStore(),
     sheet,
     cursor: overrides?.cursor ?? (key ? createCursorCloud({ apiKey: key }) : null),
     cursorConfigured: overrides?.cursorConfigured ?? Boolean(key),
+    checker,
+    checkerConfigured:
+      overrides?.checkerConfigured ?? (overrides && "checker" in overrides ? Boolean(checker) : checksConfigured()),
     knownHosts: overrides?.knownHosts ?? KNOWN_HOSTS,
     now: overrides?.now,
     ownerId: overrides?.ownerId,
@@ -649,7 +880,9 @@ export function connectorToolDescriptors(names: readonly string[]) {
         ? "Return this connector's identity, scopes, caps left, and stop flag."
         : name === "request_council"
           ? "Run one Critic seat through path B. Returns a schema-valid verdict, or not-configured when the login is absent."
-          : `Dexter connector tool ${name}.`,
+          : name === "request_checks"
+            ? "Dispatch pinned checker.yml from the trusted workers main ref against a commit SHA. Returns in_progress until GitHub has a conclusion; ready requires a completed success. Callers cannot supply a GitHub run id."
+            : `Dexter connector tool ${name}.`,
     inputSchema: { type: "object", additionalProperties: true },
   }));
 }

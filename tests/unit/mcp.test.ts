@@ -69,6 +69,25 @@ function leadDeps(options?: { stopped?: boolean; scopes?: string[]; cursorConfig
   });
 }
 
+async function queuedRequest(store: ReturnType<typeof createMemoryConnectorStore>, id = "req-launch") {
+  await store.saveRequest({
+    id,
+    ownerId: OWNER,
+    goal: "Change one label.",
+    status: "queued",
+    card: {
+      crew: "change",
+      newScreen: false,
+      requiresDesignApproval: false,
+    },
+    evidence: [],
+    assignedBotId: BOT,
+    repo: "owner/demo",
+    notices: [],
+  });
+  return id;
+}
+
 describe("mcp connector stub", () => {
   it("completes initialize and whoami", async () => {
     const init = await mcpPost({
@@ -181,12 +200,14 @@ describe("mcp connector stub", () => {
     expect(blockedBody.result.structuredContent.reason).toBe("suspended");
 
     await deps.store.setTokensSuspended(false);
+    const requestId = await queuedRequest(deps.store);
     const after = await mcpPost(
       callBody("launch_agent", {
         repo: "owner/demo",
         role: "builder",
         brief: "Change one label.",
         idempotencyKey: "suspend-mcp-2",
+        requestId,
       }),
       { authorization: `Bearer ${TOKEN}` },
       deps,
@@ -197,12 +218,14 @@ describe("mcp connector stub", () => {
 
   it("does not claim success when launch has no key", async () => {
     const deps = leadDeps({ cursorConfigured: false });
+    const requestId = await queuedRequest(deps.store);
     const response = await mcpPost(
       callBody("launch_agent", {
         repo: "owner/demo",
         role: "builder",
         brief: "Change one label.",
         idempotencyKey: "launch-1",
+        requestId,
       }),
       { authorization: `Bearer ${TOKEN}` },
       deps,
