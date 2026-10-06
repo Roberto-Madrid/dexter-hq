@@ -14,13 +14,18 @@ export function requestRequiresDesign(card: Record<string, unknown> | null): boo
 
 export async function designApprovalGranted(
   store: ConnectorStore,
-  input: { requestId: string | null; approvalId: string | null },
+  input: { requestId: string; approvalId: string | null },
 ): Promise<boolean> {
   if (input.approvalId) {
     const row = await store.getApproval(input.approvalId);
-    if (row?.status === "approved" && (row.action === "design" || row.action === "design_gate")) return true;
+    if (
+      row?.status === "approved" &&
+      (row.action === "design" || row.action === "design_gate") &&
+      row.requestId === input.requestId
+    ) {
+      return true;
+    }
   }
-  if (!input.requestId) return false;
   const rows = await store.listApprovals();
   return rows.some(
     (row) =>
@@ -42,12 +47,14 @@ export async function launchBlockedByDesignGate(
   },
 ): Promise<{ blocked: boolean; reason: string | null }> {
   if (DESIGN_SKETCH_ROLES.has(input.role)) return { blocked: false, reason: null };
-  const request = input.requestId ? await store.getRequest(input.requestId) : null;
+  if (!input.requestId) return { blocked: true, reason: "request_required" };
+  const request = await store.getRequest(input.requestId);
+  if (!request) return { blocked: true, reason: "unknown_request" };
   const needed =
-    requestRequiresDesign(request?.card ?? null) || briefRequiresDesignApproval(input.brief, input.args);
+    requestRequiresDesign(request.card) || briefRequiresDesignApproval(input.brief, input.args);
   if (!needed) return { blocked: false, reason: null };
   const granted = await designApprovalGranted(store, {
-    requestId: request?.id ?? input.requestId,
+    requestId: request.id,
     approvalId: input.approvalId,
   });
   if (granted) return { blocked: false, reason: null };

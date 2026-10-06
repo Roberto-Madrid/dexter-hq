@@ -1,9 +1,10 @@
 name: checker
-run-name: checker-${{ inputs.run_id }}
+run-name: dexter-checker ${{ inputs.target_sha }}
 on:
   workflow_dispatch:
     inputs:
-      run_id: { required: true, type: string }
+      target_repo: { required: true, type: string }
+      target_sha: { required: true, type: string }
 permissions:
   contents: read
 jobs:
@@ -12,17 +13,21 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          path: judge
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.target_repo }}
+          ref: ${{ inputs.target_sha }}
+          path: subject
       - name: Build
-        working-directory: checker-sample
+        working-directory: judge/checker-sample
         run: node build.js
       - name: Lint
-        working-directory: checker-sample
+        working-directory: judge/checker-sample
         run: node lint.js
       - name: Playwright screenshot
-        working-directory: checker-sample
+        working-directory: judge/checker-sample
         run: |
           npm init -y >/dev/null
           npm install --silent @playwright/test@1.55.0
@@ -30,6 +35,6 @@ jobs:
           npx playwright test
       - uses: actions/upload-artifact@v4
         with:
-          name: checker-${{ inputs.run_id }}
-          path: checker-sample/shots/*.png
+          name: checker-${{ inputs.target_sha }}
+          path: judge/checker-sample/shots/*.png
           retention-days: 7

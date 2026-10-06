@@ -21,9 +21,11 @@ import { parseCouncilVerdict, runCriticSeat } from "./council-seat.ts";
 import {
   PINNED_CHECKER_WORKFLOW,
   applyCheckEvidence,
+  checksConfigured,
   checksMoveRequestReady,
   createGhChecker,
   evidenceFromOutcome,
+  recordedGithubRunId,
   type CheckerGateway,
 } from "./checker.ts";
 import { decisionTrail } from "./decision-trail.ts";
@@ -552,21 +554,48 @@ async function handleAssign(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
   return toolResult(body);
 }
 
+function botMayCheckRequest(
+  auth: ConnectorAuth,
+  request: { assignedBotId: string | null; repo: string | null },
+  repo: string,
+): { ok: true } | { ok: false; reason: string } {
+  if (!auth.repos.includes(repo)) return { ok: false, reason: "repo_out_of_scope" };
+  if (request.repo && request.repo !== repo) return { ok: false, reason: "repo_mismatch" };
+  if (request.repo && !auth.repos.includes(request.repo)) return { ok: false, reason: "repo_out_of_scope" };
+  if (request.assignedBotId && request.assignedBotId !== auth.id) return { ok: false, reason: "not_own_request" };
+  if (!request.assignedBotId) {
+    const ownedRepo = request.repo ?? repo;
+    if (!auth.repos.includes(ownedRepo)) return { ok: false, reason: "not_own_request" };
+  }
+  return { ok: true };
+}
+
 async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
   const repo = textArg(args, "repo");
-  const branch = textArg(args, "branch");
-  const pullRequest = textArg(args, "pullRequest") ?? textArg(args, "pull_request");
   const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
   const sha = textArg(args, "sha");
-  const ref = branch ?? (pullRequest ? `refs/pull/${pullRequest}/head` : null);
-  if (!repo || !ref) {
-    const body = { status: "refused", reason: "repo_and_branch_or_pull_request_required", ready: false, requestId };
-    await record(deps, auth, "request_checks", requestId ?? "checks", body);
+  const branch = textArg(args, "branch");
+  const pullRequest = textArg(args, "pullRequest") ?? textArg(args, "pull_request");
+  if (!requestId) {
+    const body = { status: "refused", reason: "request_required", ready: false };
+    await record(deps, auth, "request_checks", "missing", body);
     return toolResult(body, true);
   }
-  if (!auth.repos.includes(repo)) {
-    const body = { status: "refused", reason: "repo_out_of_scope", ready: false, requestId };
-    await record(deps, auth, "request_checks", repo, body);
+  const request = await deps.store.getRequest(requestId);
+  if (!request) {
+    const body = { status: "refused", reason: "unknown_request", ready: false, requestId };
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, true);
+  }
+  if (!repo || !sha) {
+    const body = { status: "refused", reason: "repo_and_sha_required", ready: false, requestId };
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, true);
+  }
+  const access = botMayCheckRequest(auth, request, repo);
+  if (!access.ok) {
+    const body = { status: "refused", reason: access.reason, ready: false, requestId };
+    await record(deps, auth, "request_checks", requestId, body);
     return toolResult(body, true);
   }
   const configured = deps.checkerConfigured ?? Boolean(deps.checker);
@@ -578,50 +607,54 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
       workflow: PINNED_CHECKER_WORKFLOW,
       requestId,
     };
-    await record(deps, auth, "request_checks", requestId ?? repo, body);
+    await record(deps, auth, "request_checks", requestId, body);
     return toolResult(body, true);
   }
-  const runId = textArg(args, "runId") ?? textArg(args, "run_id") ?? randomUUID();
   try {
-    const dispatched = await deps.checker.dispatch({
-      repo,
-      ref,
-      runId,
-      sha,
-      pullRequest,
-    });
-    const outcome = await deps.checker.outcome({ repo, runId: dispatched.runId });
+    const existingRun = recordedGithubRunId(request.evidence);
+    let githubRunId = existingRun;
+    let hostRepo = process.env.GH_WORKERS_REPO?.trim() || repo;
+    if (!githubRunId) {
+      const dispatched = await deps.checker.dispatch({
+        repo,
+        sha,
+        branch,
+        pullRequest,
+      });
+      githubRunId = dispatched.githubRunId;
+      hostRepo = dispatched.hostRepo;
+    }
+    const outcome = githubRunId
+      ? await deps.checker.outcome({ githubRunId, sha })
+      : { state: "queued" as const, conclusion: null, githubRunId: null, evidence: [] };
     const evidence = evidenceFromOutcome({
-      workflow: dispatched.workflow || PINNED_CHECKER_WORKFLOW,
-      sha: dispatched.sha ?? sha,
+      workflow: PINNED_CHECKER_WORKFLOW,
+      sha,
       repo,
-      ref,
+      hostRepo,
+      githubRunId: outcome.githubRunId ?? githubRunId,
       outcome,
     });
     const ready = checksMoveRequestReady(outcome);
-    if (requestId) {
-      const request = await deps.store.getRequest(requestId);
-      if (request) {
-        const next = applyCheckEvidence(request, evidence, ready);
-        await deps.store.saveRequest(next);
-      }
-    }
+    const next = applyCheckEvidence(request, evidence, ready);
+    await deps.store.saveRequest(next);
+    const status = ready ? "ready" : outcome.state === "completed" ? "failed" : "in_progress";
     const body = {
-      status: ready ? "ready" : outcome.state === "completed" ? "failed" : "recorded",
+      status,
       ready,
       workflow: PINNED_CHECKER_WORKFLOW,
-      runId: dispatched.runId,
-      sha: dispatched.sha ?? sha,
+      githubRunId: outcome.githubRunId ?? githubRunId,
+      sha,
       evidence,
       requestId,
-      requestStatus: requestId ? (await deps.store.getRequest(requestId))?.status ?? null : null,
+      requestStatus: next.status,
     };
-    await record(deps, auth, "request_checks", requestId ?? dispatched.runId, body);
-    return toolResult(body, !ready && outcome.conclusion === "failure");
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, status === "failed");
   } catch (error) {
     const reason = error instanceof Error ? error.message.slice(0, 80) : "checker_failed";
     const body = { status: "error", ready: false, reason, requestId, workflow: PINNED_CHECKER_WORKFLOW };
-    await record(deps, auth, "request_checks", requestId ?? repo, body);
+    await record(deps, auth, "request_checks", requestId, body);
     return toolResult(body, true);
   }
 }
@@ -763,12 +796,13 @@ export async function callConnectorTool(
 export function createDefaultConnectorDeps(overrides?: Partial<ConnectorDeps>): ConnectorDeps {
   const key = process.env.CURSOR_API_KEY;
   const ghToken = process.env.GH_HQ_TOKEN?.trim();
+  const hostRepo = process.env.GH_WORKERS_REPO?.trim();
   const sheet = overrides?.sheet ?? parseRoleSheet(loadConnectorSheetText());
   const checker =
     overrides && "checker" in overrides
       ? (overrides.checker ?? null)
-      : ghToken
-        ? createGhChecker({ token: ghToken })
+      : ghToken && hostRepo
+        ? createGhChecker({ token: ghToken, hostRepo })
         : null;
   return {
     store: overrides?.store ?? createMemoryConnectorStore(),
@@ -776,7 +810,8 @@ export function createDefaultConnectorDeps(overrides?: Partial<ConnectorDeps>): 
     cursor: overrides?.cursor ?? (key ? createCursorCloud({ apiKey: key }) : null),
     cursorConfigured: overrides?.cursorConfigured ?? Boolean(key),
     checker,
-    checkerConfigured: overrides?.checkerConfigured ?? Boolean(checker),
+    checkerConfigured:
+      overrides?.checkerConfigured ?? (overrides && "checker" in overrides ? Boolean(checker) : checksConfigured()),
     knownHosts: overrides?.knownHosts ?? KNOWN_HOSTS,
     now: overrides?.now,
     ownerId: overrides?.ownerId,
@@ -794,7 +829,7 @@ export function connectorToolDescriptors(names: readonly string[]) {
         : name === "request_council"
           ? "Run one Critic seat through path B. Returns a schema-valid verdict, or not-configured when the login is absent."
           : name === "request_checks"
-            ? "Run the pinned Checker workflow on a branch or pull request. Ready requires evidence."
+            ? "Dispatch pinned checker.yml from the trusted workers main ref against a commit SHA. Returns in_progress until GitHub has a conclusion; ready requires a completed success. Callers cannot supply a GitHub run id."
             : `Dexter connector tool ${name}.`,
     inputSchema: { type: "object", additionalProperties: true },
   }));
