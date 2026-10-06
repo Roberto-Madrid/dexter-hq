@@ -129,20 +129,43 @@ export async function decideApproval(
   if (input.decision === "denied") {
     return { status: "denied", approvalId: row.id, action: row.action, ran: false };
   }
-  const execution = await executeApproved(row, input.env ?? {}, input.deploy);
-  await store.appendEvent({
-    ownerId: row.ownerId,
-    actor: "owner",
-    action: "approval_execute",
-    target: row.id,
-    result: {
-      status: execution.status,
-      reason: execution.reason ?? null,
-      ran: execution.ran,
-      deploymentId: execution.deploymentId ?? null,
-    },
-    at,
-  });
+  const execution =
+    row.action === "deploy"
+      ? await executeApproved(row, input.env ?? {}, input.deploy)
+      : { status: "ok" as const, ran: false };
+  if (row.action === "design" || row.action === "design_gate") {
+    if (row.requestId) {
+      const request = await store.getRequest(row.requestId);
+      if (request && request.status === "needs_you" && request.card?.requiresApproval !== true) {
+        request.status = "queued";
+        await store.saveRequest(request);
+      }
+    }
+  }
+  if (row.action === "deploy") {
+    await store.appendEvent({
+      ownerId: row.ownerId,
+      actor: "owner",
+      action: "approval_execute",
+      target: row.id,
+      result: {
+        status: execution.status,
+        reason: execution.reason ?? null,
+        ran: execution.ran,
+        deploymentId: execution.deploymentId ?? null,
+      },
+      at,
+    });
+  } else {
+    await store.appendEvent({
+      ownerId: row.ownerId,
+      actor: "owner",
+      action: "approval",
+      target: row.requestId ?? row.id,
+      result: { status: "approved", action: row.action, requestId: row.requestId },
+      at,
+    });
+  }
   return {
     status: "approved",
     approvalId: row.id,

@@ -150,6 +150,20 @@ function BotList({ bots }: { bots: TowerBot[] }) {
   );
 }
 
+function TrailList({ trail }: { trail: TowerSnapshot["requests"]["items"][0]["trail"] }) {
+  if (!trail || trail.length === 0) return null;
+  return (
+    <details className="why">
+      <summary>Why?</summary>
+      {trail.map((entry, index) => (
+        <div className="ceo" key={`${entry.at}-${index}`}>
+          {entry.summary}
+        </div>
+      ))}
+    </details>
+  );
+}
+
 function ExampleMark({ show }: { show: boolean }) {
   if (!show) return null;
   return <div className="ex">{EXAMPLE_LABEL}</div>;
@@ -302,6 +316,7 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
               <div className="who">{open.owner}</div>
               <div className="st">{STATUS_COPY[open.status]}</div>
               {open.body ? <p>{open.body}</p> : null}
+              <TrailList trail={open.trail} />
             </div>
             <div className="desk-pane">
               <GraphField
@@ -356,6 +371,7 @@ export function CommandCenter({ snapshot }: { snapshot?: TowerSnapshot }) {
               <div className="who">{open.owner}</div>
               <div className="st">{STATUS_COPY[open.status]}</div>
               {open.body ? <p>{open.body}</p> : null}
+              <TrailList trail={open.trail} />
             </div>
           ) : null}
           {screen === "home" && tab === "requests" ? (

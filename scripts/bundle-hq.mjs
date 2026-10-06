@@ -15,9 +15,14 @@ const inlineAssets = {
         if (!name.endsWith(".yaml")) continue;
         crews[name] = readFileSync(join("crews", name), "utf8");
       }
+      const personas = {};
+      for (const name of readdirSync("personas")) {
+        if (!name.endsWith(".md")) continue;
+        personas[name] = readFileSync(join("personas", name), "utf8");
+      }
       return {
         loader: "ts",
-        contents: `export function bundledRoleSheet(){return ${JSON.stringify(roleSheet)};}export function bundledCrews(){return ${JSON.stringify(crews)};}`,
+        contents: `export function bundledRoleSheet(){return ${JSON.stringify(roleSheet)};}export function bundledCrews(){return ${JSON.stringify(crews)};}export function bundledPersonas(){return ${JSON.stringify(personas)};}`,
       };
     });
   },

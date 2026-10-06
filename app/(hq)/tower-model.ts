@@ -24,6 +24,7 @@ import {
   type GraphModel,
   type RequestStatus,
 } from "./example-fixture.ts";
+import { decisionTrail, type TrailEntry } from "../../hq/decision-trail.ts";
 
 export type DataSource = "live" | "example";
 
@@ -35,6 +36,7 @@ export type TowerRequest = {
   status: RequestStatus;
   owner: string;
   body: string | null;
+  trail: TrailEntry[];
 };
 
 export type TowerNeed = { id: string; text: string };
@@ -648,7 +650,7 @@ export function exampleTowerSnapshot(): TowerSnapshot {
   return {
     stopped: false,
     counts: exampleCounts.map((item) => ({ ...item, source: "example" })),
-    requests: { source: "example", items: exampleRequests.map((item) => ({ ...item })) },
+    requests: { source: "example", items: exampleRequests.map((item) => ({ ...item, trail: [] })) },
     needs: {
       source: "example",
       items: exampleNeeds.map((text, index) => ({ id: `example-need-${index}`, text })),
@@ -720,6 +722,7 @@ export function assembleTower(input: TowerInputs): TowerSnapshot {
           status: requestStatus(row.status),
           owner: (row.assignedBotId && botById.get(row.assignedBotId)?.name) || "unassigned",
           body: row.notices[0] ?? null,
+          trail: decisionTrail(connector?.events ?? [], row.id),
         })),
       }
     : example.requests;

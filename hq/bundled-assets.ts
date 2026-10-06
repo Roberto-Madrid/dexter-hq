@@ -8,3 +8,7 @@ export function bundledRoleSheet(): string | null {
 export function bundledCrews(): Record<string, string> | null {
   return null;
 }
+
+export function bundledPersonas(): Record<string, string> | null {
+  return null;
+}

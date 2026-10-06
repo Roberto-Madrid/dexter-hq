@@ -18,6 +18,17 @@ import {
   type ConnectorToolName,
 } from "./connector-store.ts";
 import { parseCouncilVerdict, runCriticSeat } from "./council-seat.ts";
+import {
+  PINNED_CHECKER_WORKFLOW,
+  applyCheckEvidence,
+  checksMoveRequestReady,
+  createGhChecker,
+  evidenceFromOutcome,
+  type CheckerGateway,
+} from "./checker.ts";
+import { decisionTrail } from "./decision-trail.ts";
+import { launchBlockedByDesignGate } from "./design-gate.ts";
+import { composeLaunchBrief } from "./personas.ts";
 
 export { CONNECTOR_TOOLS, createMemoryConnectorStore };
 export type { ConnectorAuth, ConnectorStore, ConnectorToolName };
@@ -40,6 +51,8 @@ export type ConnectorDeps = {
   sheet: RoleSheet;
   cursor: CursorGateway | null;
   cursorConfigured: boolean;
+  checker?: CheckerGateway | null;
+  checkerConfigured?: boolean;
   knownHosts?: readonly string[];
   now?: () => string;
   ownerId?: string;
@@ -190,15 +203,28 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     await record(deps, auth, "launch_agent", role, body);
     return toolResult(body, true);
   }
+  const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
+  const approvalId = textArg(args, "approvalId") ?? textArg(args, "approval_id");
+  const gate = await launchBlockedByDesignGate(deps.store, auth, {
+    role,
+    brief,
+    args,
+    requestId,
+    approvalId,
+  });
+  if (gate.blocked) {
+    const body = { status: "refused", reason: gate.reason ?? "design_approval_required", requestId };
+    await record(deps, auth, "launch_agent", requestId ?? idempotencyKey, body);
+    return toolResult(body, true);
+  }
   const findings = preflight(brief, deps.knownHosts ?? KNOWN_HOSTS);
   if (findings.length > 0) {
-    const body = { status: "needs_you", reason: "preflight", findings };
+    const body = { status: "needs_you", reason: "preflight", findings, requestId };
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
   const agents = await deps.store.listAgents();
   const active = agents.filter((item) => ACTIVE_AGENT.has(item.status));
-  const approvalId = textArg(args, "approvalId") ?? textArg(args, "approval_id");
   let surge = false;
   if (approvalId) {
     const approval = await deps.store.getApproval(approvalId);
@@ -219,7 +245,14 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     }
   }
   if (!deps.cursorConfigured || !deps.cursor) {
-    const body = { status: "not-configured", configured: false, launched: false };
+    const composed = composeLaunchBrief(role, brief);
+    const body = {
+      status: "not-configured",
+      configured: false,
+      launched: false,
+      persona: composed.persona,
+      requestId,
+    };
     const row: ConnectorAgent = {
       id: randomUUID(),
       ownerId: auth.ownerId,
@@ -236,9 +269,18 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
+  const composed = composeLaunchBrief(role, brief);
   try {
-    const handle = await deps.cursor.start({ idempotencyKey, taskId: idempotencyKey, brief });
-    const body = { status: "launched", launched: true, agentId: handle.id, role, family };
+    const handle = await deps.cursor.start({ idempotencyKey, taskId: idempotencyKey, brief: composed.text });
+    const body = {
+      status: "launched",
+      launched: true,
+      agentId: handle.id,
+      role,
+      family,
+      persona: composed.persona,
+      requestId,
+    };
     const row: ConnectorAgent = {
       id: randomUUID(),
       ownerId: auth.ownerId,
@@ -347,7 +389,25 @@ async function handleOpenRequest(deps: ConnectorDeps, auth: ConnectorAuth, args:
     repo: textArg(args, "repo"),
     notices: validated.notices,
   });
-  const body = { status: "opened", requestId: id, requestStatus: status, notices: validated.notices };
+  let designApprovalId: string | null = null;
+  if (validated.card.requiresDesignApproval) {
+    designApprovalId = randomUUID();
+    await deps.store.saveApproval({
+      id: designApprovalId,
+      ownerId: auth.ownerId,
+      action: "design",
+      target: id,
+      status: "pending",
+      requestId: id,
+    });
+  }
+  const body = {
+    status: "opened",
+    requestId: id,
+    requestStatus: status,
+    notices: validated.notices,
+    designApprovalId,
+  };
   await record(deps, auth, "open_request", id, body);
   return toolResult(body);
 }
@@ -492,6 +552,80 @@ async function handleAssign(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
   return toolResult(body);
 }
 
+async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
+  const repo = textArg(args, "repo");
+  const branch = textArg(args, "branch");
+  const pullRequest = textArg(args, "pullRequest") ?? textArg(args, "pull_request");
+  const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
+  const sha = textArg(args, "sha");
+  const ref = branch ?? (pullRequest ? `refs/pull/${pullRequest}/head` : null);
+  if (!repo || !ref) {
+    const body = { status: "refused", reason: "repo_and_branch_or_pull_request_required", ready: false, requestId };
+    await record(deps, auth, "request_checks", requestId ?? "checks", body);
+    return toolResult(body, true);
+  }
+  if (!auth.repos.includes(repo)) {
+    const body = { status: "refused", reason: "repo_out_of_scope", ready: false, requestId };
+    await record(deps, auth, "request_checks", repo, body);
+    return toolResult(body, true);
+  }
+  const configured = deps.checkerConfigured ?? Boolean(deps.checker);
+  if (!configured || !deps.checker) {
+    const body = {
+      status: "not-configured",
+      ready: false,
+      configured: false,
+      workflow: PINNED_CHECKER_WORKFLOW,
+      requestId,
+    };
+    await record(deps, auth, "request_checks", requestId ?? repo, body);
+    return toolResult(body, true);
+  }
+  const runId = textArg(args, "runId") ?? textArg(args, "run_id") ?? randomUUID();
+  try {
+    const dispatched = await deps.checker.dispatch({
+      repo,
+      ref,
+      runId,
+      sha,
+      pullRequest,
+    });
+    const outcome = await deps.checker.outcome({ repo, runId: dispatched.runId });
+    const evidence = evidenceFromOutcome({
+      workflow: dispatched.workflow || PINNED_CHECKER_WORKFLOW,
+      sha: dispatched.sha ?? sha,
+      repo,
+      ref,
+      outcome,
+    });
+    const ready = checksMoveRequestReady(outcome);
+    if (requestId) {
+      const request = await deps.store.getRequest(requestId);
+      if (request) {
+        const next = applyCheckEvidence(request, evidence, ready);
+        await deps.store.saveRequest(next);
+      }
+    }
+    const body = {
+      status: ready ? "ready" : outcome.state === "completed" ? "failed" : "recorded",
+      ready,
+      workflow: PINNED_CHECKER_WORKFLOW,
+      runId: dispatched.runId,
+      sha: dispatched.sha ?? sha,
+      evidence,
+      requestId,
+      requestStatus: requestId ? (await deps.store.getRequest(requestId))?.status ?? null : null,
+    };
+    await record(deps, auth, "request_checks", requestId ?? dispatched.runId, body);
+    return toolResult(body, !ready && outcome.conclusion === "failure");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message.slice(0, 80) : "checker_failed";
+    const body = { status: "error", ready: false, reason, requestId, workflow: PINNED_CHECKER_WORKFLOW };
+    await record(deps, auth, "request_checks", requestId ?? repo, body);
+    return toolResult(body, true);
+  }
+}
+
 export async function callConnectorTool(
   deps: ConnectorDeps,
   auth: ConnectorAuth | null,
@@ -548,11 +682,7 @@ export async function callConnectorTool(
   if (name === "agent_status" || name === "followup_agent" || name === "cancel_agent") {
     return handleAgentTool(deps, auth, name, args);
   }
-  if (name === "request_checks") {
-    const body = { status: "recorded", ready: false };
-    await record(deps, auth, name, textArg(args, "branch") ?? textArg(args, "pullRequest") ?? "checks", body);
-    return toolResult(body);
-  }
+  if (name === "request_checks") return handleRequestChecks(deps, auth, args);
   if (name === "request_council") return handleCouncil(deps, auth, args);
   if (name === "request_approval") {
     const action = textArg(args, "action") ?? "unknown";
@@ -566,7 +696,7 @@ export async function callConnectorTool(
       status: "pending",
       requestId: textArg(args, "requestId"),
     });
-    const body = { status: "pending", approvalId: id };
+    const body = { status: "pending", approvalId: id, requestId: textArg(args, "requestId") };
     await record(deps, auth, name, id, body);
     return toolResult(body);
   }
@@ -609,15 +739,20 @@ export async function callConnectorTool(
   }
   if (name === "get_context") {
     const repo = textArg(args, "repo");
+    const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
     const posts = await deps.store.listPosts();
     const items = posts.filter((item) => !repo || item.repo === repo);
+    const events = await deps.store.listEvents();
+    const why = requestId ? decisionTrail(events, requestId) : [];
     const body = {
       status: "ok",
       findings: items.filter((item) => item.type === "finding" && item.verified),
       unverified: items.filter((item) => item.type === "finding" && !item.verified).map((item) => item.id),
       deadEnds: items.filter((item) => item.type === "dead_end"),
+      why,
+      requestId,
     };
-    await record(deps, auth, name, repo ?? "all", { count: items.length });
+    await record(deps, auth, name, requestId ?? repo ?? "all", { count: items.length, why: why.length });
     return toolResult(body);
   }
   const body = { status: "error", reason: "unknown_tool" };
@@ -627,12 +762,21 @@ export async function callConnectorTool(
 
 export function createDefaultConnectorDeps(overrides?: Partial<ConnectorDeps>): ConnectorDeps {
   const key = process.env.CURSOR_API_KEY;
+  const ghToken = process.env.GH_HQ_TOKEN?.trim();
   const sheet = overrides?.sheet ?? parseRoleSheet(loadConnectorSheetText());
+  const checker =
+    overrides && "checker" in overrides
+      ? (overrides.checker ?? null)
+      : ghToken
+        ? createGhChecker({ token: ghToken })
+        : null;
   return {
     store: overrides?.store ?? createMemoryConnectorStore(),
     sheet,
     cursor: overrides?.cursor ?? (key ? createCursorCloud({ apiKey: key }) : null),
     cursorConfigured: overrides?.cursorConfigured ?? Boolean(key),
+    checker,
+    checkerConfigured: overrides?.checkerConfigured ?? Boolean(checker),
     knownHosts: overrides?.knownHosts ?? KNOWN_HOSTS,
     now: overrides?.now,
     ownerId: overrides?.ownerId,
@@ -649,7 +793,9 @@ export function connectorToolDescriptors(names: readonly string[]) {
         ? "Return this connector's identity, scopes, caps left, and stop flag."
         : name === "request_council"
           ? "Run one Critic seat through path B. Returns a schema-valid verdict, or not-configured when the login is absent."
-          : `Dexter connector tool ${name}.`,
+          : name === "request_checks"
+            ? "Run the pinned Checker workflow on a branch or pull request. Ready requires evidence."
+            : `Dexter connector tool ${name}.`,
     inputSchema: { type: "object", additionalProperties: true },
   }));
 }
