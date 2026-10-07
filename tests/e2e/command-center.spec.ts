@@ -22,14 +22,15 @@ test("signed-in desktop shows the example control tower", async ({ page }) => {
   await expect(shown(page.getByText("18%"))).toBeVisible();
   await expect(shown(page.getByText("Council", { exact: true }))).toBeVisible();
   await expect(shown(page.getByText("4/5"))).toBeVisible();
-  await expect(shown(page.getByText("Growing from Dexter · 2 of 4 links live"))).toBeVisible();
+  await expect(shown(page.getByText("Dexter → agents → bots → Council · 2/5 agents live · grows with demos")).first()).toBeVisible();
   await expect(shown(page.getByText("Point production at v5")).first()).toBeVisible();
-  await expect(shown(page.getByText("dreggbot")).first()).toBeVisible();
+  await expect(shown(page.getByText("Dexter planning")).first()).toBeVisible();
   await expect(shown(page.getByText("Path B council seat")).first()).toBeVisible();
+  await expect(shown(page.getByText("CEO chat · Live")).first()).toBeVisible();
   await shown(page.getByRole("button", { name: /Point production at v5/ })).click();
-  await expect(shown(page.getByText("Production still tracks main. v5 is the integration branch."))).toBeVisible();
+  await expect(shown(page.getByText("Dexter prepared the Vercel production alias cut to branch v5"))).toBeVisible();
   await expect(shown(page.getByRole("button", { name: "STOP ALL" }))).toBeVisible();
-  await expect(shown(page.getByText("Local graph · grown from Dexter"))).toBeVisible();
+  await expect(shown(page.getByText("Open request")).first()).toBeVisible();
 });
 
 test("phone keeps STOP ALL on every tab and the open request", async ({ page }) => {
@@ -38,10 +39,10 @@ test("phone keeps STOP ALL on every tab and the open request", async ({ page }) 
   await expect(shown(page.getByRole("button", { name: "STOP ALL" }))).toBeVisible();
   await expect(page.getByRole("button", { name: "Requests" })).toBeVisible();
   await page.getByRole("button", { name: "Swarm" }).click();
-  await expect(shown(page.getByText("Growing from Dexter · 2 of 4 links live"))).toBeVisible();
+  await expect(shown(page.getByText("Dexter → agents → bots → Council · 2/5 agents live · grows with demos")).first()).toBeVisible();
   await expect(shown(page.getByRole("button", { name: "STOP ALL" }))).toBeVisible();
   await page.getByRole("button", { name: "Bots" }).click();
-  await expect(shown(page.getByText("waiting"))).toBeVisible();
+  await expect(shown(page.getByText("Idle")).first()).toBeVisible();
   await expect(shown(page.getByRole("button", { name: "STOP ALL" }))).toBeVisible();
   await page.getByRole("button", { name: "Needs you" }).click();
   await expect(shown(page.getByText("Set the Vercel production branch to v5"))).toBeVisible();
@@ -50,7 +51,7 @@ test("phone keeps STOP ALL on every tab and the open request", async ({ page }) 
   await expect(shown(page.getByRole("button", { name: "STOP ALL" }))).toBeVisible();
   await page.getByRole("button", { name: "Requests" }).click();
   await shown(page.getByRole("button", { name: /Point production at v5/ })).click();
-  await expect(shown(page.getByText("Production still tracks main. v5 is the integration branch."))).toBeVisible();
+  await expect(shown(page.getByText("Dexter prepared the Vercel production alias cut to branch v5"))).toBeVisible();
   await expect(shown(page.getByRole("button", { name: "STOP ALL" }))).toBeVisible();
 });
 
