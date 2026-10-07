@@ -10,17 +10,22 @@ import {
   DIM,
   EXAMPLE_LABEL,
   FORMING,
+  HUB,
   INK,
   LIVE,
   SWARM_STATUS,
   desktopGraph,
   exampleBots,
   exampleCeo,
+  exampleChat,
   exampleCounts,
   exampleNeeds,
+  exampleNeedMeta,
   exampleRequests,
+  exampleActivity,
   phoneGraph,
   requestGraph,
+  type ChatMessage,
   type GraphModel,
   type RequestStatus,
 } from "./example-fixture.ts";
@@ -37,15 +42,18 @@ export type TowerRequest = {
   owner: string;
   body: string | null;
   trail: TrailEntry[];
+  age?: string;
+  events?: number;
 };
 
-export type TowerNeed = { id: string; text: string };
+export type TowerNeed = { id: string; text: string; owner?: string; age?: string; urgent?: boolean };
 
 export type TowerBot = {
   name: string;
   state: "live" | "waiting" | "idle" | "stale";
   task: string | null;
   repos: string[];
+  hb?: string;
 };
 
 export type TowerPanel<T> = { source: DataSource; items: T[] };
@@ -65,6 +73,8 @@ export type TowerSnapshot = {
   needs: TowerPanel<TowerNeed>;
   bots: TowerPanel<TowerBot>;
   ceo: { source: DataSource; items: string[] };
+  chat: { source: DataSource; items: ChatMessage[] };
+  activity: { source: DataSource; items: { when: string; text: string }[] };
   swarm: {
     source: DataSource;
     desktop: GraphModel;
@@ -590,7 +600,12 @@ export function graphFromSwarm(
     lines,
     nodes: nodes.map((node) => {
       const point = placed.get(node.id) ?? { x: cx, y: cy };
-      return { cx: point.x, cy: point.y, r: node.parentId ? SPOKE_R : HUB_R, fill: toneFill(node.tone) };
+      return {
+        cx: point.x,
+        cy: point.y,
+        r: node.parentId ? SPOKE_R : HUB_R,
+        fill: node.parentId ? toneFill(node.tone) : HUB,
+      };
     }),
     labels: labels.map((label) => ({
       left: label.left,
@@ -653,13 +668,27 @@ export function exampleTowerSnapshot(): TowerSnapshot {
     requests: { source: "example", items: exampleRequests.map((item) => ({ ...item, trail: [] })) },
     needs: {
       source: "example",
-      items: exampleNeeds.map((text, index) => ({ id: `example-need-${index}`, text })),
+      items: exampleNeeds.map((text, index) => ({
+        id: `example-need-${index}`,
+        text,
+        owner: exampleNeedMeta[index]?.owner,
+        age: exampleNeedMeta[index]?.age,
+        urgent: exampleNeedMeta[index]?.urgent,
+      })),
     },
     bots: {
       source: "example",
-      items: exampleBots.map((bot) => ({ name: bot.name, state: bot.state, task: null, repos: [] })),
+      items: exampleBots.map((bot) => ({
+        name: bot.name,
+        state: bot.state,
+        task: null,
+        repos: [],
+        hb: bot.hb,
+      })),
     },
     ceo: { source: "example", items: [exampleCeo] },
+    chat: { source: "example", items: exampleChat.map((item) => ({ ...item })) },
+    activity: { source: "example", items: exampleActivity.map((item) => ({ ...item })) },
     swarm: {
       source: "example",
       desktop: desktopGraph,
@@ -676,6 +705,7 @@ export function usesExampleFixtures(snapshot: TowerSnapshot): boolean {
     snapshot.needs.source === "example" ||
     snapshot.bots.source === "example" ||
     snapshot.ceo.source === "example" ||
+    snapshot.chat.source === "example" ||
     snapshot.swarm.source === "example" ||
     snapshot.counts.some((item) => item.source === "example")
   );
@@ -704,12 +734,27 @@ export function assembleTower(input: TowerInputs): TowerSnapshot {
   const bots: TowerPanel<TowerBot> = botsLive
     ? {
         source: "live",
-        items: botsLive.map((bot) => ({
-          name: bot.name,
-          state: botState(bot, input.nowMs),
-          task: bot.currentTask,
-          repos: bot.repos,
-        })),
+        items: botsLive.map((bot) => {
+          const state = botState(bot, input.nowMs);
+          let hb: string | undefined;
+          if (bot.heartbeatAt) {
+            const age = input.nowMs - Date.parse(bot.heartbeatAt);
+            if (!Number.isNaN(age) && age >= 0 && age <= STALE_MS) {
+              hb = age < 60_000 ? `${Math.max(1, Math.round(age / 1000))}s` : `${Math.round(age / 60_000)}m`;
+            } else {
+              hb = "—";
+            }
+          } else {
+            hb = "—";
+          }
+          return {
+            name: bot.name,
+            state,
+            task: bot.currentTask,
+            repos: bot.repos,
+            hb,
+          };
+        }),
       }
     : example.bots;
 
@@ -742,6 +787,29 @@ export function assembleTower(input: TowerInputs): TowerSnapshot {
     ceoEvents.length > 0
       ? { source: "live" as const, items: ceoEvents.slice(0, 5).map(ceoLine) }
       : example.ceo;
+
+  const chat =
+    ceoEvents.length > 0
+      ? {
+          source: "live" as const,
+          items: ceoEvents.slice(0, 8).map((event) => ({
+            role: "dexter" as const,
+            when: "",
+            text: ceoLine(event),
+          })),
+        }
+      : example.chat;
+
+  const activity =
+    ceoEvents.length > 0
+      ? {
+          source: "live" as const,
+          items: ceoEvents.slice(0, 5).map((event) => ({
+            when: "",
+            text: ceoLine(event),
+          })),
+        }
+      : example.activity;
 
   const hasSwarmMembers = Boolean(botsLive) || agents.length > 0 || cursorRuns.length > 0;
   const swarmNodes: SwarmNode[] = [];
@@ -846,5 +914,5 @@ export function assembleTower(input: TowerInputs): TowerSnapshot {
     },
   ];
 
-  return { stopped: Boolean(connector?.stopped), counts, requests, needs, bots, ceo, swarm };
+  return { stopped: Boolean(connector?.stopped), counts, requests, needs, bots, ceo, chat, activity, swarm };
 }
