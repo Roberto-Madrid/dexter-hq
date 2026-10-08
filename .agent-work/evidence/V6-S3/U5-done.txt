@@ -1,57 +1,68 @@
+# U5 done-command, 2026-10-08 02:11 PDT, after merging origin/main d0f7e89 (Stage 3 U1 + U3)
+# SUPABASE_DB_URL and other live secrets unset for every step; integration uses the local Postgres 16 on 127.0.0.1:54329
+## npm run typecheck
 
 > typecheck
 > tsc --noEmit && tsc --noEmit -p tsconfig.app.json
 
+exit 0
+## npm run lint
 
 > lint
 > eslint kernel adapters hq gateway tests app
 
+exit 0
+## npm run test
 
 > test
 > vitest run tests/unit tests/security
 
 
- RUN  v3.2.4 /workspace/hq-stage3-u4
+ RUN  v3.2.4 /workspace/hq-stage3-u5
 
- ✓ tests/unit/ceo-run.test.ts (4 tests) 219ms
- ✓ tests/unit/fleet-report.test.ts (15 tests) 42ms
- ✓ tests/unit/board-rules.test.ts (25 tests) 171ms
- ✓ tests/unit/mcp.test.ts (7 tests) 150ms
- ✓ tests/unit/g3.test.ts (12 tests) 94ms
- ✓ tests/unit/quality-loop.test.ts (33 tests) 280ms
- ✓ tests/unit/ventures.test.ts (25 tests) 93ms
- ✓ tests/unit/checks.test.ts (2 tests) 68ms
- ✓ tests/unit/connector-council.test.ts (3 tests) 53ms
- ✓ tests/unit/tower.test.ts (12 tests) 38ms
- ✓ tests/unit/approval.test.ts (5 tests) 51ms
- ✓ tests/unit/followup.test.ts (18 tests) 73ms
- ✓ tests/unit/caps.test.ts (10 tests) 54ms
- ✓ tests/unit/board-server.test.ts (6 tests) 125ms
- ✓ tests/unit/kernel.test.ts (20 tests) 32ms
- ✓ tests/unit/stop.test.ts (13 tests) 39ms
- ✓ tests/security/injection.test.ts (2 tests) 5ms
- ✓ tests/unit/reconcile.test.ts (8 tests) 18ms
- ✓ tests/unit/council-seat.test.ts (2 tests) 20ms
+ ✓ tests/unit/ceo-run.test.ts (4 tests) 217ms
+ ✓ tests/unit/approval.test.ts (5 tests) 58ms
+ ✓ tests/unit/followup.test.ts (18 tests) 77ms
+ ✓ tests/unit/mcp.test.ts (7 tests) 169ms
+ ✓ tests/unit/g3.test.ts (12 tests) 107ms
+ ✓ tests/unit/ventures.test.ts (25 tests) 120ms
+ ✓ tests/unit/quality-loop.test.ts (33 tests) 268ms
+ ✓ tests/unit/checks.test.ts (2 tests) 67ms
 stderr | tests/unit/fleet-report-server.test.ts > the per-minute tick writes the weekly report once > keeps the tick green when the report fails
 db down [db]
 
- ✓ tests/unit/fleet-report-server.test.ts (3 tests) 74ms
- ✓ tests/unit/snapshot-db.test.ts (2 tests) 7ms
- ✓ tests/unit/ceo-command.test.ts (4 tests) 6ms
+ ✓ tests/unit/fleet-report-server.test.ts (3 tests) 103ms
+ ✓ tests/unit/connector-council.test.ts (3 tests) 87ms
+ ✓ tests/unit/kernel.test.ts (20 tests) 37ms
+ ✓ tests/unit/caps.test.ts (10 tests) 52ms
+ ✓ tests/unit/tower.test.ts (12 tests) 39ms
+ ✓ tests/unit/fleet-report.test.ts (15 tests) 44ms
+ ✓ tests/unit/stop.test.ts (13 tests) 37ms
+ ✓ tests/security/injection.test.ts (2 tests) 9ms
+ ✓ tests/unit/council-seat.test.ts (2 tests) 18ms
+ ✓ tests/unit/snapshot-db.test.ts (2 tests) 4ms
+ ✓ tests/unit/reconcile.test.ts (8 tests) 20ms
+ ✓ tests/unit/ceo-command.test.ts (4 tests) 9ms
 
- Test Files  22 passed (22)
-      Tests  231 passed (231)
-   Start at  02:19:48
-   Duration  2.69s (transform 1.81s, setup 0ms, collect 7.32s, tests 1.71s, environment 5ms, prepare 1.98s)
+ Test Files  20 passed (20)
+      Tests  200 passed (200)
+   Start at  02:11:53
+   Duration  2.38s (transform 1.49s, setup 0ms, collect 6.43s, tests 1.54s, environment 5ms, prepare 1.81s)
 
+exit 0
+## npm run check:vendor
 
 > check:vendor
 > bash scripts/check-vendor-neutral.sh
 
+exit 0
+## npm run check:briefs
 
 > check:briefs
 > bash scripts/check-briefs.sh
 
+exit 0
+## npm run check:bundle
 
 > check:bundle
 > bash scripts/check-bundle-fresh.sh && bash scripts/check-build.sh
@@ -69,7 +80,7 @@ check:build: running next build
    Using tsconfig file: tsconfig.app.json
    Using tsconfig file: tsconfig.app.json
    Using tsconfig file: tsconfig.app.json
- ✓ Compiled successfully in 3.0s
+ ✓ Compiled successfully in 2.6s
    Linting and checking validity of types ...
 
  ⚠ The Next.js plugin was not detected in your ESLint configuration. See https://nextjs.org/docs/app/api-reference/config/eslint#migrating-existing-config
@@ -84,7 +95,7 @@ check:build: running next build
 
 Route (app)                                 Size  First Load JS
 ┌ ƒ /                                    6.89 kB         110 kB
-├ ○ /_not-found                            995 B         104 kB
+├ ○ /_not-found                            997 B         104 kB
 ├ ƒ /api/approval                          153 B         103 kB
 ├ ƒ /api/board                             153 B         103 kB
 ├ ƒ /api/callback                          153 B         103 kB
@@ -106,31 +117,34 @@ Route (app)                                 Size  First Load JS
 ƒ  (Dynamic)  server-rendered on demand
 
 check:build: next build passed
+exit 0
+## npm run scan:secrets
 
 > scan:secrets
 > node scripts/scan-secrets.mjs
 
 secret scan clean
+exit 0
+## npm run test:integration
 
 > test:integration
 > node scripts/ensure-integration-db.mjs && vitest run tests/integration
 
 local integration database ready
 
- RUN  v3.2.4 /workspace/hq-stage3-u4
+ RUN  v3.2.4 /workspace/hq-stage3-u5
 
- ✓ tests/integration/pool.test.ts (2 tests) 88ms
- ✓ tests/integration/rls.test.ts (1 test) 130ms
- ✓ tests/integration/claim.test.ts (4 tests) 192ms
- ✓ tests/integration/connector-caps.test.ts (10 tests) 444ms
- ✓ tests/integration/fleet-report.test.ts (4 tests) 167ms
- ✓ tests/integration/events.test.ts (1 test) 45ms
- ✓ tests/integration/board-posts.test.ts (1 test) 344ms
-   ✓ posts round trip through Postgres > writes status, verified_by, expires_at, created_at and provenance, and reads them back  338ms
- ✓ tests/integration/ventures.test.ts (6 tests) 564ms
+ ✓ tests/integration/events.test.ts (1 test) 51ms
+ ✓ tests/integration/rls.test.ts (1 test) 77ms
+ ✓ tests/integration/pool.test.ts (2 tests) 77ms
+ ✓ tests/integration/claim.test.ts (4 tests) 186ms
+ ✓ tests/integration/fleet-report.test.ts (4 tests) 131ms
+ ✓ tests/integration/connector-caps.test.ts (10 tests) 391ms
+ ✓ tests/integration/ventures.test.ts (6 tests) 533ms
 
- Test Files  8 passed (8)
-      Tests  29 passed (29)
-   Start at  02:20:17
-   Duration  1.52s (transform 965ms, setup 0ms, collect 2.91s, tests 1.97s, environment 2ms, prepare 683ms)
+ Test Files  7 passed (7)
+      Tests  28 passed (28)
+   Start at  02:12:20
+   Duration  1.44s (transform 911ms, setup 0ms, collect 2.28s, tests 1.45s, environment 1ms, prepare 633ms)
 
+exit 0

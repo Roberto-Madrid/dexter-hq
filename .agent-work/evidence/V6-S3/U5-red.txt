@@ -1,0 +1,72 @@
+# U5 red run, 2026-10-08 01:57 PDT, base ddc611d
+
+ RUN  v3.2.4 /workspace/hq-stage3-u5
+
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/fleet-report-server.test.ts [ tests/unit/fleet-report-server.test.ts ]
+Error: Cannot find module '../../hq/fleet-report.ts' imported from '/workspace/hq-stage3-u5/tests/unit/fleet-report-server.test.ts'
+ ❯ tests/unit/fleet-report-server.test.ts:3:1
+      1| import { beforeAll, describe, expect, it } from "vitest";
+      2| import { createMemoryConnectorStore } from "../../hq/connector-store.t…
+      3| import { createMemoryFleetReports, runFleetReportTick } from "../../hq…
+       | ^
+      4| import { getFleetView, login, postTick } from "../../hq/server.ts";
+      5| 
+
+Caused by: Error: Failed to load url ../../hq/fleet-report.ts (resolved id: ../../hq/fleet-report.ts) in /workspace/hq-stage3-u5/tests/unit/fleet-report.test.ts. Does the file exist?
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/config.js:22739:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/unit/fleet-report.test.ts [ tests/unit/fleet-report.test.ts ]
+Error: Cannot find module '../../hq/fleet-report.ts' imported from '/workspace/hq-stage3-u5/tests/unit/fleet-report.test.ts'
+ ❯ tests/unit/fleet-report.test.ts:9:1
+      7| import { SHIPPED_CREWS } from "../../hq/crews.ts";
+      8| import type { HqDeps } from "../../hq/deps.ts";
+      9| import {
+       | ^
+     10|   COUNCIL_WEEKLY_CAP,
+     11|   buildFleetReport,
+
+Caused by: Error: Failed to load url ../../hq/fleet-report.ts (resolved id: ../../hq/fleet-report.ts) in /workspace/hq-stage3-u5/tests/unit/fleet-report.test.ts. Does the file exist?
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/config.js:22739:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  no tests
+   Start at  01:57:42
+   Duration  598ms (transform 218ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 142ms)
+
+## integration
+local integration database ready
+
+ RUN  v3.2.4 /workspace/hq-stage3-u5
+
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/integration/fleet-report.test.ts [ tests/integration/fleet-report.test.ts ]
+Error: Cannot find module '../../hq/fleet-report.ts' imported from '/workspace/hq-stage3-u5/tests/integration/fleet-report.test.ts'
+ ❯ tests/integration/fleet-report.test.ts:4:1
+      2| import { afterAll, beforeAll, describe, expect, it } from "vitest";
+      3| import type pg from "pg";
+      4| import { buildFleetReport, fleetReportId, renderFleetReport, type Stor…
+       | ^
+      5| import { createPgFleetReports } from "../../hq/fleet-report-pg.ts";
+      6| import { databaseUrl, newPool } from "./db.ts";
+
+Caused by: Error: Failed to load url ../../hq/fleet-report.ts (resolved id: ../../hq/fleet-report.ts) in /workspace/hq-stage3-u5/tests/integration/fleet-report.test.ts. Does the file exist?
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/config.js:22739:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  01:57:44
+   Duration  382ms (transform 55ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 78ms)
+

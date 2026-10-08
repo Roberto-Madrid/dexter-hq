@@ -78,6 +78,10 @@ export function postApproval(raw: string): Promise<{
   execution?: { status: "ok" | "not_configured" | "error"; reason?: string; ran: boolean; deploymentId?: string };
 }>;
 export function postTick(header: string | null): Promise<{ status: number; body?: unknown }>;
+export function getFleetView(
+  cookie: string | null,
+  week: string | null,
+): Promise<{ status: number; body: { week: string | null; text: string; report: unknown } | { error: string } }>;
 export function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }>;
 export function venturesHttp(request: Request): Promise<Response>;
 export function getBoardNotes(cookie: string | null, search: string | URLSearchParams): Promise<{ status: number; body: unknown }>;
