@@ -1,0 +1,56 @@
+# police-a red run, 2026-10-08 02:21 PDT, base 2830104
+
+ ✓ tests/unit/approval.test.ts (5 tests) 50ms
+   ✓ PT week boundary (America/Tijuana) > puts Sunday 23:59 PT in the old week and Monday 00:00 PT in the new one 3ms
+   ✓ PT week boundary (America/Tijuana) > is 169 hours long across the November DST change 0ms
+   ✓ PT week boundary (America/Tijuana) > uses the ISO week-year at the turn of the year 0ms
+   ✓ PT week boundary (America/Tijuana) > makes last week due from Monday 07:00 PT, not before 1ms
+   ✓ PT week boundary (America/Tijuana) > derives one stable post id per week 1ms
+   × fleet report aggregation > counts a fixture week exactly 16ms
+   ✓ fleet report aggregation > reports zeros for an empty week and lists every bot as idle 1ms
+   ✓ fleet report aggregation > renders a readable text report 2ms
+   ✓ weekly generation > writes one post and one event per week, however many ticks run 5ms
+   ✓ weekly generation > writes exactly once when two ticks race on a fresh week 2ms
+   ✓ weekly generation > writes nothing before Monday 07:00 PT 1ms
+   ✓ weekly generation > reads the latest report, or a named week, for the board view 1ms
+   ✓ HQ chat reads the fleet report > classifies fleet report asks before list asks 1ms
+   ✓ HQ chat reads the fleet report > answers from the stored report with no model call 5ms
+   ✓ HQ chat reads the fleet report > says so when no report is stored yet 3ms
+   ✓ ventures: owner-only > refuses a request with no owner session 9ms
+   ✓ ventures: owner-only > refuses a bot token, as a bearer header or as a cookie 2ms
+   ✓ ventures: owner-only > refuses a session signed with another secret 1ms
+   ✓ whoami repos (E1) > returns the new lead's repo allowlist, and an empty list for the CEO 5ms
+   ✓ ventures: create > creates a lead with the venture repo and lead scopes, and returns the token once 4ms
+   ✓ ventures: create > lets the new token reach /api/mcp with lead scopes and refuses other repos 4ms
+   ✓ ventures: create > refuses a duplicate venture name, repo, or lead name inline 5ms
+   ✓ ventures: create > refuses an unreachable repo and a failed lookup differently, and creates nothing 3ms
+   ✓ ventures: create > refuses while STOP ALL is on without checking the repo 1ms
+   × ventures: create > validates the fields 13ms
+   ✓ ventures: token shown once and idempotent create > never returns the token from the list or from a retried create 4ms
+   ✓ ventures: token shown once and idempotent create > mints exactly one lead when two creates race 2ms
+   ✓ ventures: rotate token > invalidates the old token at once and returns the new one once 6ms
+   ✓ ventures: rotate token > rotates a lead made by hand and refuses an unknown or non-lead bot 2ms
+   ✓ ventures: rotate token > refuses rotation from a bot token 1ms
+   ✓ ventures: rotate token > keeps a token rotated during STOP ALL suspended until Resume 2ms
+   ✓ ventures: STOP ALL covers new leads > suspends a new lead's token and Resume restores it 1ms
+   ✓ ventures: status > applies the Live / Wait / Never seen thresholds 1ms
+   ✓ ventures: status > lists every venture with its lead status, heartbeat age, and repo 2ms
+   ✓ ventures: Dexter's roster > gives the CEO every bot with kind, repos and status, and no token material 2ms
+   ✓ ventures: Dexter's roster > gives a lead no roster and no other venture's repo 2ms
+   ✓ GitHub repo check > calls the GitHub repo endpoint with the HQ token 1ms
+   ✓ GitHub repo check > maps 404 to not reachable and every other failure to unavailable 3ms
+   ✓ GitHub repo check > fails closed with no token and on a timeout 21ms
+   ✓ /api/mcp with a revoked token > answers 401 for an unknown bearer token and still serves the anonymous stub 1ms
+ FAIL  tests/unit/token-police.test.ts [ tests/unit/token-police.test.ts ]
+Error: Cannot find module '../../hq/token-police.ts' imported from '/workspace/hq-stage3-police-a/tests/unit/token-police.test.ts'
+Caused by: Error: Failed to load url ../../hq/token-police.ts (resolved id: ../../hq/token-police.ts) in /workspace/hq-stage3-police-a/tests/unit/token-police.test.ts. Does the file exist?
+ FAIL  tests/unit/usage-receipts.test.ts [ tests/unit/usage-receipts.test.ts ]
+Error: Cannot find module '../../hq/usage-receipts.ts' imported from '/workspace/hq-stage3-police-a/tests/unit/usage-receipts.test.ts'
+Caused by: Error: Failed to load url ../../hq/usage-receipts.ts (resolved id: ../../hq/usage-receipts.ts) in /workspace/hq-stage3-police-a/tests/unit/usage-receipts.test.ts. Does the file exist?
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/unit/fleet-report.test.ts > fleet report aggregation > counts a fixture week exactly
+AssertionError: expected { requests: { opened: 2, …(3) }, …(9) } to deeply equal { Object (requests, agents, ...) }
+ FAIL  tests/unit/ventures.test.ts > ventures: create > validates the fields
+AssertionError: expected 201 to be 400 // Object.is equality
+ Test Files  4 failed | 1 passed (5)
+      Tests  2 failed | 43 passed (45)

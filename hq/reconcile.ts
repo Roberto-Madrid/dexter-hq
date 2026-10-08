@@ -8,6 +8,7 @@ import {
   type ConnectorStore,
 } from "./connector-store.ts";
 import type { ConnectorDeps } from "./connector.ts";
+import { recordUsageReceipt } from "./usage-receipts.ts";
 
 /** A `reserving` row older than this belongs to a launch that died before Cursor answered. */
 export const STALE_RESERVATION_MS = 15 * 60 * 1000;
@@ -54,7 +55,7 @@ export async function closeIfTerminal(
  * It only reads Cursor and writes terminal states, so it keeps running while STOP is on.
  */
 export async function reconcileConnector(
-  deps: Pick<ConnectorDeps, "store" | "cursor" | "cursorConfigured" | "now">,
+  deps: Pick<ConnectorDeps, "store" | "cursor" | "cursorConfigured" | "now" | "usage">,
 ): Promise<ReconcileResult> {
   const at = (deps.now ?? (() => new Date().toISOString()))();
   const agents = await deps.store.listAgents();
@@ -82,7 +83,11 @@ export async function reconcileConnector(
     checked += 1;
     try {
       const run = await deps.cursor.status({ id: handle, runtime: "cursor-cloud" });
-      if (await closeIfTerminal(deps.store, agent, run, at)) closed += 1;
+      if (await closeIfTerminal(deps.store, agent, run, at)) {
+        closed += 1;
+        // Token police: one usage receipt per closed run. Fails soft, never throws.
+        await recordUsageReceipt(deps, agent, handle, terminalAgentStatus(run.state));
+      }
     } catch {
       errors += 1;
     }

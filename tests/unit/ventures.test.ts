@@ -311,6 +311,12 @@ describe("ventures: create", () => {
     expect(lead.json).toMatchObject({ reason: "invalid_input", field: "leadName" });
     const brief = await call(deps(store), "POST", { ...TICKETS, brief: "x".repeat(2001) });
     expect(brief.json).toMatchObject({ reason: "invalid_input", field: "brief" });
+    // Token police: the lead's brief is its profile, capped at agent-brake's 349 words.
+    const wordy = await call(deps(store), "POST", { ...TICKETS, brief: Array(350).fill("w").join(" ") });
+    expect(wordy.status).toBe(400);
+    expect(wordy.json).toMatchObject({ reason: "skill_too_long", field: "brief", words: 350, maxWords: 349 });
+    const fits = await call(deps(store), "POST", { ...TICKETS, brief: Array(349).fill("w").join(" ") });
+    expect(fits.status).toBe(201);
     const action = await call(deps(store), "POST", { ...TICKETS, action: "nope" });
     expect(action.json).toMatchObject({ reason: "invalid_input", field: "action" });
   });
