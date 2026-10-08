@@ -1,0 +1,4 @@
+   × connector caps under concurrency (Postgres) > lets exactly one of two finished agents on a full-but-one repo reopen 69ms
+   × connector caps under concurrency (Postgres) > claims one follow-up when two arrive for the same agent, and refuses a cancelled agent 32ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 8 passed (10)

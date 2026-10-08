@@ -78,6 +78,60 @@ export function isActiveAgent(status: string): boolean {
   return ACTIVE.has(status);
 }
 
+/** Terminal states a follow-up may reopen (under the caps). A cancelled agent stays cancelled. */
+const REOPENABLE = new Set(["finished", "error", "expired"]);
+
+export type FollowupRefusal =
+  | { ok: false; reason: "agent_cap" | "per_repo_cap"; cap: number }
+  | { ok: false; reason: "agent_not_active" | "followup_in_progress" | "unknown_agent" };
+export type FollowupReservation = { ok: true; previous: ConnectorAgent } | FollowupRefusal;
+
+export type SetAgentStatusInput = {
+  id: string;
+  from: readonly string[];
+  status: string;
+  result?: Record<string, unknown> | null;
+  /** When set, the row moves only if its current run (see runHandleFor) is still this one. */
+  run?: string | null;
+};
+
+/** The run to poll: the latest follow-up run when there is one, else the launch run. */
+export function runHandleFor(agent: Pick<ConnectorAgent, "cursorHandle" | "result">): string | null {
+  const latest = agent.result?.latestRunHandle;
+  return typeof latest === "string" && latest ? latest : agent.cursorHandle;
+}
+
+/** One rule for both stores. The caller must hold the launch lock while it reads `rows` and updates. */
+export function followupRefusal(
+  rows: readonly ConnectorAgent[],
+  agent: ConnectorAgent,
+  caps: Pick<LaunchCaps, "global" | "perRepo">,
+): FollowupRefusal | null {
+  if (agent.status === "reserving") return { ok: false, reason: "followup_in_progress" };
+  if (ACTIVE.has(agent.status)) return null;
+  if (!REOPENABLE.has(agent.status)) return { ok: false, reason: "agent_not_active" };
+  const active = rows.filter((row) => ACTIVE.has(row.status) && row.id !== agent.id);
+  if (active.length >= caps.global) return { ok: false, reason: "agent_cap", cap: caps.global };
+  if (agent.repo && active.filter((row) => row.repo === agent.repo).length >= caps.perRepo) {
+    return { ok: false, reason: "per_repo_cap", cap: caps.perRepo };
+  }
+  return null;
+}
+
+/** The row a follow-up claims: `reserving` until Cursor answers, remembering what to restore. */
+export function followupClaim(agent: ConnectorAgent, at: string): Pick<ConnectorAgent, "status" | "result"> {
+  return { status: "reserving", result: { ...agent.result, followupFrom: agent.status, reservedAt: at } };
+}
+
+/** The result without the follow-up claim fields. */
+export function withoutFollowupClaim(result: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!result) return result;
+  const rest = { ...result };
+  delete rest.followupFrom;
+  delete rest.reservedAt;
+  return rest;
+}
+
 /** One rule for both stores. The caller must hold the launch lock while it reads `rows` and inserts. */
 export function launchCapRefusal(
   rows: readonly ConnectorAgent[],
@@ -155,13 +209,10 @@ export interface ConnectorStore {
   saveAgent(agent: ConnectorAgent): Promise<void>;
   /** Atomic: checks the caps and inserts a `reserving` row in one step, so two launches cannot both pass. */
   reserveLaunch(input: { agent: ConnectorAgent; requestId: string | null; caps: LaunchCaps }): Promise<LaunchReservation>;
-  /** Conditional: moves the row only while its status is one of `from`. Returns false when nothing changed. */
-  setAgentStatus(
-    id: string,
-    from: readonly string[],
-    status: string,
-    result?: Record<string, unknown> | null,
-  ): Promise<boolean>;
+  /** Conditional: moves the row only while its status is one of `from` (and its run is `run`, when given). */
+  setAgentStatus(input: SetAgentStatusInput): Promise<boolean>;
+  /** Atomic, under the launch lock: claims an agent for a follow-up, checking the caps when it reopens a finished one. */
+  reserveFollowup(input: { id: string; caps: Pick<LaunchCaps, "global" | "perRepo">; at: string }): Promise<FollowupReservation>;
   /** Atomic: appends a `council_seat` event only while fewer than `cap` exist since `since`. */
   reserveCouncilSeat(input: {
     event: Omit<ConnectorEvent, "id">;
@@ -271,11 +322,21 @@ export function createMemoryConnectorStore(seed?: {
       agents.set(row.id, row);
       return { ok: true, agent: { ...row } };
     },
-    async setAgentStatus(id, from, status, result) {
+    async setAgentStatus({ id, from, status, result, run }) {
       const row = agents.get(id);
       if (!row || !from.includes(row.status)) return false;
+      if (run !== undefined && runHandleFor(row) !== run) return false;
       agents.set(id, { ...row, status, result: result === undefined ? row.result : result });
       return true;
+    },
+    // No await between the check and the update, so this is atomic on one event loop.
+    async reserveFollowup({ id, caps, at }) {
+      const agent = agents.get(id);
+      if (!agent) return { ok: false, reason: "unknown_agent" };
+      const refusal = followupRefusal([...agents.values()], agent, caps);
+      if (refusal) return refusal;
+      agents.set(id, { ...agent, ...followupClaim(agent, at) });
+      return { ok: true, previous: { ...agent } };
     },
     async reserveCouncilSeat({ event, since, cap }) {
       const used = events.filter((row) => row.action === "council_seat" && row.at >= since).length;

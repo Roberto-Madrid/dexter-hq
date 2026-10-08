@@ -3,6 +3,8 @@ import pg from "pg";
 import { pgConfig } from "./snapshot-db.ts";
 import {
   ACTIVE_AGENT_STATUSES,
+  followupClaim,
+  followupRefusal,
   launchCapRefusal,
   type ConnectorAgent,
   type ConnectorApproval,
@@ -334,16 +336,42 @@ export function createPgConnectorStore(url: string): ConnectorStore {
         }),
       );
     },
-    async setAgentStatus(id, from, status, result) {
+    async setAgentStatus({ id, from, status, result, run }) {
       return withClient(url, async (client) => {
+        // The run check mirrors runHandleFor: the latest follow-up run, else the launch run.
         const updated = await client.query(
           `update public.connector_agents
            set status = $3, result = case when $4::boolean then $5::jsonb else result end
-           where id::text = $1 and status = any($2::text[])`,
-          [id, [...from], status, result !== undefined, result ?? null],
+           where id::text = $1 and status = any($2::text[])
+             and (not $6::boolean or coalesce(nullif(result->>'latestRunHandle', ''), cursor_handle) is not distinct from $7::text)`,
+          [id, [...from], status, result !== undefined, result ?? null, run !== undefined, run ?? null],
         );
         return (updated.rowCount ?? 0) > 0;
       });
+    },
+    async reserveFollowup({ id, caps, at }) {
+      return withClient(url, async (client) =>
+        inTransaction(client, async () => {
+          // Same lock as launches, so a follow-up and a launch cannot both take the last slot.
+          await client.query(LAUNCH_LOCK);
+          const found = await client.query(
+            `select ${AGENT_COLUMNS} from public.connector_agents where status = any($1::text[]) or id::text = $2`,
+            [[...ACTIVE_AGENT_STATUSES], id],
+          );
+          const rows = found.rows.map(agentFromRow);
+          const agent = rows.find((row) => row.id === id);
+          if (!agent) return { ok: false as const, reason: "unknown_agent" as const };
+          const refusal = followupRefusal(rows, agent, caps);
+          if (refusal) return refusal;
+          const claim = followupClaim(agent, at);
+          await client.query("update public.connector_agents set status = $2, result = $3::jsonb where id = $1", [
+            id,
+            claim.status,
+            claim.result,
+          ]);
+          return { ok: true as const, previous: agent };
+        }),
+      );
     },
     async reserveCouncilSeat({ event, since, cap }) {
       return withClient(url, async (client) =>

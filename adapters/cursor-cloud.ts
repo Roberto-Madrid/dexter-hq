@@ -126,6 +126,8 @@ export function createCursorCloud(options: {
           prompt: { text: spec.brief ?? spec.taskId },
         }),
       });
+      // A refused create must throw, so the connector releases its reservation instead of saving a launch.
+      if (!response.ok) throw new Error(`start_failed_${response.status}`);
       const body = asRecord(await readJson(response));
       const agent = asRecord(body.agent);
       const runId = runIdFromBody(body) ?? textId(agent.latestRunId) ?? spec.idempotencyKey;

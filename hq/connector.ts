@@ -13,6 +13,7 @@ import {
   CONNECTOR_TOOLS,
   createMemoryConnectorStore,
   isActiveAgent,
+  withoutFollowupClaim,
   type ConnectorAgent,
   type ConnectorAuth,
   type ConnectorRequest,
@@ -228,12 +229,7 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
-  let surge = false;
-  if (approvalId) {
-    const approval = await deps.store.getApproval(approvalId);
-    surge = approval?.status === "approved" && approval.action === "surge";
-  }
-  const cap = surge ? AGENT_SURGE_CAP : SANDBOX_SLOT_CAP;
+  const { surge, cap } = await agentCap(deps, approvalId);
   // Atomic: the caps are checked and a `reserving` row inserted in one step, so two launches cannot both pass.
   const reservation = await deps.store.reserveLaunch({
     agent: {
@@ -301,13 +297,20 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
   }
 }
 
+async function agentCap(deps: ConnectorDeps, approvalId: string | null): Promise<{ surge: boolean; cap: number }> {
+  const approval = approvalId ? await deps.store.getApproval(approvalId) : null;
+  const surge = approval?.status === "approved" && approval.action === "surge";
+  return { surge, cap: surge ? AGENT_SURGE_CAP : SANDBOX_SLOT_CAP };
+}
+
 async function launchReplay(deps: ConnectorDeps, auth: ConnectorAuth, existing: ConnectorAgent): Promise<ToolResult> {
   if (existing.status === "reserving") {
     const body = { status: "refused", reason: "launch_in_progress" };
     await record(deps, auth, "launch_agent", existing.idempotencyKey, body);
     return toolResult(body, true);
   }
-  const body = { status: "idempotent", ...existing.result };
+  // A replay says what it is; the stored launch status travels as agentStatus.
+  const body = { ...existing.result, status: "idempotent", agentStatus: existing.status };
   await record(deps, auth, "launch_agent", existing.cursorHandle ?? existing.id, body);
   return toolResult(body, existing.status === "not-configured" || existing.status === "refused");
 }
@@ -365,12 +368,34 @@ async function handleAgentTool(
       await record(deps, auth, name, handle.id, body);
       return toolResult(body, true);
     }
-    const next = await deps.cursor.followup(handle, text);
-    // dexter-shortcut: a follow-up on a finished agent reopens it without a cap check; upgrade path: reserve a slot through reserveLaunch before the follow-up.
-    await deps.store.saveAgent({
-      ...agent,
-      status: isActiveAgent(agent.status) ? agent.status : "running",
-      result: { ...agent.result, latestRunHandle: next.id },
+    // Atomic, under the launch lock: an active agent is claimed; a finished one reopens only within the caps;
+    // a cancelled one is refused. The claim also stops the tick from closing the run while Cursor answers.
+    const approvalId = textArg(args, "approvalId") ?? textArg(args, "approval_id");
+    const { surge, cap } = await agentCap(deps, approvalId);
+    const claim = await deps.store.reserveFollowup({
+      id: agent.id,
+      caps: { global: cap, perRepo: PER_REPO_CAP },
+      at: (deps.now ?? (() => new Date().toISOString()))(),
+    });
+    if (!claim.ok) {
+      const reason = claim.reason === "agent_cap" && surge ? "surge_cap" : claim.reason;
+      const body = "cap" in claim ? { status: "refused", reason, cap: claim.cap } : { status: "refused", reason };
+      await record(deps, auth, name, handle.id, body);
+      return toolResult(body, true);
+    }
+    const previous = claim.previous;
+    let next: RunHandle;
+    try {
+      next = await deps.cursor.followup(handle, text);
+    } catch (error) {
+      await deps.store.setAgentStatus({ id: agent.id, from: ["reserving"], status: previous.status, result: previous.result });
+      throw error;
+    }
+    await deps.store.setAgentStatus({
+      id: agent.id,
+      from: ["reserving"],
+      status: "running",
+      result: { ...withoutFollowupClaim(previous.result), latestRunHandle: next.id },
     });
     const body = { status: "followed_up", agentId: next.id };
     await record(deps, auth, name, next.id, body);
