@@ -69,7 +69,7 @@ export const CallbackSchema = z
     result: z.string().optional(),
     post: z
       .object({
-        type: z.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff"]),
+        type: z.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff", "shortcut"]),
         body: z.string(),
         evidence: z.array(z.string()).default([]),
       })

@@ -1,0 +1,130 @@
+
+ RUN  v3.2.4 /workspace/hq-stage3-u4
+
+ ❯ tests/unit/board-server.test.ts (6 tests | 6 failed) 62ms
+   × GET /api/board?view=notes is owner-only JSON > refuses no cookie and a forged cookie 16ms
+     → (0 , getBoardNotes) is not a function
+   × GET /api/board?view=notes is owner-only JSON > serves every scope to the owner, live notes by default, newest first 21ms
+     → (0 , getBoardNotes) is not a function
+   × GET /api/board?view=notes is owner-only JSON > filters by type, scope, repo and status 6ms
+     → (0 , getBoardNotes) is not a function
+   × HQ chat reads the board > classifies board asks before list asks 5ms
+     → expected 'work' to be 'board' // Object.is equality
+   × HQ chat reads the board > answers from the connector posts with no model call and marks claimed notes 9ms
+     → expected 1 to be +0 // Object.is equality
+   × HQ chat reads the board > says so when the board is empty or unreachable 3ms
+     → expected 'Plan ready.' to contain 'No board notes'
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/board-rules.test.ts [ tests/unit/board-rules.test.ts ]
+Error: Cannot find module '../../hq/board-notes.ts' imported from '/workspace/hq-stage3-u4/tests/unit/board-rules.test.ts'
+ ❯ tests/unit/board-rules.test.ts:2:1
+      1| import { describe, expect, it } from "vitest";
+      2| import { CONTEXT_LIMITS, scrubSecrets } from "../../hq/board-notes.ts";
+       | ^
+      3| import {
+      4|   CONNECTOR_TOOLS,
+
+Caused by: Error: Failed to load url ../../hq/board-notes.ts (resolved id: ../../hq/board-notes.ts) in /workspace/hq-stage3-u4/tests/unit/board-rules.test.ts. Does the file exist?
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/config.js:22739:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/board-server.test.ts > GET /api/board?view=notes is owner-only JSON > refuses no cookie and a forged cookie
+TypeError: (0 , getBoardNotes) is not a function
+ ❯ tests/unit/board-server.test.ts:65:19
+     63|   it("refuses no cookie and a forged cookie", async () => {
+     64|     const { store } = await seeded();
+     65|     expect((await getBoardNotes(null, "view=notes", store, NOW)).statu…
+       |                   ^
+     66|     expect((await getBoardNotes("dexter_session=forged.value", "view=n…
+     67|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  tests/unit/board-server.test.ts > GET /api/board?view=notes is owner-only JSON > serves every scope to the owner, live notes by default, newest first
+TypeError: (0 , getBoardNotes) is not a function
+ ❯ tests/unit/board-server.test.ts:71:24
+     69|   it("serves every scope to the owner, live notes by default, newest f…
+     70|     const { store, ids } = await seeded();
+     71|     const view = await getBoardNotes(ownerCookie(), "view=notes", stor…
+       |                        ^
+     72|     expect(view.status).toBe(200);
+     73|     expect(noteIds(view.body).sort()).toEqual([ids.alpha, ids.beta, id…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  tests/unit/board-server.test.ts > GET /api/board?view=notes is owner-only JSON > filters by type, scope, repo and status
+TypeError: (0 , getBoardNotes) is not a function
+ ❯ get tests/unit/board-server.test.ts:81:57
+     79|     const { store, ids } = await seeded();
+     80|     const cookie = ownerCookie();
+     81|     const get = async (query: string) => noteIds((await getBoardNotes(…
+       |                                                         ^
+     82|     expect(await get("type=shortcut")).toEqual([ids.beta]);
+     83|     expect(await get("scope=shared")).toEqual([ids.shared]);
+ ❯ tests/unit/board-server.test.ts:82:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  tests/unit/board-server.test.ts > HQ chat reads the board > classifies board asks before list asks
+AssertionError: expected 'work' to be 'board' // Object.is equality
+
+Expected: "board"
+Received: "work"
+
+ ❯ tests/unit/board-server.test.ts:116:38
+    114|   it("classifies board asks before list asks", () => {
+    115|     for (const text of ["board", "Board", "show the board", "what's on…
+    116|       expect(classifyQuestion(text)).toBe("board");
+       |                                      ^
+    117|     }
+    118|     expect(classifyQuestion("show requests")).toBe("list");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  tests/unit/board-server.test.ts > HQ chat reads the board > answers from the connector posts with no model call and marks claimed notes
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/unit/board-server.test.ts:127:31
+    125|     const memory = new MemoryStore(() => new Date(NOW));
+    126|     const result = await handleChat(memory, wired, "board");
+    127|     expect(result.modelCalls).toBe(0);
+       |                               ^
+    128|     expect(wired.ceo.calls).toBe(0);
+    129|     expect(result.kind).toBe("list");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  tests/unit/board-server.test.ts > HQ chat reads the board > says so when the board is empty or unreachable
+AssertionError: expected 'Plan ready.' to contain 'No board notes'
+
+Expected: "No board notes"
+Received: "Plan ready."
+
+ ❯ tests/unit/board-server.test.ts:144:24
+    142|   it("says so when the board is empty or unreachable", async () => {
+    143|     const empty = await handleChat(new MemoryStore(), deps({ connector…
+    144|     expect(empty.text).toContain("No board notes");
+       |                        ^
+    145|     expect(empty.modelCalls).toBe(0);
+    146|     const none = await handleChat(new MemoryStore(), deps(), "board");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  6 failed (6)
+   Start at  02:01:34
+   Duration  1.18s (transform 470ms, setup 0ms, collect 705ms, tests 62ms, environment 0ms, prepare 177ms)
+

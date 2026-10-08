@@ -1,4 +1,4 @@
-import { emailFromCookie, getBoard, getFleetView, venturesHttp } from "../../generated/hq.js";
+import { emailFromCookie, getBoard, getBoardNotes, getFleetView, venturesHttp } from "../../generated/hq.js";
 
 export const runtime = "nodejs";
 
@@ -13,6 +13,11 @@ export async function GET(request: Request) {
   if (params.get("view") === "fleet") {
     const view = await getFleetView(cookie, params.get("week"));
     return Response.json(view.body, { status: view.status });
+  }
+  if (params.get("view") === "notes") {
+    // Owner JSON read of the agent board (no screen yet): type, scope, repo, status, limit filters.
+    const notes = await getBoardNotes(cookie, params);
+    return Response.json(notes.body, { status: notes.status, headers: { "cache-control": "no-store" } });
   }
   return Response.json(await getBoard());
 }

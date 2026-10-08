@@ -33,7 +33,8 @@ export type PostType =
   | "answer"
   | "dead_end"
   | "alert"
-  | "handoff";
+  | "handoff"
+  | "shortcut";
 export type FindingStatus = "claimed" | "verified" | "stale";
 export type Sensitivity = "none" | "client" | "personal";
 export type CancelState = "confirmed" | "requested" | "unsupported" | "unconfirmed";

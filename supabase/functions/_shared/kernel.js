@@ -4127,7 +4127,7 @@ var RunSchema = external_exports.object({
 var PostSchema = external_exports.object({
   id: uuid,
   ownerId: uuid,
-  type: external_exports.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff"]),
+  type: external_exports.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff", "shortcut"]),
   author: external_exports.string().min(1),
   signature: external_exports.string().min(1),
   taskId: uuid.nullable(),
@@ -10902,10 +10902,12 @@ var POST_TYPES = [
   "answer",
   "dead_end",
   "alert",
-  "handoff"
+  "handoff",
+  "shortcut"
 ];
+var VERIFIABLE_POST_TYPES = ["finding", "shortcut"];
 function verifyFinding(post, actor) {
-  if (post.type !== "finding") return { ok: false, reason: "not_a_finding" };
+  if (!VERIFIABLE_POST_TYPES.includes(post.type)) return { ok: false, reason: "not_a_finding" };
   if (post.status !== "claimed") return { ok: false, reason: "not_claimed" };
   if (!actor.deterministic && actor.author === post.author) {
     return { ok: false, reason: "same_author" };
@@ -11066,7 +11068,7 @@ var CallbackSchema = external_exports.object({
   runId: external_exports.string().min(1).optional(),
   result: external_exports.string().optional(),
   post: external_exports.object({
-    type: external_exports.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff"]),
+    type: external_exports.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff", "shortcut"]),
     body: external_exports.string(),
     evidence: external_exports.array(external_exports.string()).default([])
   }).optional(),
@@ -11130,6 +11132,7 @@ export {
   TaskSchema,
   TickResultSchema,
   UiCardSchema,
+  VERIFIABLE_POST_TYPES,
   VerdictSchema,
   assertFresh,
   capForPool,

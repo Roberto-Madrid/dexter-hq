@@ -2,6 +2,7 @@ import type { ChatResult } from "../kernel/contracts.ts";
 import { validatePlanCard } from "../kernel/plan-card.ts";
 import { preflight } from "../kernel/preflight.ts";
 import { answerCost, answerList, answerStatus, snapshot } from "./board.ts";
+import { answerBoard } from "./board-notes.ts";
 import { classifyQuestion } from "./classify.ts";
 import { isQuickEdit, loadCrews, type CrewFile } from "./crews.ts";
 import type { HqDeps } from "./deps.ts";
@@ -45,6 +46,18 @@ export async function handleChat(
     const body = await fleetChatAnswer(deps.fleetReports);
     await store.addMessage("dexter", body, null);
     return { kind: "status", text: body, modelCalls: 0, card: null, notices: [], requestId: null, asOf: store.now() };
+  }
+  if (kind === "board") {
+    // DB-only: reads connector posts, never the model. Owner sees every scope.
+    let posts = null;
+    try {
+      posts = deps.connector ? await deps.connector.listPosts() : null;
+    } catch {
+      posts = null;
+    }
+    const body = answerBoard(posts, text, store.now());
+    await store.addMessage("dexter", body, null);
+    return { kind: "list", text: body, modelCalls: 0, card: null, notices: [], requestId: null, asOf: store.now() };
   }
   if (kind !== "work") {
     const board = await snapshot(store, deps.slotCap);

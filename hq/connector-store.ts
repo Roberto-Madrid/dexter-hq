@@ -183,6 +183,12 @@ export type ConnectorApproval = {
   requestId: string | null;
 };
 
+export type PostScope = "shared" | "project" | "mission";
+
+/**
+ * A board note. `verified` mirrors `status === "verified"` for older readers.
+ * Optional fields are absent on rows written before Stage 3 unit 4; readers treat them as unknown.
+ */
 export type ConnectorPost = {
   id: string;
   ownerId: string;
@@ -191,6 +197,18 @@ export type ConnectorPost = {
   body: string;
   repo: string | null;
   verified: boolean;
+  authorId?: string | null;
+  status?: string | null;
+  verifiedBy?: string | null;
+  scope?: PostScope | null;
+  requestId?: string | null;
+  agentId?: string | null;
+  runId?: string | null;
+  sha?: string | null;
+  link?: string | null;
+  conditions?: string | null;
+  expiresAt?: string | null;
+  createdAt?: string | null;
 };
 
 /** Live = a heartbeat within this many seconds; Wait = seen since the token was issued but silent longer. */

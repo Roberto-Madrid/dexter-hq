@@ -1,0 +1,32 @@
+local integration database ready
+
+ RUN  v3.2.4 /workspace/hq-stage3-u4
+
+ ❯ tests/integration/board-posts.test.ts (1 test | 1 failed) 103ms
+   × posts round trip through Postgres > writes status, verified_by, expires_at, created_at and provenance, and reads them back 94ms
+     → expected 'af4ef379-d904-436a-98be-13a2fb636dc7' to be '7e9dabda-fdb9-478d-adb0-a5f651aa7eec' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/integration/board-posts.test.ts > posts round trip through Postgres > writes status, verified_by, expires_at, created_at and provenance, and reads them back
+AssertionError: expected 'af4ef379-d904-436a-98be-13a2fb636dc7' to be '7e9dabda-fdb9-478d-adb0-a5f651aa7eec' // Object.is equality
+
+Expected: "7e9dabda-fdb9-478d-adb0-a5f651aa7eec"
+Received: "af4ef379-d904-436a-98be-13a2fb636dc7"
+
+ ❯ tests/integration/board-posts.test.ts:54:26
+     52|     expect(finding.status).toBe("posted");
+     53|     const again = await call(lead, "post", { type: "finding", body: "t…
+     54|     expect(again.postId).toBe(finding.postId);
+       |                          ^
+     55| 
+     56|     const raw = await pool.query("select type, author, status, verifie…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  02:01:50
+   Duration  879ms (transform 253ms, setup 0ms, collect 450ms, tests 103ms, environment 0ms, prepare 72ms)
+
