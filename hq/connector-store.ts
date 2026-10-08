@@ -327,6 +327,9 @@ export type ModelResolutionRow = PinResolution & { ownerId: string; resolvedAt: 
 /** The event the daily check appends when it cannot read the catalog. */
 export const PIN_FAILURE_ACTION = "pins_resolve_failed";
 
+/** Red-phase stub. */
+export const UPGRADE_BOT_NAME = "hq-upgrade";
+
 /** The Needs-you card a held version raises. Its target is `<family>:<version>`. */
 export const MODEL_UPGRADE_ACTION = "model_upgrade";
 

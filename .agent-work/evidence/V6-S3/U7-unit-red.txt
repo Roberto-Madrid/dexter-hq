@@ -1,0 +1,452 @@
+# U7 red (unit), 2026-10-08 02:41 PDT, branch v6/S3-U7-upgrade off main c024c23; tests + a names-only stub of hq/upgrade-check.ts (no behavior)
+# live DB URLs and API keys unset (u7-safe-env)
+
+ RUN  v3.2.4 /workspace/hq-stage3-u1
+
+ ❯ tests/unit/upgrade-check.test.ts (21 tests | 20 failed) 114ms
+   × U7 saved upgrade tasks > has exactly 5 saved tasks for every catalog family, none naming a model, each with a branch slot and a done-command 19ms
+     → expected [] to have a length of 5 but got +0
+   × U7 saved upgrade tasks > keys a run by family, version and task 1ms
+     → expected '' to be 'upgrade:grok:grok-4.8:01-meta-charset' // Object.is equality
+   × U7 default grader (weaker grading: Cursor FINISHED = pass) > passes a finished run, fails error/expired/cancelled, and waits on live runs 2ms
+     → expected null to deeply equal { passed: true, checksFailed: +0 }
+   ✓ U7 nothing runs without the owner's tap > a held version with no tap launches nothing, and a dry run on unchanged pins launches nothing 18ms
+   × U7 tap starts the check; ticks advance it > the tap records the check and launches nothing; the next tick launches as hq-upgrade within the caps 7ms
+     → expected { status: 'approved', …(4) } to match object { status: 'approved', …(2) }
+(3 matching properties omitted from actual)
+   × U7 worker family passes: switch, notice, one-tap rollback > runs 5 tasks on the new version and 5 baseline runs, switches the pin, posts a notice, and rollback restores it 6ms
+     → expected [] to deeply equal [ ObjectContaining{…} ]
+   × U7 worker family passes: switch, notice, one-tap rollback > with baseline results for the current pin, the next check runs only the 5 new-version tasks 5ms
+     → expected 'grok-4.7' to be 'grok-4.8' // Object.is equality
+   × U7 worker family passes: switch, notice, one-tap rollback > a rollback after the pin moved on does nothing 4ms
+     → ctx.store.switchPin is not a function
+   × U7 CEO family (gpt-sol) waits for the owner > a passing check raises a council_upgrade card and keeps the pin until the tap 5ms
+     → expected [] to deeply equal [ ObjectContaining{…} ]
+   × U7 CEO family (gpt-sol) waits for the owner > a denied council card never switches the pin 3ms
+     → no council_upgrade card for gpt-sol:gpt-5.6-sol->gpt-5.7-sol
+   × U7 failed check keeps the old pin > the new version passing less often than the current pin keeps the pin, posts the result, and raises no card 3ms
+     → expected [] to deeply equal [ ObjectContaining {"status": "kept"} ]
+   × U7 double tap and concurrent ticks > a second tap and overlapping ticks never launch a run twice 4ms
+     → expected [] to have a length of 1 but got +0
+   × U7 STOP ALL > while STOP is on the check launches nothing, and the runner itself is refused 4ms
+     → expected [] to deeply equal [ ObjectContaining{…} ]
+   × U7 STOP ALL > a check whose request STOP cancelled ends as cancelled and keeps the pin 3ms
+     → expected [] to deeply equal [ ObjectContaining{…} ]
+   × U7 sandbox repo and configuration > refuses with sandbox_repo_missing once, keeps the tick alive, and resumes once the repo is set 3ms
+     → expected [] to deeply equal [ ObjectContaining{…} ]
+   × U7 sandbox repo and configuration > does not launch when Cursor is not configured 3ms
+     → expected [] to deeply equal [ ObjectContaining{…} ]
+   × U7 bots never name a model; the override is internal-only > refuses a bot that names a model, a non-upgrade bot with the override, and an unknown version 10ms
+     → expected { status: 'launched', …(8) } to match object { status: 'refused', …(1) }
+(8 matching properties omitted from actual)
+   × U7 bots never name a model; the override is internal-only > ensureInternalBot is idempotent and follows the sandbox repo 2ms
+     → ctx.store.ensureInternalBot is not a function
+   × U7 injected runner and grader > a stub runner and grader decide the check without Cursor 3ms
+     → expected undefined to be 10 // Object.is equality
+   × U7 the tick > runs the upgrade step after pins, and a throw there fails soft 3ms
+     → expected [ 'fleet' ] to deeply equal [ 'fleet', 'upgrade' ]
+   × U7 the tick > an upgrade switch row before the daily check does not count as today's check 2ms
+     → ctx.store.switchPin is not a function
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 20 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 saved upgrade tasks > has exactly 5 saved tasks for every catalog family, none naming a model, each with a branch slot and a done-command
+AssertionError: expected [] to have a length of 5 but got +0
+
+- Expected
++ Received
+
+- 5
++ 0
+
+ ❯ tests/unit/upgrade-check.test.ts:93:21
+     91|     for (const family of families) {
+     92|       const tasks = loadUpgradeTasks(family);
+     93|       expect(tasks).toHaveLength(5);
+       |                     ^
+     94|       for (const task of tasks) {
+     95|         expect(task.id).toMatch(/^[a-z0-9-]+$/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 saved upgrade tasks > keys a run by family, version and task
+AssertionError: expected '' to be 'upgrade:grok:grok-4.8:01-meta-charset' // Object.is equality
+
+- Expected
++ Received
+
+- upgrade:grok:grok-4.8:01-meta-charset
+
+ ❯ tests/unit/upgrade-check.test.ts:105:66
+    103| 
+    104|   it("keys a run by family, version and task", () => {
+    105|     expect(upgradeRunKey("grok", "grok-4.8", "01-meta-charset")).toBe(…
+       |                                                                  ^
+    106|   });
+    107| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 default grader (weaker grading: Cursor FINISHED = pass) > passes a finished run, fails error/expired/cancelled, and waits on live runs
+AssertionError: expected null to deeply equal { passed: true, checksFailed: +0 }
+
+- Expected: 
+{
+  "checksFailed": 0,
+  "passed": true,
+}
+
++ Received: 
+null
+
+ ❯ tests/unit/upgrade-check.test.ts:123:59
+    121|   });
+    122|   it("passes a finished run, fails error/expired/cancelled, and waits …
+    123|     expect(await defaultUpgradeGrader(agent("finished"))).toEqual({ pa…
+       |                                                           ^
+    124|     for (const status of ["error", "expired", "cancelled"]) {
+    125|       expect(await defaultUpgradeGrader(agent(status))).toEqual({ pass…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 tap starts the check; ticks advance it > the tap records the check and launches nothing; the next tick launches as hq-upgrade within the caps
+AssertionError: expected { status: 'approved', …(4) } to match object { status: 'approved', …(2) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "action": "model_upgrade",
+    "execution": {
+-     "reason": "upgrade_check_started",
+      "status": "ok",
+    },
+    "status": "approved",
+  }
+
+ ❯ tests/unit/upgrade-check.test.ts:150:21
+    148|     const ctx = await setup();
+    149|     const decided = await tap(ctx.store, "model_upgrade", "grok:grok-4…
+    150|     expect(decided).toMatchObject({ status: "approved", action: "model…
+       |                     ^
+    151|     const started = (await ctx.store.listEvents()).filter((event) => e…
+    152|     expect(started).toHaveLength(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 worker family passes: switch, notice, one-tap rollback > runs 5 tasks on the new version and 5 baseline runs, switches the pin, posts a notice, and rollback restores it
+AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+- [
+-   ObjectContaining {
+-     "family": "grok",
+-     "status": "adopted",
+-   },
+- ]
++ []
+
+ ❯ tests/unit/upgrade-check.test.ts:189:25
+    187|     await tap(ctx.store, "model_upgrade", "grok:grok-4.8");
+    188|     const done = await drive(ctx);
+    189|     expect(done.checks).toEqual([expect.objectContaining({ family: "gr…
+       |                         ^
+    190|     expect(ctx.cursor.starts.filter((spec) => spec.modelId === "grok-4…
+    191|     expect(ctx.cursor.starts.filter((spec) => spec.modelId === "grok-4…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 worker family passes: switch, notice, one-tap rollback > with baseline results for the current pin, the next check runs only the 5 new-version tasks
+AssertionError: expected 'grok-4.7' to be 'grok-4.8' // Object.is equality
+
+Expected: "grok-4.8"
+Received: "grok-4.7"
+
+ ❯ tests/unit/upgrade-check.test.ts:237:44
+    235|     await tap(ctx.store, "model_upgrade", "grok:grok-4.8");
+    236|     await drive(ctx);
+    237|     expect(await pinOf(ctx.store, "grok")).toBe("grok-4.8");
+       |                                            ^
+    238|     ctx.cursor.models = [...CATALOG_IDS, "grok-4.8", "grok-4.9", "gpt-…
+    239|     await resolveDailyPins({ store: ctx.store, cursor: ctx.cursor, she…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 worker family passes: switch, notice, one-tap rollback > a rollback after the pin moved on does nothing
+TypeError: ctx.store.switchPin is not a function
+ ❯ tests/unit/upgrade-check.test.ts:255:29
+    253|     await tap(ctx.store, "model_upgrade", "grok:grok-4.8");
+    254|     await drive(ctx);
+    255|     expect((await ctx.store.switchPin({ ownerId: OWNER, family: "grok"…
+       |                             ^
+    256|     const rolled = await tap(ctx.store, UPGRADE_ROLLBACK_ACTION, "grok…
+    257|     expect(rolled).toMatchObject({ status: "approved", ran: false, exe…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 CEO family (gpt-sol) waits for the owner > a passing check raises a council_upgrade card and keeps the pin until the tap
+AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+- [
+-   ObjectContaining {
+-     "family": "gpt-sol",
+-     "status": "awaiting_owner",
+-   },
+- ]
++ []
+
+ ❯ tests/unit/upgrade-check.test.ts:267:25
+    265|     await tap(ctx.store, "model_upgrade", "gpt-sol:gpt-5.7-sol");
+    266|     const done = await drive(ctx);
+    267|     expect(done.checks).toEqual([expect.objectContaining({ family: "gp…
+       |                         ^
+    268|     expect(await pinOf(ctx.store, "gpt-sol")).toBe("gpt-5.6-sol");
+    269|     expect(ctx.cursor.starts.every((spec) => spec.modelId === "gpt-5.7…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 CEO family (gpt-sol) waits for the owner > a denied council card never switches the pin
+Error: no council_upgrade card for gpt-sol:gpt-5.6-sol->gpt-5.7-sol
+ ❯ card tests/unit/upgrade-check.test.ts:45:19
+     43| async function card(store: ConnectorStore, action: string, target: str…
+     44|   const row = (await store.listApprovals()).find((item) => item.action…
+     45|   if (!row) throw new Error(`no ${action} card for ${target}`);
+       |                   ^
+     46|   return row;
+     47| }
+ ❯ tests/unit/upgrade-check.test.ts:286:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 failed check keeps the old pin > the new version passing less often than the current pin keeps the pin, posts the result, and raises no card
+AssertionError: expected [] to deeply equal [ ObjectContaining {"status": "kept"} ]
+
+- Expected
++ Received
+
+- [
+-   ObjectContaining {
+-     "status": "kept",
+-   },
+- ]
++ []
+
+ ❯ tests/unit/upgrade-check.test.ts:302:25
+    300|       return incomingRuns <= 2 ? "ERROR" : "FINISHED";
+    301|     });
+    302|     expect(done.checks).toEqual([expect.objectContaining({ status: "ke…
+       |                         ^
+    303|     expect(await pinOf(ctx.store, "grok")).toBe("grok-4.7");
+    304|     const doneEvent = (await ctx.store.listEvents()).find((event) => e…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 double tap and concurrent ticks > a second tap and overlapping ticks never launch a run twice
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/unit/upgrade-check.test.ts:320:102
+    318|     const second = await tap(ctx.store, "model_upgrade", "grok:grok-4.…
+    319|     expect(second).toMatchObject({ reason: "already_decided", ran: fal…
+    320|     expect((await ctx.store.listEvents()).filter((event) => event.acti…
+       |                                                                                                      ^
+    321|     await Promise.all([tick(ctx.deps), tick(ctx.deps), tick(ctx.deps)]…
+    322|     expect(ctx.cursor.starts).toHaveLength(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 STOP ALL > while STOP is on the check launches nothing, and the runner itself is refused
+AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+- [
+-   ObjectContaining {
+-     "launched": 0,
+-     "status": "stopped",
+-   },
+- ]
++ []
+
+ ❯ tests/unit/upgrade-check.test.ts:338:28
+    336|     await ctx.store.setStopped(true);
+    337|     const stopped = await tick(ctx.deps);
+    338|     expect(stopped.checks).toEqual([expect.objectContaining({ status: …
+       |                            ^
+    339|     expect(ctx.cursor.starts).toHaveLength(0);
+    340|     // Even a direct internal launch is refused by the connector's STO…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 STOP ALL > a check whose request STOP cancelled ends as cancelled and keeps the pin
+AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+- [
+-   ObjectContaining {
+-     "status": "cancelled",
+-   },
+- ]
++ []
+
+ ❯ tests/unit/upgrade-check.test.ts:356:26
+    354|     }
+    355|     const after = await tick(ctx.deps);
+    356|     expect(after.checks).toEqual([expect.objectContaining({ status: "c…
+       |                          ^
+    357|     expect(await pinOf(ctx.store, "grok")).toBe("grok-4.7");
+    358|     expect(await tick(ctx.deps)).toEqual({ checks: [] });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 sandbox repo and configuration > refuses with sandbox_repo_missing once, keeps the tick alive, and resumes once the repo is set
+AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+- [
+-   ObjectContaining {
+-     "launched": 0,
+-     "status": "sandbox_repo_missing",
+-   },
+- ]
++ []
+
+ ❯ tests/unit/upgrade-check.test.ts:368:26
+    366|     const first = await tick(ctx.deps, {});
+    367|     const second = await tick(ctx.deps, { [SANDBOX_ENV]: "  " });
+    368|     expect(first.checks).toEqual([expect.objectContaining({ status: "s…
+       |                          ^
+    369|     expect(second.checks).toEqual([expect.objectContaining({ status: "…
+    370|     expect(ctx.cursor.starts).toHaveLength(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 sandbox repo and configuration > does not launch when Cursor is not configured
+AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+- [
+-   ObjectContaining {
+-     "launched": 0,
+-     "status": "not_configured",
+-   },
+- ]
++ []
+
+ ❯ tests/unit/upgrade-check.test.ts:382:27
+    380|     await tap(ctx.store, "model_upgrade", "grok:grok-4.8");
+    381|     const result = await tick({ ...ctx.deps, cursor: null, cursorConfi…
+    382|     expect(result.checks).toEqual([expect.objectContaining({ status: "…
+       |                           ^
+    383|     expect(await ctx.store.listAgents()).toEqual([]);
+    384|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 bots never name a model; the override is internal-only > refuses a bot that names a model, a non-upgrade bot with the override, and an unknown version
+AssertionError: expected { status: 'launched', …(8) } to match object { status: 'refused', …(1) }
+(8 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": "model_override_not_allowed",
+-   "status": "refused",
++   "status": "launched",
+  }
+
+ ❯ tests/unit/upgrade-check.test.ts:393:36
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 bots never name a model; the override is internal-only > ensureInternalBot is idempotent and follows the sandbox repo
+TypeError: ctx.store.ensureInternalBot is not a function
+ ❯ tests/unit/upgrade-check.test.ts:409:33
+    407|   it("ensureInternalBot is idempotent and follows the sandbox repo", a…
+    408|     const ctx = await setup();
+    409|     const one = await ctx.store.ensureInternalBot({ ownerId: OWNER, na…
+       |                                 ^
+    410|     const two = await ctx.store.ensureInternalBot({ ownerId: OWNER, na…
+    411|     expect(two.id).toBe(one.id);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 injected runner and grader > a stub runner and grader decide the check without Cursor
+AssertionError: expected undefined to be 10 // Object.is equality
+
+- Expected: 
+10
+
++ Received: 
+undefined
+
+ ❯ tests/unit/upgrade-check.test.ts:441:39
+    439|     const grader = async (agent: ConnectorAgent) => ({ passed: !agent.…
+    440|     const first = await tick(ctx.deps, ENV, { runner, grader });
+    441|     expect(first.checks[0]?.launched).toBe(10);
+       |                                       ^
+    442|     const second = await tick(ctx.deps, ENV, { runner, grader });
+    443|     expect(second.checks).toEqual([expect.objectContaining({ status: "…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 the tick > runs the upgrade step after pins, and a throw there fails soft
+AssertionError: expected [ 'fleet' ] to deeply equal [ 'fleet', 'upgrade' ]
+
+- Expected
++ Received
+
+  [
+    "fleet",
+-   "upgrade",
+  ]
+
+ ❯ tests/unit/upgrade-check.test.ts:463:19
+    461|       },
+    462|     });
+    463|     expect(order).toEqual(["fleet", "upgrade"]);
+       |                   ^
+    464|     expect(result.upgrade).toEqual({ status: "error" });
+    465|     expect(result.pins.configured).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/20]⎯
+
+ FAIL  tests/unit/upgrade-check.test.ts > U7 the tick > an upgrade switch row before the daily check does not count as today's check
+TypeError: ctx.store.switchPin is not a function
+ ❯ tests/unit/upgrade-check.test.ts:472:21
+    470|     const ctx = await setup();
+    471|     // DAY1's check already ran in setup. On DAY2 a switch happens bef…
+    472|     await ctx.store.switchPin({ ownerId: OWNER, family: "grok", from: …
+       |                     ^
+    473|     expect(await ctx.store.pinsResolvedSince(OWNER, "2026-10-09T00:00:…
+    474|     const day2 = await resolveDailyPins({ store: ctx.store, cursor: ct…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/20]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  20 failed | 1 passed (21)
+   Start at  02:41:20
+   Duration  1.01s (transform 344ms, setup 0ms, collect 575ms, tests 114ms, environment 0ms, prepare 72ms)
+
+exit 1
