@@ -40,6 +40,7 @@ import type { HqDeps } from "./deps.ts";
 import { MemoryStore } from "./memory.ts";
 import type { HqStore } from "./model.ts";
 import { bundledRoleSheet } from "./bundled-assets.ts";
+import { resolveCodexBin } from "./codex-bin.ts";
 import { AUTH_PATH, loadCodexLogin, storeCodexLogin } from "./codex-login.ts";
 import { readSnapshot, writeSnapshot } from "./snapshot-db.ts";
 import { createCursorCloud } from "../adapters/cursor-cloud.ts";
@@ -175,7 +176,8 @@ function pathB(sheetText: string): CeoClient {
       writeFileSync(schema, JSON.stringify(ceoOutputSchema()));
       const dbUrl = process.env.SUPABASE_DB_URL ?? "";
       if (!dbUrl) throw new Error("codex_login_missing");
-      const loginKind = await loadCodexLogin(dbUrl);
+      const codexBin = await resolveCodexBin();
+      const loginKind = await loadCodexLogin(dbUrl, codexBin);
       if (loginKind !== "chatgpt") throw new Error(loginKind === "api_key" ? "codex_login_not_chatgpt" : "codex_login_unknown");
       const started = Date.now();
       const stages: Record<string, number> = {};
@@ -192,7 +194,7 @@ function pathB(sheetText: string): CeoClient {
             prompt: ceoPrompt(text),
             schemaPath: schema,
             outputPath: output,
-            codexBin: "vendor/codex/codex",
+            codexBin,
             home: "/tmp",
             disableTools: true,
           },

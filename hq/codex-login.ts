@@ -21,10 +21,6 @@ function ageBin(): string {
   return "vendor/age/age";
 }
 
-function codexBin(): string {
-  return "vendor/codex/codex";
-}
-
 function privateKey(): string {
   const raw = process.env.DEXTER_AGE_PRIVATE_KEY ?? "";
   if (!raw) throw new Error("age_key_missing");
@@ -41,7 +37,7 @@ async function withDb<T>(dbUrl: string, fn: (client: pg.Client) => Promise<T>): 
   }
 }
 
-export async function loadCodexLogin(dbUrl: string): Promise<"chatgpt" | "api_key" | "unknown"> {
+export async function loadCodexLogin(dbUrl: string, codexBin: string): Promise<"chatgpt" | "api_key" | "unknown"> {
   const id = process.env.CEO_CHATGPT_AUTH_VAULT_ID || null;
   const row = await withDb(dbUrl, async (client) => {
     const found = id
@@ -65,7 +61,7 @@ export async function loadCodexLogin(dbUrl: string): Promise<"chatgpt" | "api_ke
   rmSync(CIPHER_PATH, { force: true });
   if (decrypted.status !== 0) throw new Error("codex_login_decrypt_failed");
   chmodSync(AUTH_PATH, 0o600);
-  const status = spawnSync(codexBin(), ["login", "status"], {
+  const status = spawnSync(codexBin, ["login", "status"], {
     encoding: "utf8",
     env: { PATH: process.env.PATH, HOME: "/tmp", CODEX_HOME: "/tmp/.codex", LANG: "C.UTF-8" } as unknown as NodeJS.ProcessEnv,
   });

@@ -113,3 +113,20 @@ describe("connector request_council", () => {
     expect(events.some((event) => event.action === "request_council")).toBe(true);
   });
 });
+
+describe("connector request_council codex readiness", () => {
+  it("reports not-ready, without a verdict, when the codex binary cannot be resolved", async () => {
+    const { CodexNotReadyError } = await import("../../hq/codex-bin.ts");
+    const deps = councilDeps({
+      councilConfigured: true,
+      runCouncilSeat: async () => {
+        throw new CodexNotReadyError("archive_hash_mismatch");
+      },
+    });
+    const result = await callConnectorTool(deps, auth, "request_council", { requestId: "req-nr", packet: "Diff: x" });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent.status).toBe("not-ready");
+    expect(result.structuredContent.reason).toBe("codex_not_ready: archive_hash_mismatch");
+    expect(result.structuredContent.result).toBeUndefined();
+  });
+});
