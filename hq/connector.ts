@@ -24,7 +24,7 @@ import {
   type ConnectorToolName,
 } from "./connector-store.ts";
 import { surgeActive, surgeExpiresAt } from "./surge.ts";
-import { parseCouncilVerdict, runCriticSeat } from "./council-seat.ts";
+import { openCouncilSession, type CouncilSeatId, type CouncilSession } from "./council-seat.ts";
 import {
   PINNED_CHECKER_WORKFLOW,
   applyCheckEvidence,
@@ -68,7 +68,33 @@ export type CursorGateway = Runtime & {
   listModels?(): Promise<string[]>;
 };
 
-export type CouncilSeatFn = (input: { packet: string }) => Promise<Verdict>;
+export type { CouncilSeatId };
+/** Runs one Council seat on the packet. Tests inject this; live calls use one path-B session per review. */
+export type CouncilSeatFn = (input: { packet: string; seat: CouncilSeatId }) => Promise<Verdict>;
+
+export const COUNCIL_MODES = ["off", "quick", "standard", "adversarial"] as const;
+export type CouncilMode = (typeof COUNCIL_MODES)[number];
+
+const STANDARD_SEATS: CouncilSeatId[] = ["architect", "strategist", "critic", "security"];
+
+/** docs/MASTER_PLAN_V6.md §5: quick = Critic (+ Security when sensitive); standard = four seats; adversarial adds Devil. */
+export function councilSeatsFor(mode: CouncilMode, securitySensitive: boolean): CouncilSeatId[] {
+  if (mode === "quick") return securitySensitive ? ["critic", "security"] : ["critic"];
+  if (mode === "standard") return [...STANDARD_SEATS];
+  if (mode === "adversarial") return [...STANDARD_SEATS, "devil"];
+  return [];
+}
+
+/**
+ * Seats whose backend the HQ app cannot run. They report not-ready instead of a verdict, use no seat from the cap,
+ * and keep the review from reading as a pass.
+ */
+// dexter-shortcut: the plan puts the Devil on a different model family through a read-only cloud agent, which the HQ app cannot run yet; upgrade path: launch a read-only agent with the packet and wait for its schema verdict.
+const SEAT_BACKEND_UNAVAILABLE: Partial<Record<CouncilSeatId, string>> = { devil: "devil_backend_unavailable" };
+
+type SeatResult =
+  | { seat: CouncilSeatId; status: "verdict"; result: Verdict["result"]; actions: string[] }
+  | { seat: CouncilSeatId; status: "not-ready" | "error" | "refused"; reason: string };
 
 export type ConnectorDeps = {
   store: ConnectorStore;
@@ -726,19 +752,44 @@ function councilUnavailableReason(message: string): "not-configured" | "not-read
   return "error";
 }
 
-async function liveCriticSeat(packet: string): Promise<Verdict> {
+async function openLiveCouncil(): Promise<CouncilSession> {
   if (process.env.OPENAI_API_KEY) throw new Error("openai_api_key_set");
-  const verdict = await runCriticSeat({
-    sheetText: loadConnectorSheetText(),
-    packet,
-    dbUrl: process.env.SUPABASE_DB_URL ?? "",
-  });
-  return parseCouncilVerdict(verdict);
+  return openCouncilSession({ sheetText: loadConnectorSheetText(), dbUrl: process.env.SUPABASE_DB_URL ?? "" });
+}
+
+function securitySensitive(args: Record<string, unknown>, card: Record<string, unknown> | null): boolean {
+  if (args.securitySensitive === true || args.security_sensitive === true) return true;
+  // dexter-shortcut: the plan card has no "touches auth, data, or money" field, so a card is sensitive when it staffs the security persona; upgrade path: an explicit plan-card flag set by the CEO.
+  return Array.isArray(card?.personas) && card.personas.includes("security");
+}
+
+function mergeSeatVerdicts(results: SeatResult[]): { result: Verdict["result"] | null; actions: string[]; missing: CouncilSeatId[] } {
+  const verdicts = results.filter((item): item is Extract<SeatResult, { status: "verdict" }> => item.status === "verdict");
+  const missing = results.filter((item) => item.status !== "verdict").map((item) => item.seat);
+  const actions: string[] = [];
+  for (const item of verdicts) for (const action of item.actions) if (!actions.includes(action)) actions.push(action);
+  const result = verdicts.some((item) => item.result === "changes")
+    ? "changes"
+    : verdicts.some((item) => item.result === "discuss")
+      ? "discuss"
+      : missing.length === 0 && verdicts.length > 0
+        ? "pass"
+        : null;
+  return { result, actions, missing };
 }
 
 async function handleCouncil(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
-  const target = textArg(args, "requestId") ?? textArg(args, "request_id") ?? "council";
-  const mode = textArg(args, "mode") ?? textArg(args, "councilMode") ?? "quick";
+  const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
+  const target = requestId ?? "council";
+  const request = requestId ? await deps.store.getRequest(requestId) : null;
+  const card = request?.card ?? null;
+  const cardMode = typeof card?.councilMode === "string" ? card.councilMode : null;
+  const mode = textArg(args, "mode") ?? textArg(args, "councilMode") ?? cardMode ?? "quick";
+  if (!(COUNCIL_MODES as readonly string[]).includes(mode)) {
+    const body = { status: "refused", reason: "invalid_council_mode", allowed: [...COUNCIL_MODES] };
+    await record(deps, auth, "request_council", target, body);
+    return toolResult(body, true);
+  }
   if (mode === "off") {
     const body = { status: "refused", reason: "council_off" };
     await record(deps, auth, "request_council", target, body);
@@ -756,45 +807,106 @@ async function handleCouncil(deps: ConnectorDeps, auth: ConnectorAuth, args: Rec
     await record(deps, auth, "request_council", target, body);
     return toolResult(body, true);
   }
-  // dexter-shortcut: the seat cap counts a rolling 7 days, not the PT calendar week; upgrade path: share the PT ISO week boundary with the U5 fleet report.
-  const at = (deps.now ?? (() => new Date().toISOString()))();
-  const seat = await deps.store.reserveCouncilSeat({
-    event: { ownerId: auth.ownerId, actor: auth.name, action: "council_seat", target, result: { seat: "critic" }, at },
-    since: new Date(Date.parse(at) - WEEK_MS).toISOString(),
-    cap: COUNCIL_WEEKLY_SEAT_CAP,
-  });
-  if (!seat.ok) {
-    const body = { status: "refused", reason: "council_weekly_cap", cap: COUNCIL_WEEKLY_SEAT_CAP, used: seat.used };
-    await record(deps, auth, "request_council", target, body);
-    return toolResult(body, true);
-  }
+  const seats = councilSeatsFor(mode as CouncilMode, securitySensitive(args, card));
+  let session: CouncilSession | null = null;
+  const runSeat: CouncilSeatFn =
+    deps.runCouncilSeat ??
+    (async ({ packet: text, seat }) => {
+      session ??= await openLiveCouncil();
+      return session.runSeat(seat, text);
+    });
+  const results: SeatResult[] = [];
+  let capRefusal: { cap: number; used: number } | null = null;
+  let abort: { status: "not-configured" | "not-ready"; reason: string } | null = null;
+  let writebackError: string | null = null;
   try {
-    const raw = deps.runCouncilSeat ? await deps.runCouncilSeat({ packet }) : await liveCriticSeat(packet);
-    const parsed = VerdictSchema.safeParse(raw);
-    if (!parsed.success) {
-      const body = { status: "error", reason: "invalid_verdict" };
-      await record(deps, auth, "request_council", target, body);
-      return toolResult(body, true);
+    for (const seat of seats) {
+      const unavailable = SEAT_BACKEND_UNAVAILABLE[seat];
+      if (unavailable) {
+        results.push({ seat, status: "not-ready", reason: unavailable });
+        continue;
+      }
+      if (capRefusal) {
+        results.push({ seat, status: "refused", reason: "council_weekly_cap" });
+        continue;
+      }
+      // Each seat that runs takes one seat from the weekly cap, reserved atomically before it runs.
+      // dexter-shortcut: the seat cap counts a rolling 7 days, not the PT calendar week; upgrade path: share the PT ISO week boundary with the U5 fleet report.
+      const at = (deps.now ?? (() => new Date().toISOString()))();
+      const reserved = await deps.store.reserveCouncilSeat({
+        event: { ownerId: auth.ownerId, actor: auth.name, action: "council_seat", target, result: { seat }, at },
+        since: new Date(Date.parse(at) - WEEK_MS).toISOString(),
+        cap: COUNCIL_WEEKLY_SEAT_CAP,
+      });
+      if (!reserved.ok) {
+        capRefusal = { cap: COUNCIL_WEEKLY_SEAT_CAP, used: reserved.used };
+        results.push({ seat, status: "refused", reason: "council_weekly_cap" });
+        continue;
+      }
+      try {
+        const parsed = VerdictSchema.safeParse(await runSeat({ packet, seat }));
+        results.push(
+          parsed.success
+            ? { seat, status: "verdict", result: parsed.data.result, actions: parsed.data.actions }
+            : { seat, status: "error", reason: "invalid_verdict" },
+        );
+      } catch (error) {
+        const reason = safeCouncilError(error);
+        const status = councilUnavailableReason(reason);
+        if (status !== "error") {
+          // Login, key, or binary trouble hits every seat the same way: stop, and mint no verdict.
+          abort = { status, reason };
+          break;
+        }
+        results.push({ seat, status: "error", reason });
+      }
     }
-    const body = {
-      status: "verdict",
-      seat: "critic",
-      path: "B",
-      result: parsed.data.result,
-      actions: parsed.data.actions,
-    };
-    await record(deps, auth, "request_council", target, body);
-    return toolResult(body);
-  } catch (error) {
-    const reason = safeCouncilError(error);
-    const status = councilUnavailableReason(reason);
-    const body =
-      status === "error"
-        ? { status, reason }
-        : { status, reason, configured: false };
+  } finally {
+    if (session) {
+      try {
+        await (session as CouncilSession).close();
+      } catch (error) {
+        writebackError = safeCouncilError(error);
+      }
+    }
+  }
+  if (abort) {
+    const body = { status: abort.status, reason: abort.reason, configured: false, mode };
     await record(deps, auth, "request_council", target, body);
     return toolResult(body, true);
   }
+  const ran = results.filter((item) => item.status === "verdict" || item.status === "error").length;
+  if (writebackError) {
+    // A refreshed login that was not written back is lost; report it rather than a verdict.
+    const body = { status: "error", reason: writebackError, stage: "login_writeback", mode, seats: results, seatsRun: ran };
+    await record(deps, auth, "request_council", target, body);
+    return toolResult(body, true);
+  }
+  if (ran === 0 && capRefusal) {
+    const body = { status: "refused", reason: "council_weekly_cap", cap: capRefusal.cap, used: capRefusal.used, mode };
+    await record(deps, auth, "request_council", target, body);
+    return toolResult(body, true);
+  }
+  const merged = mergeSeatVerdicts(results);
+  const complete = merged.missing.length === 0;
+  if (ran === 1 && results.length === 1 && results[0].status === "error") {
+    const body = { status: "error", reason: results[0].reason, mode, seat: results[0].seat };
+    await record(deps, auth, "request_council", target, body);
+    return toolResult(body, true);
+  }
+  const body = {
+    status: complete ? "verdict" : "incomplete",
+    mode,
+    path: "B",
+    ...(seats.length === 1 && complete ? { seat: seats[0] } : {}),
+    result: merged.result,
+    actions: merged.actions,
+    seats: results,
+    seatsRun: ran,
+    ...(complete ? {} : { missingSeats: merged.missing }),
+  };
+  await record(deps, auth, "request_council", target, body);
+  return toolResult(body, !complete);
 }
 
 async function handleAssign(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
@@ -1211,7 +1323,7 @@ export function connectorToolDescriptors(names: readonly string[]) {
       name === "whoami"
         ? "Return this connector's identity, scopes, caps left, and stop flag."
         : name === "request_council"
-          ? "Run one Critic seat through path B. Returns a schema-valid verdict, or not-configured when the login is absent."
+          ? "Run Council seats through path B for a mode (quick: Critic, plus Security when securitySensitive or the card staffs security; standard: Architect, Strategist, Critic, Security; adversarial: standard plus Devil). Mode defaults to the request card's councilMode, then quick. Each seat that runs counts against the weekly seat cap. Returns status verdict with the merged result and per-seat verdicts, incomplete when a seat is not-ready, errored, or capped (never a pass), or not-configured / not-ready when path B cannot run."
           : name === "request_checks"
             ? "Dispatch pinned checker.yml from the trusted workers main ref against a commit SHA. Returns in_progress until GitHub has a conclusion; ready requires a completed success. Callers cannot supply a GitHub run id. The first pullRequest or branch given binds the request (one, never both; it must be an open PR or an existing branch in the request's repo); the request moves to ready_for_review only on a pass whose sha is that PR/branch's current GitHub head (onBoundHead), and update_request done requires the same. Optional approach (slug) and agentId credit a pass to the reuse scan. The third failed run blocks the request and posts one BLOCKED note."
             : (BOARD_TOOL_DESCRIPTIONS[name] ?? `Dexter connector tool ${name}.`),

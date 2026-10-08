@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const SCRIPT = resolve("scripts/check-traces.mjs");
 const AGE = ["../../../../../vendor/age/age", "../../../../../workers/age.pub"];
+const SEATS = ["architect", "strategist", "critic", "security", "devil"].map((seat) => `../../../../../personas/${seat}.md`);
 const dirs: string[] = [];
 
 function nextDir(traces: Record<string, string[]>): string {
@@ -31,7 +32,7 @@ afterEach(() => {
 
 describe("function trace check", () => {
   it("passes when age is traced into chat and mcp and codex is in no function", () => {
-    const dir = nextDir({ "api/chat": [...AGE], "api/mcp": [...AGE], "api/board": ["../../../../chunks/1.js"] });
+    const dir = nextDir({ "api/chat": [...AGE], "api/mcp": [...AGE, ...SEATS], "api/board": ["../../../../chunks/1.js"] });
     const result = check(dir);
     expect(result.out).toContain("traces ok");
     expect(result.status).toBe(0);
@@ -42,14 +43,20 @@ describe("function trace check", () => {
     expect(check(nextDir({ "api/chat": [...AGE], "api/mcp": [AGE[0]] })).status).not.toBe(0);
   });
 
+  it("fails when /api/mcp does not trace every Council seat persona", () => {
+    const result = check(nextDir({ "api/chat": [...AGE], "api/mcp": [...AGE, ...SEATS.slice(1)] }));
+    expect(result.status).not.toBe(0);
+    expect(result.out).toMatch(/api\/mcp.*personas\/architect\.md/);
+  });
+
   it("fails when /api/chat stops tracing age", () => {
-    expect(check(nextDir({ "api/chat": [], "api/mcp": [...AGE] })).status).not.toBe(0);
+    expect(check(nextDir({ "api/chat": [], "api/mcp": [...AGE, ...SEATS] })).status).not.toBe(0);
   });
 
   it("fails when any function traces the codex binary", () => {
     const withCodex = nextDir({
       "api/chat": [...AGE],
-      "api/mcp": [...AGE],
+      "api/mcp": [...AGE, ...SEATS],
       "api/board": ["../../../../../vendor/codex/codex"],
     });
     const result = check(withCodex);
@@ -73,6 +80,7 @@ describe("build config", () => {
       expect(includes[route]).toContain("./workers/age.pub");
     }
     expect(JSON.stringify(includes)).not.toMatch(/codex/);
+    expect(includes["/api/mcp"]).toContain("./personas/*.md");
   });
 
   it("does not download codex at build time", () => {
