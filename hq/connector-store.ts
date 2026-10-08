@@ -193,6 +193,111 @@ export type ConnectorPost = {
   verified: boolean;
 };
 
+/** Live = a heartbeat within this many seconds; Wait = seen since the token was issued but silent longer. */
+export const LIVE_WINDOW_SECONDS = 60;
+
+export type BotStatus = "live" | "wait" | "never_seen";
+
+/** One rule for the venture list and Dexter's roster. Never seen = no heartbeat since the current token was issued. */
+export function heartbeatStatus(
+  input: { heartbeatAt: string | null; tokenIssuedAt: string | null },
+  now: Date,
+): { status: BotStatus; heartbeatAgeSeconds: number | null } {
+  const beat = input.heartbeatAt ? Date.parse(input.heartbeatAt) : Number.NaN;
+  if (Number.isNaN(beat)) return { status: "never_seen", heartbeatAgeSeconds: null };
+  const issued = input.tokenIssuedAt ? Date.parse(input.tokenIssuedAt) : Number.NaN;
+  if (!Number.isNaN(issued) && beat < issued) return { status: "never_seen", heartbeatAgeSeconds: null };
+  const age = Math.max(0, Math.floor((now.getTime() - beat) / 1000));
+  return { status: age <= LIVE_WINDOW_SECONDS ? "live" : "wait", heartbeatAgeSeconds: age };
+}
+
+/** What the `add_venture` event remembers. It never carries the token. */
+export type VentureMeta = {
+  name: string;
+  repo: string | null;
+  brief: string | null;
+  idempotencyKey: string | null;
+};
+
+export type RosterRow = {
+  bot: ConnectorBot;
+  /** created_at of the bot's newest token row; null when it has none or the store does not know. */
+  tokenIssuedAt: string | null;
+  venture: VentureMeta | null;
+};
+
+export type VentureRefusal =
+  | { reason: "stopped" | "name_taken" | "repo_taken" | "lead_name_taken"; field: string | null }
+  | { reason: "replay"; field: null; botId: string };
+
+export type VentureDecision = { ok: true; ownerId: string } | { ok: false; refusal: VentureRefusal };
+
+export type CreateVentureInput = {
+  bot: Omit<ConnectorBot, "ownerId">;
+  tokenHash: string;
+  scopes: string[];
+  /** Token issue time; also the bot's created_at. */
+  at: string;
+  actor: string;
+  meta: VentureMeta;
+  /** Runs under the store's lock with the current STOP flag and roster, so a refusal and the insert cannot race. */
+  decide(roster: RosterRow[], stopped: boolean): VentureDecision;
+};
+
+export type RotateTokenInput = {
+  botId: string;
+  tokenHash: string;
+  at: string;
+  actor: string;
+  /** Used only when the bot has no token row left to copy scopes from. */
+  fallbackScopes: string[];
+};
+
+export function ventureMetaFrom(value: unknown): VentureMeta | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.name !== "string" || !row.name) return null;
+  return {
+    name: row.name,
+    repo: typeof row.repo === "string" ? row.repo : null,
+    brief: typeof row.brief === "string" ? row.brief : null,
+    idempotencyKey: typeof row.idempotencyKey === "string" ? row.idempotencyKey : null,
+  };
+}
+
+export function ventureName(row: RosterRow): string {
+  if (row.venture?.name) return row.venture.name;
+  // Leads made by hand before Stage 3 have no add_venture event; they are named after their repo.
+  const repo = row.bot.repos[0];
+  return repo ? (repo.split("/")[1] ?? repo) : row.bot.name;
+}
+
+export type RosterEntry = {
+  id: string;
+  name: string;
+  kind: string;
+  repos: string[];
+  venture: string | null;
+  status: BotStatus;
+  heartbeatAgeSeconds: number | null;
+};
+
+/** Dexter's roster for `get_context` (kind ceo only). Names, kinds, repos and status; never tokens or hashes. */
+export async function botRoster(store: ConnectorStore, now: Date): Promise<RosterEntry[]> {
+  return (await store.listRoster()).map((row) => {
+    const status = heartbeatStatus({ heartbeatAt: row.bot.heartbeatAt, tokenIssuedAt: row.tokenIssuedAt }, now);
+    return {
+      id: row.bot.id,
+      name: row.bot.name,
+      kind: row.bot.kind,
+      repos: [...row.bot.repos],
+      venture: row.bot.kind === "lead" ? ventureName(row) : null,
+      status: status.status,
+      heartbeatAgeSeconds: status.heartbeatAgeSeconds,
+    };
+  });
+}
+
 export interface ConnectorStore {
   stopped(): Promise<boolean>;
   setStopped(value: boolean): Promise<void>;
@@ -232,17 +337,38 @@ export interface ConnectorStore {
   savePost(row: ConnectorPost): Promise<void>;
   getPost(id: string): Promise<ConnectorPost | null>;
   listPosts(): Promise<ConnectorPost[]>;
+  /** Every bot with its newest token time and venture metadata. Never returns token hashes. */
+  listRoster(): Promise<RosterRow[]>;
+  /** Atomic: decide() sees the STOP flag and roster under one lock, then the bot, its hashed token, and an `add_venture` event are written together. */
+  createVenture(input: CreateVentureInput): Promise<{ ok: true; bot: ConnectorBot } | { ok: false; refusal: VentureRefusal }>;
+  /**
+   * Atomic: deletes every token row of a lead and inserts one new hashed row, plus a `rotate_token` event.
+   * Deleting (not suspending) is the revocation, because Resume un-suspends every row.
+   * A token rotated during STOP ALL is written suspended, so Resume restores it like the others.
+   */
+  rotateToken(input: RotateTokenInput): Promise<{ ok: true; bot: ConnectorBot } | { ok: false; reason: "unknown_venture" }>;
 }
 
 export function createMemoryConnectorStore(seed?: {
   stopped?: boolean;
   bots?: ConnectorBot[];
-  tokens?: { tokenHash: string; botId: string; scopes: string[]; suspended?: boolean }[];
+  tokens?: { tokenHash: string; botId: string; scopes: string[]; suspended?: boolean; createdAt?: string }[];
 }): ConnectorStore {
   let stopped = seed?.stopped ?? false;
   const bots = new Map<string, ConnectorBot>();
   for (const bot of seed?.bots ?? []) bots.set(bot.id, { ...bot });
   const tokens = (seed?.tokens ?? []).map((item) => ({ ...item, suspended: item.suspended ?? false }));
+  // No await inside: the venture methods read and write in one turn of the event loop, which is their lock.
+  function roster(): RosterRow[] {
+    return [...bots.values()].map((bot) => {
+      const issued = tokens
+        .filter((item) => item.botId === bot.id && item.createdAt)
+        .map((item) => item.createdAt as string)
+        .sort();
+      const added = events.filter((event) => event.action === "add_venture" && event.target === bot.id).at(-1);
+      return { bot: { ...bot }, tokenIssuedAt: issued.at(-1) ?? null, venture: ventureMetaFrom(added?.result) };
+    });
+  }
   const events: ConnectorEvent[] = [];
   const agents = new Map<string, ConnectorAgent>();
   const requests = new Map<string, ConnectorRequest>();
@@ -378,6 +504,44 @@ export function createMemoryConnectorStore(seed?: {
     },
     async listPosts() {
       return [...posts.values()];
+    },
+    async listRoster() {
+      return roster();
+    },
+    async createVenture(input) {
+      const decision = input.decide(roster(), stopped);
+      if (!decision.ok) return { ok: false, refusal: decision.refusal };
+      const bot: ConnectorBot = { ...input.bot, ownerId: decision.ownerId };
+      bots.set(bot.id, bot);
+      tokens.push({ tokenHash: input.tokenHash, botId: bot.id, scopes: [...input.scopes], suspended: false, createdAt: input.at });
+      events.push({
+        id: randomUUID(),
+        ownerId: bot.ownerId,
+        actor: input.actor,
+        action: "add_venture",
+        target: bot.id,
+        result: { ...input.meta, leadName: bot.name },
+        at: input.at,
+      });
+      return { ok: true, bot: { ...bot } };
+    },
+    async rotateToken(input) {
+      const bot = bots.get(input.botId);
+      if (!bot || bot.kind !== "lead") return { ok: false, reason: "unknown_venture" };
+      const old = tokens.filter((item) => item.botId === bot.id);
+      const scopes = old.at(-1)?.scopes ?? input.fallbackScopes;
+      for (const item of old) tokens.splice(tokens.indexOf(item), 1);
+      tokens.push({ tokenHash: input.tokenHash, botId: bot.id, scopes: [...scopes], suspended: stopped, createdAt: input.at });
+      events.push({
+        id: randomUUID(),
+        ownerId: bot.ownerId,
+        actor: input.actor,
+        action: "rotate_token",
+        target: bot.id,
+        result: { leadName: bot.name, revoked: old.length },
+        at: input.at,
+      });
+      return { ok: true, bot: { ...bot } };
     },
   };
 }

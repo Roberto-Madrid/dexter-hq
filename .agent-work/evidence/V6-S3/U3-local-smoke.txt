@@ -1,0 +1,12 @@
+1. GET ventures, no cookie        -> {"status":"refused","reason":"unauthorized","field":null} 401
+2. POST add, bot bearer only      -> {"status":"refused","reason":"unauthorized","field":null} 401
+3. POST add, owner, no GH token   -> {"status":"refused","reason":"repo_check_unavailable","field":"repo"} 503
+4. POST add, duplicate repo       -> {"status":"refused","reason":"repo_taken","field":"repo"} 409
+5. old token on /api/mcp          -> 200
+6. rotate -> {"status":"rotated","venture":{"botId":"fd4b6f74-1311-49ea-b94d-ceb7eef862d8","name":"repo","repo":"smoke-1e02f44d/repo","leadName":"smoke-1e02f44d-lead","brief":null,"status":"never_seen","heartbeatAt":null,"heartbeatAgeSeconds":null,"tokenIssuedAt":"2026-10-08T08:51:46.968Z"},"token":"dxt_<43 chars, redacted>","tokenShownOnce":true} | cache-control: no-store
+7. old token on /api/mcp          -> 401
+8. new token on /api/mcp          -> 200
+9. token rows for bot             -> 1 (hash matches new: t)
+10. list contains new token?      -> 0
+11. events with token text       -> 0
+12. list entry -> {"botId":"fd4b6f74-1311-49ea-b94d-ceb7eef862d8","name":"repo","repo":"smoke-1e02f44d/repo","leadName":"smoke-1e02f44d-lead","brief":null,"status":"never_seen","heartbeatAt":null,"heartbeatAgeSeconds":null,"tokenIssuedAt":"2026-10-08T08:51:46.968Z"}

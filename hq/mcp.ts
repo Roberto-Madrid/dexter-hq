@@ -146,6 +146,14 @@ async function handleMethod(
 ): Promise<Response> {
   const token = bearerToken(request);
   const auth = token ? await deps.store.authenticate(hashBotToken(token)) : null;
+  // A presented token that matches no row (revoked by rotation, or never issued) is refused outright,
+  // so a rotated-out token fails at once instead of falling back to the anonymous stub.
+  if (token && !auth) {
+    return new Response(JSON.stringify({ jsonrpc: JSONRPC, id, error: { code: -32001, message: "unauthorized" } }), {
+      status: 401,
+      headers: jsonHeaders({ "www-authenticate": 'Bearer error="invalid_token"' }),
+    });
+  }
   if (method === "initialize") return rpcResult(id, initializeResult(params));
   if (method === "ping") return rpcResult(id, {});
   if (method === "tools/list") {
