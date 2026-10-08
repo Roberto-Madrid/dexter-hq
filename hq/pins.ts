@@ -44,8 +44,9 @@ async function recordFailure(store: ConnectorStore, ownerId: string, at: string,
 /**
  * The daily version check. Once per UTC day per owner it reads the catalog, picks one id per role-sheet family, and
  * appends one `model_resolutions` row per family: the first pin is the baseline, the same version is `confirmed`, and a
- * new version is a `held` row plus a pending `model_upgrade` approval. A held version never becomes the pin.
- * dexter-shortcut: approving a model_upgrade card does not switch the pin yet; upgrade path: the U7 upgrade check appends the approved version as a non-held row.
+ * new version is a `held` row plus a pending `model_upgrade` approval. A held version never becomes the pin by itself:
+ * approving the card starts the upgrade check (hq/upgrade-check.ts), which appends a non-held `upgrade:` row only after
+ * the version passes. Those switch rows (and `rollback:` rows) never count as the daily check.
  */
 export async function resolveDailyPins(input: {
   store: ConnectorStore;
@@ -123,16 +124,18 @@ export type TickStepError = { error: string };
 
 /**
  * The per-minute tick: close finished agents, then the weekly fleet report (when given), then the daily version
- * check. Each step fails soft: a throw becomes a short error code and the next step still runs.
+ * check, then advance open upgrade checks (when given). Each step fails soft: a throw becomes a short error code and
+ * the next step still runs.
  */
-export async function connectorTick<F = never>(
+export async function connectorTick<F = never, U = never>(
   deps: Pick<ConnectorDeps, "store" | "cursor" | "cursorConfigured" | "now">,
   sheetText: string,
-  steps: { fleet?: () => Promise<F> } = {},
+  steps: { fleet?: () => Promise<F>; upgrade?: () => Promise<U> } = {},
 ): Promise<{
   reconcile: ReconcileResult | TickStepError;
   fleet?: F | { status: "error" };
   pins: PinsResult | (TickStepError & { configured: boolean; owners: [] });
+  upgrade?: U | { status: "error" };
 }> {
   let reconcile: ReconcileResult | TickStepError;
   try {
@@ -155,5 +158,13 @@ export async function connectorTick<F = never>(
   } catch {
     pins = { configured: true, owners: [], error: "pins_check_failed" };
   }
-  return { reconcile, ...(steps.fleet ? { fleet } : {}), pins };
+  let upgrade: U | { status: "error" } | undefined;
+  if (steps.upgrade) {
+    try {
+      upgrade = await steps.upgrade();
+    } catch {
+      upgrade = { status: "error" };
+    }
+  }
+  return { reconcile, ...(steps.fleet ? { fleet } : {}), pins, ...(steps.upgrade ? { upgrade } : {}) };
 }

@@ -12,3 +12,8 @@ export function bundledCrews(): Record<string, string> | null {
 export function bundledPersonas(): Record<string, string> | null {
   return null;
 }
+
+/** Saved upgrade-check tasks keyed `<family>/<file>.md` (config/upgrade-tasks). */
+export function bundledUpgradeTasks(): Record<string, string> | null {
+  return null;
+}

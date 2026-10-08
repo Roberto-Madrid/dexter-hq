@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { decideApproval } from "../../hq/approval.ts";
 import { callConnectorTool, type ConnectorDeps } from "../../hq/connector.ts";
 import { UPGRADE_BOT_NAME, type ConnectorAgent, type ConnectorAuth, type ConnectorStore } from "../../hq/connector-store.ts";
@@ -20,6 +20,12 @@ import {
 import { readCatalogMatch } from "../../gateway/catalog.ts";
 import { OWNER, capsAuth, capsDeps, fakeCursor } from "./caps-fixtures.ts";
 import { CATALOG_IDS } from "./pin-fixtures.ts";
+
+// The production bundle inlines config/upgrade-tasks (scripts/bundle-hq.mjs); disk reads still win when the folder exists.
+vi.mock("../../hq/bundled-assets.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hq/bundled-assets.ts")>()),
+  bundledUpgradeTasks: () => ({ "grok/02-b.md": "# B\nsecond {{branch}}", "grok/01-a.md": "# A\nfirst {{branch}}", "composer/01-c.md": "# C\nc" }),
+}));
 
 const sheetText = readFileSync("gateway/role-sheet.yaml", "utf8");
 const SANDBOX = "owner/sandbox";
@@ -99,6 +105,14 @@ describe("U7 saved upgrade tasks", () => {
       }
     }
     expect(loadUpgradeTasks("no-such-family")).toEqual([]);
+    expect(loadUpgradeTasks("../grok")).toEqual([]);
+  });
+
+  it("falls back to the bundled tasks when the folder is not on disk (the deployed function)", () => {
+    expect(loadUpgradeTasks("grok", "/nonexistent-upgrade-tasks")).toEqual([
+      { id: "01-a", title: "A", brief: "# A\nfirst {{branch}}" },
+      { id: "02-b", title: "B", brief: "# B\nsecond {{branch}}" },
+    ]);
   });
 
   it("keys a run by family, version and task", () => {
@@ -393,11 +407,14 @@ describe("U7 bots never name a model; the override is internal-only", () => {
     expect(lead.structuredContent).toMatchObject({ status: "refused", reason: "model_override_not_allowed" });
     const bot = await ctx.store.ensureInternalBot({ ownerId: OWNER, name: UPGRADE_BOT_NAME, kind: "other", repos: [SANDBOX], at: TICK });
     const auth: ConnectorAuth = { ...bot, scopes: ["launch_agent"], suspended: false };
-    const unknown = await callConnectorTool(ctx.deps, auth, "launch_agent", { role: "builder", brief: "x", idempotencyKey: "n3", repo: SANDBOX }, { modelOverride: "grok-9-unknown" });
+    // Non-designer launches need a request (design gate), owned by the launching bot.
+    const requestId = "req-upgrade-unit";
+    await ctx.store.saveRequest({ id: requestId, ownerId: OWNER, goal: "Upgrade check", status: "running", card: { crew: "upgrade_check" }, evidence: [], assignedBotId: bot.id, repo: SANDBOX, notices: [] });
+    const unknown = await callConnectorTool(ctx.deps, auth, "launch_agent", { role: "builder", brief: "x", idempotencyKey: "n3", repo: SANDBOX, requestId }, { modelOverride: "grok-9-unknown" });
     expect(unknown.structuredContent).toMatchObject({ status: "refused", reason: "model_override_unknown" });
-    const wrongFamily = await callConnectorTool(ctx.deps, auth, "launch_agent", { role: "builder", brief: "x", idempotencyKey: "n4", repo: SANDBOX }, { modelOverride: "gpt-5.7-sol" });
+    const wrongFamily = await callConnectorTool(ctx.deps, auth, "launch_agent", { role: "builder", brief: "x", idempotencyKey: "n4", repo: SANDBOX, requestId }, { modelOverride: "gpt-5.7-sol" });
     expect(wrongFamily.structuredContent).toMatchObject({ status: "refused", reason: "model_override_unknown" });
-    const ok = await callConnectorTool(ctx.deps, auth, "launch_agent", { role: "builder", brief: "x", idempotencyKey: "n5", repo: SANDBOX }, { modelOverride: "grok-4.8" });
+    const ok = await callConnectorTool(ctx.deps, auth, "launch_agent", { role: "builder", brief: "x", idempotencyKey: "n5", repo: SANDBOX, requestId }, { modelOverride: "grok-4.8" });
     expect(ok.structuredContent).toMatchObject({ status: "launched", model: "grok-4.8" });
     expect(ctx.cursor.starts.map((spec) => spec.modelId)).toEqual(["grok-4.8"]);
     // The internal bot has no token, so no MCP caller can act as it.
@@ -477,3 +494,22 @@ describe("U7 the tick", () => {
   });
 });
 
+
+describe("U7 upgrade cards come only from HQ", () => {
+  it("a bot cannot raise a model_upgrade, upgrade_rollback or council_upgrade card", async () => {
+    const ctx = await setup();
+    for (const action of ["model_upgrade", "upgrade_rollback", "council_upgrade"]) {
+      const result = await callConnectorTool(ctx.deps, capsAuth, "request_approval", { action, target: "grok:grok-4.8->grok-4.6" });
+      expect(result.structuredContent).toMatchObject({ status: "refused", reason: "hq_only_action" });
+    }
+    expect((await ctx.store.listApprovals()).filter((row) => row.action !== "model_upgrade")).toEqual([]);
+  });
+
+  it("an approved switch card never pins a version the family has not seen", async () => {
+    const ctx = await setup();
+    await ctx.store.saveApproval({ id: "forged", ownerId: OWNER, action: "upgrade_rollback", target: "grok:grok-4.7->grok-evil", status: "pending", requestId: null });
+    const result = await decideApproval(ctx.store, { approvalId: "forged", decision: "approved", now: () => TAP });
+    expect(result).toMatchObject({ status: "approved", ran: false, execution: { status: "error", reason: "unknown_version" } });
+    expect(await pinOf(ctx.store, "grok")).toBe("grok-4.7");
+  });
+});

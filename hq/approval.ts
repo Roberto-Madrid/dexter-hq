@@ -1,4 +1,5 @@
 import type { ConnectorApproval, ConnectorStore } from "./connector-store.ts";
+import { UPGRADE_APPROVAL_ACTIONS, executeUpgradeApproval } from "./upgrade-check.ts";
 
 export type ApprovalDecision = "approved" | "denied";
 
@@ -82,6 +83,14 @@ async function executeApproved(
   }
 }
 
+async function runUpgradeApproval(store: ConnectorStore, row: ConnectorApproval, at: string): Promise<DeployAttempt> {
+  try {
+    return await executeUpgradeApproval(store, row, at);
+  } catch {
+    return { status: "error", reason: "upgrade_failed", ran: false };
+  }
+}
+
 export async function decideApproval(
   store: ConnectorStore,
   input: {
@@ -129,10 +138,14 @@ export async function decideApproval(
   if (input.decision === "denied") {
     return { status: "denied", approvalId: row.id, action: row.action, ran: false };
   }
+  // model_upgrade starts the upgrade check; upgrade_rollback and council_upgrade switch the pin (hq/upgrade-check.ts).
+  const upgrade = UPGRADE_APPROVAL_ACTIONS.has(row.action);
   const execution =
     row.action === "deploy"
       ? await executeApproved(row, input.env ?? {}, input.deploy)
-      : { status: "ok" as const, ran: false };
+      : upgrade
+        ? await runUpgradeApproval(store, row, at)
+        : { status: "ok" as const, ran: false };
   if (row.action === "design" || row.action === "design_gate") {
     if (row.requestId) {
       const request = await store.getRequest(row.requestId);
@@ -142,7 +155,7 @@ export async function decideApproval(
       }
     }
   }
-  if (row.action === "deploy") {
+  if (row.action === "deploy" || upgrade) {
     await store.appendEvent({
       ownerId: row.ownerId,
       actor: "owner",

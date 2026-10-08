@@ -322,13 +322,57 @@ export type ModelPin = { family: string; version: string };
 /** One `model_resolutions` row the daily check appends. A `held` row is a version waiting on the owner, never a pin. */
 export type PinResolution = ModelPin & { held: boolean; reason: string };
 
-export type ModelResolutionRow = PinResolution & { ownerId: string; resolvedAt: string };
+/** `id` is the `model_resolutions` row id (stores that know it); `model_outcomes.model_row_id` points at it. */
+export type ModelResolutionRow = PinResolution & { ownerId: string; resolvedAt: string; id?: string };
+
+/** The internal bot that launches upgrade-check runs. Kind `other`, no token: no MCP caller can act as it. */
+export const UPGRADE_BOT_NAME = "hq-upgrade";
+/** One-tap card after a worker family switched: approving it restores the previous pin. Target `family:from->to`. */
+export const UPGRADE_ROLLBACK_ACTION = "upgrade_rollback";
+/** The CEO family never switches on its own: a passed check raises this card. Target `family:from->to`. */
+export const COUNCIL_UPGRADE_ACTION = "council_upgrade";
+/** The event that ends an upgrade check; its target is the check id (the approved model_upgrade card's id). */
+export const UPGRADE_CHECK_DONE = "upgrade_check_done";
+
+/**
+ * Pin rows an upgrade switch or a rollback appends. They change the pin but are not the daily check, so they never
+ * make `pinsResolvedSince` true or block that day's `recordPinResolutions`.
+ */
+export function isPinSwitchReason(reason: string | null | undefined): boolean {
+  const text = reason ?? "";
+  return text.startsWith("upgrade:") || text.startsWith("rollback:");
+}
+
+/** One graded run in `model_outcomes`. `runId` is the connector_agents row id; `modelRowId` the version's resolution row. */
+export type ModelOutcomeRow = {
+  id: string;
+  ownerId: string;
+  runId: string;
+  modelRowId: string | null;
+  passed: boolean;
+  checksFailed: number;
+  at: string;
+};
+
+/** A pin change guarded by the version it replaces. */
+export type PinSwitch = { family: string; from: string; to: string; reason: string };
+
+export type UpgradeDecisionInput = {
+  ownerId: string;
+  checkId: string;
+  at: string;
+  /** The `upgrade_check_done` event (action and target are set by the store). */
+  event: { actor: string; result: Record<string, unknown> };
+  /** Switch the pin, only while it is still `from`. */
+  pin?: PinSwitch;
+  /** A pending card raised with the decision (rollback or council). */
+  approval?: ConnectorApproval;
+};
+
+export type UpgradeDecisionResult = { applied: true } | { applied: false; reason: "already_done" | "pin_moved" };
 
 /** The event the daily check appends when it cannot read the catalog. */
 export const PIN_FAILURE_ACTION = "pins_resolve_failed";
-
-/** Red-phase stub. */
-export const UPGRADE_BOT_NAME = "hq-upgrade";
 
 /** The Needs-you card a held version raises. Its target is `<family>:<version>`. */
 export const MODEL_UPGRADE_ACTION = "model_upgrade";
@@ -336,6 +380,9 @@ export const MODEL_UPGRADE_ACTION = "model_upgrade";
 export function modelUpgradeTarget(row: ModelPin): string {
   return `${row.family}:${row.version}`;
 }
+
+/** Cards only HQ raises. A bot's `request_approval` may not use these actions: approving one changes a pin or launches runs. */
+export const HQ_ONLY_APPROVAL_ACTIONS: ReadonlySet<string> = new Set([MODEL_UPGRADE_ACTION, UPGRADE_ROLLBACK_ACTION, COUNCIL_UPGRADE_ACTION]);
 
 /** The latest non-held row per family, from rows in any order. */
 export function latestPins(rows: readonly ModelResolutionRow[]): ModelPin[] {
@@ -414,6 +461,20 @@ export interface ConnectorStore {
     at: string;
     rows: PinResolution[];
   }): Promise<{ recorded: boolean; approvals: ConnectorApproval[] }>;
+  /** Events with one of these actions, oldest first. */
+  listEventsByAction(actions: readonly string[]): Promise<ConnectorEvent[]>;
+  /** Atomic: the owner's bot with this name and kind, created without a token when missing; its repos become `repos`. */
+  ensureInternalBot(input: { ownerId: string; name: string; kind: string; repos: string[]; at: string }): Promise<ConnectorBot>;
+  listModelOutcomes(ownerId: string): Promise<ModelOutcomeRow[]>;
+  /** Atomic: one outcome per run. A second write for the same run changes nothing and returns false. */
+  recordModelOutcome(row: Omit<ModelOutcomeRow, "id">): Promise<boolean>;
+  /**
+   * Atomic, under the pins lock: writes an upgrade check's decision once. The optional pin switch (only while the pin
+   * is still `pin.from`), the optional card, and the `upgrade_check_done` event land together or not at all.
+   */
+  applyUpgradeDecision(input: UpgradeDecisionInput): Promise<UpgradeDecisionResult>;
+  /** Atomic, under the pins lock: appends a non-held pin row for `to` only while the family's pin is still `from`. */
+  switchPin(input: PinSwitch & { ownerId: string; at: string }): Promise<{ switched: boolean; current: string | null }>;
 }
 
 export function createMemoryConnectorStore(seed?: {
@@ -444,8 +505,14 @@ export function createMemoryConnectorStore(seed?: {
   const posts = new Map<string, ConnectorPost>();
   const resolutions: ModelResolutionRow[] = (seed?.modelResolutions ?? []).map((row) => ({
     ...row,
+    id: randomUUID(),
     resolvedAt: row.resolvedAt ?? new Date(0).toISOString(),
   }));
+  const outcomes: ModelOutcomeRow[] = [];
+  const dailyRowSince = (ownerId: string, since: string) =>
+    resolutions.some((row) => row.ownerId === ownerId && row.resolvedAt >= since && !isPinSwitchReason(row.reason));
+  const pinFor = (ownerId: string, family: string) =>
+    latestPins(resolutions.filter((row) => row.ownerId === ownerId)).find((pin) => pin.family === family)?.version ?? null;
 
   return {
     async stopped() {
@@ -622,7 +689,7 @@ export function createMemoryConnectorStore(seed?: {
       return resolutions.filter((row) => row.ownerId === ownerId).map((row) => ({ ...row }));
     },
     async pinsResolvedSince(ownerId, since) {
-      return resolutions.some((row) => row.ownerId === ownerId && row.resolvedAt >= since);
+      return dailyRowSince(ownerId, since);
     },
     async lastPinFailureAt(ownerId) {
       const times = events
@@ -633,8 +700,8 @@ export function createMemoryConnectorStore(seed?: {
     },
     // No await between the check and the writes, so this is atomic on one event loop.
     async recordPinResolutions({ ownerId, since, at, rows }) {
-      if (resolutions.some((row) => row.ownerId === ownerId && row.resolvedAt >= since)) return { recorded: false, approvals: [] };
-      for (const row of rows) resolutions.push({ ...row, ownerId, resolvedAt: at });
+      if (dailyRowSince(ownerId, since)) return { recorded: false, approvals: [] };
+      for (const row of rows) resolutions.push({ ...row, id: randomUUID(), ownerId, resolvedAt: at });
       const raised: ConnectorApproval[] = [];
       for (const row of rows.filter((item) => item.held)) {
         const target = modelUpgradeTarget(row);
@@ -654,6 +721,43 @@ export function createMemoryConnectorStore(seed?: {
         raised.push({ ...approval });
       }
       return { recorded: true, approvals: raised };
+    },
+    async listEventsByAction(actions) {
+      return events.filter((row) => actions.includes(row.action)).map((row) => ({ ...row }));
+    },
+    // No await inside: find-or-create runs in one turn of the event loop.
+    async ensureInternalBot({ ownerId, name, kind, repos }) {
+      const found = [...bots.values()].find((bot) => bot.ownerId === ownerId && bot.name === name && bot.kind === kind);
+      if (found) {
+        found.repos = [...repos];
+        return { ...found };
+      }
+      const bot: ConnectorBot = { id: randomUUID(), ownerId, name, kind, repos: [...repos], tools: [], currentTask: null, heartbeatAt: null };
+      bots.set(bot.id, bot);
+      return { ...bot };
+    },
+    async listModelOutcomes(ownerId) {
+      return outcomes.filter((row) => row.ownerId === ownerId).map((row) => ({ ...row }));
+    },
+    async recordModelOutcome(row) {
+      if (outcomes.some((item) => item.runId === row.runId)) return false;
+      outcomes.push({ ...row, id: randomUUID() });
+      return true;
+    },
+    // No await between the checks and the writes, so this is atomic on one event loop.
+    async applyUpgradeDecision({ ownerId, checkId, at, event, pin, approval }) {
+      if (events.some((row) => row.action === UPGRADE_CHECK_DONE && row.target === checkId)) return { applied: false, reason: "already_done" };
+      if (pin && pinFor(ownerId, pin.family) !== pin.from) return { applied: false, reason: "pin_moved" };
+      if (pin) resolutions.push({ id: randomUUID(), ownerId, family: pin.family, version: pin.to, held: false, reason: pin.reason, resolvedAt: at });
+      if (approval) approvals.set(approval.id, { ...approval });
+      events.push({ id: randomUUID(), ownerId, actor: event.actor, action: UPGRADE_CHECK_DONE, target: checkId, result: event.result, at });
+      return { applied: true };
+    },
+    async switchPin({ ownerId, family, from, to, reason, at }) {
+      const current = pinFor(ownerId, family);
+      if (current !== from) return { switched: false, current };
+      resolutions.push({ id: randomUUID(), ownerId, family, version: to, held: false, reason, resolvedAt: at });
+      return { switched: true, current: to };
     },
   };
 }
