@@ -1,27 +1,12 @@
 # V6-S3 police-b done-command
-# 2026-10-08 02:58 PDT on ca93437 (branch v6/S3-police-b, main 601a931 merged in)
+# 2026-10-08 03:00 PDT on 5df9a55 (branch v6/S3-police-b, main 601a931 merged in)
 # env: SUPABASE_DB_URL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL, POSTGRES_*, CURSOR_API_KEY, GH_HQ_TOKEN, DEXTER_AGE_PRIVATE_KEY, VAPID_PRIVATE_KEY, VERCEL_TOKEN unset; PGUSER=ubuntu; local Postgres 16 (127.0.0.1:54329/dexter_g2)
 # SUPABASE_DB_URL set in this shell: no
 
 $ npm run typecheck
 > typecheck
 > tsc --noEmit && tsc --noEmit -p tsconfig.app.json
-/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:123141
-      throw e;
-      ^
-Error: Debug Failure. Expected [object Object] === [object Object]. Parameter symbol already has a cached type which differs from newly assigned type
-    at assignParameterType (/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:78289:13)
-    at assignContextualParameterTypes (/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:78248:9)
-    at contextuallyCheckFunctionExpressionOrObjectLiteralMethod (/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:79012:13)
-    at checkFunctionExpressionOrObjectLiteralMethod (/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:78987:5)
-    at checkObjectLiteralMethod (/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:80601:32)
-    at checkObjectLiteral (/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:74008:244)
-    at checkExpressionWorker (/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:80908:16)
-    at checkExpression (/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:80819:32)
-    at checkExpressionCached (/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:80443:28)
-    at checkReturnStatement (/workspace/hq-stage3-police-b/node_modules/typescript/lib/_tsc.js:84308:42)
-Node.js v20.19.2
-exit 1
+exit 0
 
 $ npm run lint
 > lint
@@ -29,47 +14,16 @@ $ npm run lint
 exit 0
 
 $ npm run test
-747 |      },
-748 |      async listEventsByAction(actions) {
-    |            ^
-749 |        return events.filter((row) => actions.includes(row.action)).map((row) => ({ ...row }));
-750 |      },
-  Plugin: vite:esbuild
-  File: /workspace/hq-stage3-police-b/hq/connector-store.ts
-2:58:56 AM [vite] (ssr) warning: Duplicate key "listEventsByAction" in object literal
-788 |        );
-789 |      },
-790 |      async listEventsByAction(actions) {
-    |            ^
-791 |        return withClient(url, async (client) => {
-792 |          // dexter-shortcut: events has no index on action, so this scans it once per tick; upgrade path: an events(ac...
-  Plugin: vite:esbuild
-  File: /workspace/hq-stage3-police-b/hq/connector-pg.ts
- ❯ tests/unit/police-b.test.ts (23 tests | 1 failed) 267ms
-   × tool output over 200 chars goes to an artifact > lets the owner read the full artifact over GET /api/board?view=artifact 15ms
-     → expected 200 to be 404 // Object.is equality
+> test
+> vitest run tests/unit tests/security
+ RUN  v3.2.4 /workspace/hq-stage3-police-b
 stderr | tests/unit/fleet-report-server.test.ts > the per-minute tick writes the weekly report once > keeps the tick green when the report fails
 db down [db]
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
- FAIL  tests/unit/police-b.test.ts > tool output over 200 chars goes to an artifact > lets the owner read the full artifact over GET /api/board?view=artifact
-AssertionError: expected 200 to be 404 // Object.is equality
-- Expected
-+ Received
-- 404
-+ 200
- ❯ tests/unit/police-b.test.ts:396:106
-    394|     expect(view.status).toBe(200);
-    395|     expect(view.body).toMatchObject({ id, chars: 700, text, by: "alpha…
-    396|     expect((await getArtifactView(ownerCookie(), "00000000-0000-4000-8…
-       |                                                                                                          ^
-    397|   });
-    398| });
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
- Test Files  1 failed | 28 passed (29)
-      Tests  1 failed | 355 passed (356)
-   Start at  02:58:55
-   Duration  3.58s (transform 2.29s, setup 0ms, collect 10.27s, tests 3.09s, environment 6ms, prepare 2.53s)
-exit 1
+ Test Files  29 passed (29)
+      Tests  356 passed (356)
+   Start at  03:00:15
+   Duration  3.53s (transform 2.21s, setup 0ms, collect 10.19s, tests 3.20s, environment 12ms, prepare 2.48s)
+exit 0
 
 $ npm run check:vendor
 > check:vendor
@@ -82,40 +36,47 @@ $ npm run check:briefs
 exit 0
 
 $ npm run check:bundle
-> check:bundle
-> bash scripts/check-bundle-fresh.sh && bash scripts/check-build.sh
-kernel bundle fresh
-check:build: running next build
 > build
 > node scripts/fetch-codex.mjs && node scripts/bundle-hq.mjs && next build
 {"codexBytes":289101384,"ageBytes":4986442,"functionLimitBytes":262144000}
-▲ [WARNING] Duplicate key "listEventsByAction" in object literal [duplicate-object-key]
-    hq/connector-store.ts:748:10:
-      748 │     async listEventsByAction(actions) {
-          ╵           ~~~~~~~~~~~~~~~~~~
-  The original key "listEventsByAction" is here:
-    hq/connector-store.ts:573:10:
-      573 │     async listEventsByAction(action, options) {
-          ╵           ~~~~~~~~~~~~~~~~~~
-▲ [WARNING] Duplicate key "listEventsByAction" in object literal [duplicate-object-key]
-    hq/connector-pg.ts:790:10:
-      790 │     async listEventsByAction(actions) {
-          ╵           ~~~~~~~~~~~~~~~~~~
-  The original key "listEventsByAction" is here:
-    hq/connector-pg.ts:320:10:
-      320 │     async listEventsByAction(action, options) {
-          ╵           ~~~~~~~~~~~~~~~~~~
    ▲ Next.js 15.5.27
    Creating an optimized production build ...
    Using tsconfig file: tsconfig.app.json
    Using tsconfig file: tsconfig.app.json
    Using tsconfig file: tsconfig.app.json
- ✓ Compiled successfully in 3.1s
+ ✓ Compiled successfully in 2.9s
    Linting and checking validity of types ...
  ⚠ The Next.js plugin was not detected in your ESLint configuration. See https://nextjs.org/docs/app/api-reference/config/eslint#migrating-existing-config
-Debug Failure. Expected [object Object] === [object Object]. Parameter symbol already has a cached type which differs from newly assigned type
-Next.js build worker exited with code: 1 and signal: null
-exit 1
+   Collecting page data ...
+   Generating static pages (0/13) ...
+   Generating static pages (3/13) 
+   Generating static pages (6/13) 
+   Generating static pages (9/13) 
+ ✓ Generating static pages (13/13)
+   Finalizing page optimization ...
+   Collecting build traces ...
+Route (app)                                 Size  First Load JS
+┌ ƒ /                                    6.89 kB         110 kB
+├ ○ /_not-found                            998 B         104 kB
+├ ƒ /api/approval                          153 B         103 kB
+├ ƒ /api/board                             153 B         103 kB
+├ ƒ /api/callback                          153 B         103 kB
+├ ƒ /api/chat                              153 B         103 kB
+├ ƒ /api/login                             153 B         103 kB
+├ ƒ /api/mcp                               153 B         103 kB
+├ ƒ /api/resume                            153 B         103 kB
+├ ƒ /api/stop                              153 B         103 kB
+├ ƒ /api/tick-now                          153 B         103 kB
+├ ƒ /login                                 153 B         103 kB
+└ ○ /manifest.webmanifest                  153 B         103 kB
++ First Load JS shared by all             103 kB
+  ├ chunks/255-ce8c7c75002f810b.js       46.5 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.2 kB
+  └ other shared chunks (total)           1.9 kB
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+check:build: next build passed
+exit 0
 
 $ npm run scan:secrets
 > scan:secrets
@@ -124,46 +85,14 @@ secret scan clean
 exit 0
 
 $ npm run test:integration
-+ Received
-- 1
-+ 0
- ❯ tests/integration/police-b.test.ts:133:19
-    131|     expect(events.rows[0]?.result?.text).toBe(text);
-    132|     const found = await store.listEventsByAction("tool_output", { targ…
-    133|     expect(found).toHaveLength(1);
-       |                   ^
-    134|     const page = await call(lead, "get_context", { artifactId: output.…
-    135|     expect(page).toMatchObject({ status: "ok", artifact: { chars: text…
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
- FAIL  tests/integration/police-b.test.ts > token police part B on Postgres > builds the usage card from usage_receipt events
-AssertionError: expected { …(10) } to match object { count: 1, recorded: 1, …(1) }
-(14 matching properties omitted from actual)
-- Expected
-+ Received
-  {
--   "count": 1,
--   "recorded": 1,
-+   "count": 0,
-+   "recorded": 0,
-    "totals": {
--     "input_tokens": 70,
--     "output_tokens": 7,
-+     "input_tokens": 0,
-+     "output_tokens": 0,
-    },
-  }
- ❯ tests/integration/police-b.test.ts:152:23
-    150|     const card = usageCard(receipts, await store.listBots(), new URLSe…
-    151|     expect(card.status).toBe(200);
-    152|     expect(card.body).toMatchObject({ count: 1, recorded: 1, totals: {…
-       |                       ^
-    153|   });
-    154| 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
- Test Files  1 failed | 12 passed (13)
-      Tests  2 failed | 47 passed (49)
-   Start at  02:59:12
-   Duration  3.21s (transform 1.19s, setup 0ms, collect 4.91s, tests 7.25s, environment 3ms, prepare 1.10s)
-exit 1
+> test:integration
+> node scripts/ensure-integration-db.mjs && vitest run tests/integration
+local integration database ready
+ RUN  v3.2.4 /workspace/hq-stage3-police-b
+ Test Files  13 passed (13)
+      Tests  49 passed (49)
+   Start at  03:00:45
+   Duration  3.04s (transform 1.07s, setup 0ms, collect 4.47s, tests 7.03s, environment 3ms, prepare 1.06s)
+exit 0
 
-DONE rc=1
+DONE rc=0
