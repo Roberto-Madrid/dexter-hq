@@ -11,6 +11,8 @@ import { acceptCallback } from "./callback.ts";
 import { decideApproval, type DecideApprovalResult } from "./approval.ts";
 import { createPgConnectorStore } from "./connector-pg.ts";
 import { createMemoryConnectorStore } from "./connector-store.ts";
+import { readFleetView, runFleetReportTick, type FleetDb, type FleetTickResult, type FleetView } from "./fleet-report.ts";
+import { createPgFleetReports } from "./fleet-report-pg.ts";
 import { resumeAll, stopAll } from "./stop.ts";
 import { tick } from "./tick.ts";
 import { snapshot, type BoardSnapshot } from "./board.ts";
@@ -325,7 +327,8 @@ export async function postChat(
   const live = current();
   pathBBilling = false;
   trace = { stages: {}, model: null, effort: null, loginHashChanged: false };
-  const result = await withStore((store) => handleChat(store, live.deps, text, undefined, onDelta));
+  const deps = { ...live.deps, fleetReports: fleetFromEnv() };
+  const result = await withStore((store) => handleChat(store, deps, text, undefined, onDelta));
   const billing = pathBBilling && result.kind === "plan" ? ("chatgpt-plan" as const) : undefined;
   pathBBilling = false;
   return billing ? { ...result, billing, trace } : { ...result, trace };
@@ -379,11 +382,43 @@ export async function postResume(): Promise<Awaited<ReturnType<typeof resumeAll>
   return withStore((store) => resumeAll(store, { ...live.deps, connector }));
 }
 
-export async function postTick(header: string | null): Promise<{ status: number; body?: unknown }> {
+export async function postTick(
+  header: string | null,
+  options: { fleetReports?: FleetDb; now?: Date } = {},
+): Promise<{ status: number; body?: unknown }> {
   const live = current();
   const expected = process.env.DEXTER_TICK_SECRET ?? "";
   if (!expected || !header || !tokenMatch(header, expected)) return { status: 401 };
-  return { status: 200, body: await withStore((store) => tick(store, live.deps)) };
+  const result = await withStore((store) => tick(store, live.deps));
+  const fleet = await fleetTick(options.fleetReports ?? fleetFromEnv(), options.now ?? new Date());
+  return { status: 200, body: { ...result, fleet } };
+}
+
+function fleetFromEnv(): FleetDb | undefined {
+  const url = process.env.SUPABASE_DB_URL?.trim();
+  return url ? createPgFleetReports(url) : undefined;
+}
+
+/** Weekly fleet report on the per-minute tick. A failure is logged and never fails the tick. */
+async function fleetTick(db: FleetDb | undefined, now: Date): Promise<FleetTickResult | { status: "not_configured" | "error" }> {
+  if (!db) return { status: "not_configured" };
+  try {
+    return await runFleetReportTick({ db, now });
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : "fleet_report_failed";
+    console.error(raw.replace(/postgres(?:ql)?:\/\/\S+/gi, "[db]").slice(0, 180));
+    return { status: "error" };
+  }
+}
+
+/** Owner-only read for `GET /api/board?view=fleet`. Reads the stored report; never generates one. */
+export async function getFleetView(
+  cookie: string | null,
+  week: string | null,
+  db: FleetDb | undefined = fleetFromEnv(),
+): Promise<{ status: number; body: FleetView | { error: string } }> {
+  if (!emailFromCookie(cookie)) return { status: 401, body: { error: "unauthorized" } };
+  return { status: 200, body: await readFleetView(db, week) };
 }
 
 export async function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }> {

@@ -1,0 +1,137 @@
+# U5 done-command, 2026-10-08 02:00 PDT, branch v6/S3-U5-fleet-report on base ddc611d
+# SUPABASE_DB_URL and other live secrets unset for every step; integration uses the local Postgres 16 on 127.0.0.1:54329
+## npm run typecheck
+
+> typecheck
+> tsc --noEmit && tsc --noEmit -p tsconfig.app.json
+
+exit 0
+## npm run lint
+
+> lint
+> eslint kernel adapters hq gateway tests app
+
+exit 0
+## npm run test
+
+> test
+> vitest run tests/unit tests/security
+
+
+ RUN  v3.2.4 /workspace/hq-stage3-u5
+
+ ✓ tests/unit/ceo-run.test.ts (4 tests) 220ms
+ ✓ tests/unit/approval.test.ts (5 tests) 66ms
+ ✓ tests/unit/connector-council.test.ts (3 tests) 98ms
+ ✓ tests/unit/stop.test.ts (13 tests) 52ms
+ ✓ tests/unit/mcp.test.ts (7 tests) 231ms
+ ✓ tests/unit/quality-loop.test.ts (30 tests) 331ms
+ ✓ tests/unit/g3.test.ts (12 tests) 219ms
+ ✓ tests/unit/checks.test.ts (2 tests) 80ms
+ ✓ tests/unit/fleet-report.test.ts (15 tests) 39ms
+ ✓ tests/unit/tower.test.ts (12 tests) 53ms
+ ✓ tests/unit/kernel.test.ts (20 tests) 49ms
+ ✓ tests/unit/council-seat.test.ts (2 tests) 20ms
+ ✓ tests/security/injection.test.ts (2 tests) 7ms
+stderr | tests/unit/fleet-report-server.test.ts > the per-minute tick writes the weekly report once > keeps the tick green when the report fails
+db down [db]
+
+ ✓ tests/unit/fleet-report-server.test.ts (3 tests) 62ms
+ ✓ tests/unit/ceo-command.test.ts (4 tests) 10ms
+ ✓ tests/unit/snapshot-db.test.ts (2 tests) 7ms
+
+ Test Files  16 passed (16)
+      Tests  136 passed (136)
+   Start at  02:00:51
+   Duration  2.34s (transform 1.41s, setup 0ms, collect 5.88s, tests 1.54s, environment 4ms, prepare 1.80s)
+
+exit 0
+## npm run check:vendor
+
+> check:vendor
+> bash scripts/check-vendor-neutral.sh
+
+exit 0
+## npm run check:briefs
+
+> check:briefs
+> bash scripts/check-briefs.sh
+
+exit 0
+## npm run check:bundle
+
+> check:bundle
+> bash scripts/check-bundle-fresh.sh
+
+kernel bundle fresh
+exit 0
+## npm run scan:secrets
+
+> scan:secrets
+> node scripts/scan-secrets.mjs
+
+secret scan clean
+exit 0
+## npm run test:integration
+
+> test:integration
+> node scripts/ensure-integration-db.mjs && vitest run tests/integration
+
+local integration database ready
+
+ RUN  v3.2.4 /workspace/hq-stage3-u5
+
+ ✓ tests/integration/events.test.ts (1 test) 63ms
+ ✓ tests/integration/pool.test.ts (2 tests) 71ms
+ ✓ tests/integration/rls.test.ts (1 test) 119ms
+ ✓ tests/integration/claim.test.ts (4 tests) 169ms
+ ✓ tests/integration/fleet-report.test.ts (4 tests) 146ms
+
+ Test Files  5 passed (5)
+      Tests  12 passed (12)
+   Start at  02:00:58
+   Duration  811ms (transform 358ms, setup 0ms, collect 1.00s, tests 568ms, environment 1ms, prepare 420ms)
+
+exit 0
+## npm run build (no live env)
+   Creating an optimized production build ...
+   Using tsconfig file: tsconfig.app.json
+   Using tsconfig file: tsconfig.app.json
+   Using tsconfig file: tsconfig.app.json
+ ✓ Compiled successfully in 2.3s
+   Linting and checking validity of types ...
+
+ ⚠ The Next.js plugin was not detected in your ESLint configuration. See https://nextjs.org/docs/app/api-reference/config/eslint#migrating-existing-config
+   Collecting page data ...
+   Generating static pages (0/13) ...
+   Generating static pages (3/13) 
+   Generating static pages (6/13) 
+   Generating static pages (9/13) 
+ ✓ Generating static pages (13/13)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ƒ /                                    6.89 kB         110 kB
+├ ○ /_not-found                            997 B         104 kB
+├ ƒ /api/approval                          153 B         103 kB
+├ ƒ /api/board                             153 B         103 kB
+├ ƒ /api/callback                          153 B         103 kB
+├ ƒ /api/chat                              153 B         103 kB
+├ ƒ /api/login                             153 B         103 kB
+├ ƒ /api/mcp                               153 B         103 kB
+├ ƒ /api/resume                            153 B         103 kB
+├ ƒ /api/stop                              153 B         103 kB
+├ ƒ /api/tick-now                          153 B         103 kB
+├ ƒ /login                                 153 B         103 kB
+└ ○ /manifest.webmanifest                  153 B         103 kB
++ First Load JS shared by all             103 kB
+  ├ chunks/255-ce8c7c75002f810b.js       46.5 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.2 kB
+  └ other shared chunks (total)           1.9 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+exit 0

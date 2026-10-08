@@ -1,0 +1,28 @@
+# U5 bundled smoke, 2026-10-08 02:01 PDT, local throwaway DB dexter_u5_smoke (not production)
+tick wrong secret -> 401
+tick 1 -> 200 {"status":"written","week":"2026-W40","postId":"8311eb5e-97fc-5483-bf58-2b6cff02efe1"}
+tick 2 -> 200 {"status":"exists","week":"2026-W40","postId":"8311eb5e-97fc-5483-bf58-2b6cff02efe1"}
+view no cookie -> 401
+view owner -> 200 2026-W40
+Fleet report 2026-W40, Mon Sep 28 to Sun Oct 4 (PT).
+Requests: 0 opened, 0 done, 0 blocked, 0 failed.
+Agents: 1 launched, 1 finished, 0 errored, 0 cancelled, 0 expired, 0 failed to launch.
+Refusals: 1 (1 at a cap). By reason: per_repo_cap 1.
+Council: 0 of 40 Council seats used.
+Checks: 0 passed, 0 failed.
+Findings: 0 posted, 0 verified. Dead ends: 0 posted, 0 on the board.
+Waste: 1 (0 cancelled, 0 errored, 0 failed to launch, 1 refused).
+Per bot:
+- barber-lead [Roberto-Madrid/dexter-barber]: requests 0 opened/0 done/0 blocked/0 failed; agents 1 launched/1 finished/0 errored/0 cancelled/0 expired/0 failed to launch; refusals per_repo_cap 1; council 0 seats; checks 0 passed/0 failed; findings 0 posted/0 verified; dead ends 0 posted.
+- scout (scout): no activity.
+Stale (no heartbeat in 24h): barber-lead.
+Never seen: scout.
+Idle this week: scout.
+Not tracked yet: tick gaps, self-test failures, Cursor usage per agent.
+chat -> status modelCalls 0 | Fleet report 2026-W40, Mon Sep 28 to Sun Oct 4 (PT).
+## SQL reconcile
+ report_posts | report_events | launched_sql | refused_sql 
+--------------+---------------+--------------+-------------
+            1 |             1 |            1 |           1
+(1 row)
+

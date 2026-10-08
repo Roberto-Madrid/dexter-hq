@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type pg from "pg";
-import { buildFleetReport, fleetReportId, renderFleetReport, type StoredFleetReport } from "../../hq/fleet-report.ts";
+import { buildFleetReport, fleetReportId, renderFleetReport, runFleetReportTick, type StoredFleetReport } from "../../hq/fleet-report.ts";
 import { createPgFleetReports } from "../../hq/fleet-report-pg.ts";
 import { databaseUrl, newPool } from "./db.ts";
 
@@ -74,5 +74,24 @@ describe("fleet report on Postgres", () => {
       (item) => item.target === target,
     );
     expect(found.map((item) => item.at)).toEqual(["1990-01-01T08:00:00.000Z", "1990-01-08T07:59:59.999Z"]);
+  });
+
+  it("runs the weekly tick end to end on Postgres: written once, then exists", async () => {
+    const db = createPgFleetReports(databaseUrl());
+    const owner = randomUUID();
+    // A Thursday in a random far-future year, so the due week is fresh on every run.
+    const year = 3000 + Math.floor(Math.random() * 6000);
+    const thursday = new Date(Date.UTC(year, 5, 1));
+    thursday.setUTCDate(thursday.getUTCDate() + ((4 - thursday.getUTCDay() + 7) % 7));
+    thursday.setUTCHours(19);
+    const first = await runFleetReportTick({ db, now: thursday, ownerId: owner });
+    expect(first.status).toBe("written");
+    const second = await runFleetReportTick({ db, now: thursday, ownerId: owner });
+    expect(second.status).toBe("exists");
+    if (first.status === "not_due") throw new Error("unexpected");
+    const events = await pool.query("select id from public.events where action = 'fleet_report' and target = $1", [first.week]);
+    expect(events.rows).toHaveLength(1);
+    const read = await db.getReport(first.week);
+    expect(read?.text.split("\n")[0]).toMatch(new RegExp(`^Fleet report ${first.week}, Mon `));
   });
 });

@@ -4,6 +4,7 @@ import { answerCost, answerList, answerStatus, snapshot } from "./board.ts";
 import { classifyQuestion } from "./classify.ts";
 import { isQuickEdit, loadCrews, type CrewFile } from "./crews.ts";
 import type { HqDeps } from "./deps.ts";
+import { fleetChatAnswer } from "./fleet-report.ts";
 import { newId } from "./memory.ts";
 import type { HqStore, RequestRow, TaskRow } from "./model.ts";
 import { tick } from "./tick.ts";
@@ -39,6 +40,12 @@ export async function handleChat(
 ): Promise<ChatResult> {
   const kind = classifyQuestion(text);
   await store.addMessage("owner", text, null);
+  if (kind === "fleet") {
+    // dexter-shortcut: answered as kind "status" because ChatResult kinds live in the kernel contract; upgrade path: add "fleet" to ChatResultSchema when the UI needs to tell them apart.
+    const body = await fleetChatAnswer(deps.fleetReports);
+    await store.addMessage("dexter", body, null);
+    return { kind: "status", text: body, modelCalls: 0, card: null, notices: [], requestId: null, asOf: store.now() };
+  }
   if (kind !== "work") {
     const board = await snapshot(store, deps.slotCap);
     const body = kind === "status" ? answerStatus(board) : kind === "cost" ? answerCost(board) : answerList(board);
