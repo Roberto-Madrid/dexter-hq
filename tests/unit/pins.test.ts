@@ -278,7 +278,7 @@ describe("daily version check", () => {
     const { deps, cursor } = await capsDeps({ pins: false });
     const { connectorTick } = await import("../../hq/pins.ts");
     const first = await connectorTick({ ...deps, now: () => DAY1 }, sheetText);
-    expect(first.reconcile.configured).toBe(true);
+    expect(first.reconcile).toMatchObject({ configured: true });
     expect(first.pins.owners[0]?.status).toBe("recorded");
     const second = await connectorTick({ ...deps, now: () => DAY1_LATER }, sheetText);
     expect(second.pins.owners[0]?.status).toBe("skipped");

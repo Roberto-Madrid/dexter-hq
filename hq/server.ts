@@ -424,10 +424,13 @@ export async function postTick(
   current();
   const expected = process.env.DEXTER_TICK_SECRET ?? "";
   if (!expected || !header || !tokenMatch(header, expected)) return { status: 401 };
-  // The tick no longer dispatches. It closes finished connector agents so their cap slots free up,
-  // then runs the once-a-day model version check.
-  const { reconcile, pins } = await connectorTick(createDefaultConnectorDeps({ store: connectorFromEnv() }), loadConnectorSheetText());
-  const fleet = await fleetTick(options.fleetReports ?? fleetFromEnv(), options.now ?? new Date());
+  // The tick no longer dispatches. In order, each failing soft: close finished connector agents so their cap
+  // slots free up, write the weekly fleet report when due, then run the once-a-day model version check.
+  const { reconcile, fleet, pins } = await connectorTick(
+    createDefaultConnectorDeps({ store: connectorFromEnv() }),
+    loadConnectorSheetText(),
+    { fleet: () => fleetTick(options.fleetReports ?? fleetFromEnv(), options.now ?? new Date()) },
+  );
   return { status: 200, body: { ok: true, reconcile, fleet, pins } };
 }
 

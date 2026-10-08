@@ -119,20 +119,41 @@ export async function resolveDailyPins(input: {
   return { configured: true, owners };
 }
 
+export type TickStepError = { error: string };
+
 /**
- * The per-minute tick: close finished agents, then run the daily version check. A failing check never blocks the
- * reconcile result.
+ * The per-minute tick: close finished agents, then the weekly fleet report (when given), then the daily version
+ * check. Each step fails soft: a throw becomes a short error code and the next step still runs.
  */
-export async function connectorTick(
+export async function connectorTick<F = never>(
   deps: Pick<ConnectorDeps, "store" | "cursor" | "cursorConfigured" | "now">,
   sheetText: string,
-): Promise<{ reconcile: ReconcileResult; pins: PinsResult | { configured: boolean; owners: []; error: string } }> {
-  const reconcile = await reconcileConnector(deps);
+  steps: { fleet?: () => Promise<F> } = {},
+): Promise<{
+  reconcile: ReconcileResult | TickStepError;
+  fleet?: F | { status: "error" };
+  pins: PinsResult | (TickStepError & { configured: boolean; owners: [] });
+}> {
+  let reconcile: ReconcileResult | TickStepError;
+  try {
+    reconcile = await reconcileConnector(deps);
+  } catch {
+    reconcile = { error: "reconcile_failed" };
+  }
+  let fleet: F | { status: "error" } | undefined;
+  if (steps.fleet) {
+    try {
+      fleet = await steps.fleet();
+    } catch {
+      fleet = { status: "error" };
+    }
+  }
+  let pins: PinsResult | (TickStepError & { configured: boolean; owners: [] });
   try {
     const cursor = deps.cursorConfigured ? deps.cursor : null;
-    const pins = await resolveDailyPins({ store: deps.store, cursor, sheetText, now: deps.now });
-    return { reconcile, pins };
+    pins = await resolveDailyPins({ store: deps.store, cursor, sheetText, now: deps.now });
   } catch {
-    return { reconcile, pins: { configured: true, owners: [], error: "pins_check_failed" } };
+    pins = { configured: true, owners: [], error: "pins_check_failed" };
   }
+  return { reconcile, ...(steps.fleet ? { fleet } : {}), pins };
 }
