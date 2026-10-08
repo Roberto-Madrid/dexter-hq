@@ -103,6 +103,27 @@ describe("ventures on Postgres", () => {
     expect(rows.rows).toHaveLength(1);
   });
 
+  it("the store lock alone (no HTTP pre-check) lets one of five concurrent creates through", async () => {
+    const leadName = `it-${run}-lock-lead`;
+    const attempt = () =>
+      store.createVenture({
+        bot: { id: randomUUID(), name: leadName, kind: "lead", repos: [`it-${run}/lock`], tools: [], currentTask: null, heartbeatAt: null },
+        tokenHash: hashBotToken(randomUUID()),
+        scopes: [],
+        at: new Date().toISOString(),
+        actor: "owner",
+        meta: { name: `IT ${run} lock`, repo: `it-${run}/lock`, brief: null, idempotencyKey: null },
+        decide: (roster) =>
+          roster.some((row) => row.bot.name === leadName)
+            ? { ok: false, refusal: { reason: "lead_name_taken", field: "leadName" } }
+            : { ok: true, ownerId: owner },
+      });
+    const results = await Promise.all([1, 2, 3, 4, 5].map(attempt));
+    expect(results.filter((item) => item.ok)).toHaveLength(1);
+    const rows = await pool.query("select id from public.bots where name = $1", [leadName]);
+    expect(rows.rows).toHaveLength(1);
+  });
+
   it("replays a create with the same idempotency key without a second lead or token", async () => {
     const body = { ...venture("replay"), idempotencyKey: `form-${run}` };
     const first = await post(body);

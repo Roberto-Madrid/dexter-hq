@@ -10,12 +10,14 @@ const rules = [
   { id: "slack_token", source: "\\bxox[baprs]-[A-Za-z0-9-]{10,}" },
   { id: "age_secret", source: "\\bAGE-SECRET-KEY-1[A-Z2-7]{20,}\\b" },
   { id: "sk_token", source: "\\bsk-[A-Za-z0-9]{20,}\\b" },
+  // A minted connector token (hq/ventures.ts): dxt_ + 43 base64url characters.
+  { id: "dexter_token", source: "\\bdxt_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])" },
 ];
 
 const alphabet = "abcdefghijklmnopqrstuvwxyz";
 
 function fixtureShape(match) {
-  const body = match.replace(/^(sk-|ghp_|xox[baprs]-|AKIA|AGE-SECRET-KEY-1)/, "");
+  const body = match.replace(/^(sk-|ghp_|xox[baprs]-|AKIA|AGE-SECRET-KEY-1|dxt_)/, "");
   return body.length >= 16 && alphabet.startsWith(body.toLowerCase());
 }
 

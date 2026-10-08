@@ -11,6 +11,7 @@ import { parseRoleSheet } from "../kernel/role-sheet.ts";
 import { REQUEST_STATES, type PlanCard, type RoleSheet, type RunHandle, type Runtime, type Verdict } from "../kernel/types.ts";
 import {
   CONNECTOR_TOOLS,
+  botRoster,
   createMemoryConnectorStore,
   isActiveAgent,
   withoutFollowupClaim,
@@ -945,6 +946,8 @@ export async function callConnectorTool(
     const items = posts.filter((item) => !repo || item.repo === repo);
     const events = await deps.store.listEvents();
     const why = requestId ? decisionTrail(events, requestId) : [];
+    // Only Dexter sees the roster (who leads which repo). A lead never gets other bots, repos, or tokens.
+    const bots = auth.kind === "ceo" ? await botRoster(deps.store, new Date((deps.now ?? (() => new Date().toISOString()))())) : null;
     const body = {
       status: "ok",
       findings: items.filter((item) => item.type === "finding" && item.verified),
@@ -952,8 +955,9 @@ export async function callConnectorTool(
       deadEnds: items.filter((item) => item.type === "dead_end"),
       why,
       requestId,
+      ...(bots ? { bots } : {}),
     };
-    await record(deps, auth, name, requestId ?? repo ?? "all", { count: items.length, why: why.length });
+    await record(deps, auth, name, requestId ?? repo ?? "all", { count: items.length, why: why.length, ...(bots ? { bots: bots.length } : {}) });
     return toolResult(body);
   }
   const body = { status: "error", reason: "unknown_tool" };
