@@ -9,6 +9,7 @@ import {
   MODEL_UPGRADE_ACTION,
   modelUpgradeTarget,
   PIN_FAILURE_ACTION,
+  UPGRADE_CHECK_DONE,
   type ConnectorAgent,
   type ConnectorApproval,
   type ConnectorBot,
@@ -24,6 +25,18 @@ const AGENT_COLUMNS = "id, owner_id, bot_id, cursor_handle, repo, role, family, 
 const LAUNCH_LOCK = "select pg_advisory_xact_lock(hashtext('dexter.connector.launch'))";
 const COUNCIL_LOCK = "select pg_advisory_xact_lock(hashtext('dexter.connector.council_seat'))";
 const PINS_LOCK = "select pg_advisory_xact_lock(hashtext('dexter.connector.pins'))";
+const INTERNAL_BOT_LOCK = "select pg_advisory_xact_lock(hashtext('dexter.connector.internal_bot'))";
+const OUTCOMES_LOCK = "select pg_advisory_xact_lock(hashtext('dexter.connector.model_outcomes'))";
+// Rows an upgrade switch or rollback appends change the pin but are not the daily check (see isPinSwitchReason).
+const DAILY_ROW = "coalesce(reason, '') not like 'upgrade:%' and coalesce(reason, '') not like 'rollback:%'";
+const CURRENT_PIN_SQL = `select version from public.model_resolutions
+  where owner_id = $1 and family = $2 and not held
+  order by resolved_at desc, id desc limit 1`;
+
+async function currentPinVersion(client: pg.Client, ownerId: string, family: string): Promise<string | null> {
+  const found = await client.query<{ version: string }>(CURRENT_PIN_SQL, [ownerId, family]);
+  return found.rows[0]?.version ?? null;
+}
 
 async function inTransaction<T>(client: pg.Client, fn: () => Promise<T>): Promise<T> {
   await client.query("begin");
@@ -685,6 +698,7 @@ export function createPgConnectorStore(url: string): ConnectorStore {
     async listModelResolutions(ownerId) {
       return withClient(url, async (client) => {
         const found = await client.query<{
+          id: string;
           owner_id: string;
           family: string;
           version: string;
@@ -692,12 +706,13 @@ export function createPgConnectorStore(url: string): ConnectorStore {
           reason: string | null;
           resolved_at: Date | string;
         }>(
-          `select owner_id, family, version, held, reason, resolved_at
+          `select id, owner_id, family, version, held, reason, resolved_at
            from public.model_resolutions where owner_id = $1 order by resolved_at asc, family asc`,
           [ownerId],
         );
         return found.rows.map(
           (row): ModelResolutionRow => ({
+            id: row.id,
             ownerId: row.owner_id,
             family: row.family,
             version: row.version,
@@ -711,7 +726,7 @@ export function createPgConnectorStore(url: string): ConnectorStore {
     async pinsResolvedSince(ownerId, since) {
       return withClient(url, async (client) => {
         const found = await client.query(
-          "select 1 from public.model_resolutions where owner_id = $1 and resolved_at >= $2::timestamptz limit 1",
+          `select 1 from public.model_resolutions where owner_id = $1 and resolved_at >= $2::timestamptz and ${DAILY_ROW} limit 1`,
           [ownerId, since],
         );
         return found.rows.length > 0;
@@ -732,7 +747,7 @@ export function createPgConnectorStore(url: string): ConnectorStore {
         inTransaction(client, async () => {
           await client.query(PINS_LOCK);
           const done = await client.query(
-            "select 1 from public.model_resolutions where owner_id = $1 and resolved_at >= $2::timestamptz limit 1",
+            `select 1 from public.model_resolutions where owner_id = $1 and resolved_at >= $2::timestamptz and ${DAILY_ROW} limit 1`,
             [ownerId, since],
           );
           if (done.rows.length > 0) return { recorded: false, approvals: [] };
@@ -769,6 +784,143 @@ export function createPgConnectorStore(url: string): ConnectorStore {
             raised.push(approval);
           }
           return { recorded: true, approvals: raised };
+        }),
+      );
+    },
+    async listEventsByAction(actions) {
+      return withClient(url, async (client) => {
+        // dexter-shortcut: events has no index on action, so this scans it once per tick; upgrade path: an events(action) index in a migration once events grows large.
+        const found = await client.query<{
+          id: string;
+          owner_id: string;
+          actor: string;
+          action: string;
+          target: string;
+          result: unknown;
+          at: Date | string;
+        }>("select id, owner_id, actor, action, target, result, at from public.events where action = any($1::text[]) order by at asc", [
+          [...actions],
+        ]);
+        return found.rows.map((row) => ({
+          id: row.id,
+          ownerId: row.owner_id,
+          actor: row.actor,
+          action: row.action,
+          target: row.target,
+          result: asRecord(row.result),
+          at: new Date(row.at).toISOString(),
+        }));
+      });
+    },
+    async ensureInternalBot({ ownerId, name, kind, repos, at }) {
+      return withClient(url, async (client) =>
+        inTransaction(client, async () => {
+          // bots has no unique (owner, name); the lock keeps two ticks from creating it twice.
+          await client.query(INTERNAL_BOT_LOCK);
+          const found = await client.query(
+            `update public.bots set repos = $4::text[]
+             where id = (select id from public.bots where owner_id = $1 and name = $2 and kind = $3 order by created_at asc limit 1)
+             returning id, owner_id, name, kind, repos, tools, current_task, heartbeat_at`,
+            [ownerId, name, kind, repos],
+          );
+          if (found.rows[0]) return botFromRow(found.rows[0]);
+          const inserted = await client.query(
+            `insert into public.bots (id, owner_id, name, kind, repos, tools, created_at)
+             values ($1, $2, $3, $4, $5::text[], '{}', $6::timestamptz)
+             returning id, owner_id, name, kind, repos, tools, current_task, heartbeat_at`,
+            [randomUUID(), ownerId, name, kind, repos, at],
+          );
+          return botFromRow(inserted.rows[0]);
+        }),
+      );
+    },
+    async listModelOutcomes(ownerId) {
+      return withClient(url, async (client) => {
+        const found = await client.query<{
+          id: string;
+          owner_id: string;
+          run_id: string | null;
+          model_row_id: string | null;
+          passed: boolean;
+          checks_failed: number;
+          at: Date | string;
+        }>(
+          "select id, owner_id, run_id, model_row_id, passed, checks_failed, at from public.model_outcomes where owner_id = $1 and run_id is not null order by at asc",
+          [ownerId],
+        );
+        return found.rows.map((row) => ({
+          id: row.id,
+          ownerId: row.owner_id,
+          runId: String(row.run_id),
+          modelRowId: row.model_row_id,
+          passed: row.passed,
+          checksFailed: row.checks_failed,
+          at: new Date(row.at).toISOString(),
+        }));
+      });
+    },
+    async recordModelOutcome(row) {
+      return withClient(url, async (client) =>
+        inTransaction(client, async () => {
+          // model_outcomes has no unique run_id; the lock makes "one outcome per run" hold across overlapping ticks.
+          await client.query(OUTCOMES_LOCK);
+          const seen = await client.query("select 1 from public.model_outcomes where run_id = $1 limit 1", [row.runId]);
+          if (seen.rows.length > 0) return false;
+          await client.query(
+            `insert into public.model_outcomes (owner_id, run_id, model_row_id, passed, checks_failed, escalated, at)
+             values ($1, $2, $3, $4, $5, false, $6::timestamptz)`,
+            [row.ownerId, row.runId, row.modelRowId, row.passed, row.checksFailed, row.at],
+          );
+          return true;
+        }),
+      );
+    },
+    async applyUpgradeDecision({ ownerId, checkId, at, event, pin, approval }) {
+      return withClient(url, async (client) =>
+        inTransaction(client, async () => {
+          await client.query(PINS_LOCK);
+          const done = await client.query("select 1 from public.events where action = $1 and target = $2 limit 1", [UPGRADE_CHECK_DONE, checkId]);
+          if (done.rows.length > 0) return { applied: false as const, reason: "already_done" as const };
+          if (pin && (await currentPinVersion(client, ownerId, pin.family)) !== pin.from) {
+            return { applied: false as const, reason: "pin_moved" as const };
+          }
+          if (pin) {
+            await client.query(
+              `insert into public.model_resolutions (owner_id, family, version, held, reason, resolved_at)
+               values ($1, $2, $3, false, $4, $5::timestamptz)`,
+              [ownerId, pin.family, pin.to, pin.reason, at],
+            );
+          }
+          if (approval) {
+            await client.query(
+              `insert into public.approvals (id, owner_id, request_id, action, target, plan_version)
+               values ($1, $2, $3, $4, $5, 1)`,
+              [approval.id, ownerId, approval.requestId, `${approval.status}:${approval.action}`, approval.target],
+            );
+          }
+          await client.query("select public.append_event($1, $2, $3, $4, $5::jsonb, null, null)", [
+            ownerId,
+            event.actor,
+            UPGRADE_CHECK_DONE,
+            checkId,
+            event.result,
+          ]);
+          return { applied: true as const };
+        }),
+      );
+    },
+    async switchPin({ ownerId, family, from, to, reason, at }) {
+      return withClient(url, async (client) =>
+        inTransaction(client, async () => {
+          await client.query(PINS_LOCK);
+          const current = await currentPinVersion(client, ownerId, family);
+          if (current !== from) return { switched: false, current };
+          await client.query(
+            `insert into public.model_resolutions (owner_id, family, version, held, reason, resolved_at)
+             values ($1, $2, $3, false, $4, $5::timestamptz)`,
+            [ownerId, family, to, reason, at],
+          );
+          return { switched: true, current: to };
         }),
       );
     },

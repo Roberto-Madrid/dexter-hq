@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fail when personas, crews, or worker brief templates name a model.
+# Fail when personas, crews, saved upgrade-check tasks, or worker brief templates name a model.
 set -eu
 root="${1:-.}"
 pattern='openai|anthropic|claude|opus|grok|xai|cursor|codex|chatgpt|composer|github|vercel|gemini|opencode|gpt'
@@ -18,6 +18,7 @@ scan() {
 }
 scan "$root/personas"
 scan "$root/crews"
+scan "$root/config/upgrade-tasks"
 if [ -d "$root/workers" ]; then
   while IFS= read -r file; do
     [ -n "$file" ] || continue

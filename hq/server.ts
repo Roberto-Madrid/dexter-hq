@@ -33,6 +33,7 @@ import { USAGE_RECEIPT_ACTION, USAGE_SCAN_LIMIT, usageCard } from "./usage-card.
 import { resumeAll, stopAll } from "./stop.ts";
 import { createDefaultConnectorDeps, loadConnectorSheetText } from "./connector.ts";
 import { connectorTick } from "./pins.ts";
+import { advanceUpgradeChecks, upgradeTickStep } from "./upgrade-check.ts";
 import { snapshot, type BoardSnapshot } from "./board.ts";
 import { SHIPPED_CREWS } from "./crews.ts";
 import type { HqDeps } from "./deps.ts";
@@ -491,15 +492,17 @@ export async function postTick(
   const expected = process.env.DEXTER_TICK_SECRET ?? "";
   if (!expected || !header || !tokenMatch(header, expected)) return { status: 401 };
   // The tick no longer dispatches. In order, each failing soft: close finished connector agents so their cap
-  // slots free up, write the weekly fleet report when due, then run the once-a-day model version check.
-  const { reconcile, fleet, pins } = await connectorTick(
-    createDefaultConnectorDeps({ store: connectorFromEnv() }),
-    loadConnectorSheetText(),
-    { fleet: () => fleetTick(options.fleetReports ?? fleetFromEnv(), options.now ?? new Date()) },
-  );
+  // slots free up, write the weekly fleet report when due, run the once-a-day model version check, the daily
+  // self-test, then advance upgrade checks the owner started (their runs go through the connector's capped launch path).
+  const deps = createDefaultConnectorDeps({ store: connectorFromEnv() });
+  const { reconcile, fleet, pins } = await connectorTick(deps, loadConnectorSheetText(), {
+    fleet: () => fleetTick(options.fleetReports ?? fleetFromEnv(), options.now ?? new Date()),
+  });
   // Daily self-test (U6): read-only checks, once per PT day after 07:00; soft-fails like the rest.
   const selftest = await selftestTick(options.now ?? new Date());
-  return { status: 200, body: { ok: true, reconcile, fleet, pins, selftest } };
+  // Upgrade checks (U7): soft-fails like the rest; a throw becomes { status: "error" }.
+  const upgrade = await upgradeTickStep(() => advanceUpgradeChecks({ deps, env: process.env }));
+  return { status: 200, body: { ok: true, reconcile, fleet, pins, selftest, upgrade } };
 }
 
 function fleetFromEnv(): FleetDb | undefined {
