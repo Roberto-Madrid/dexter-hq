@@ -7,6 +7,7 @@ import {
   loadConnectorSheetText,
 } from "../../hq/connector.ts";
 import { CONNECTOR_IDENTITY, handleMcpHttp } from "../../hq/mcp.ts";
+import { pinRows } from "./pin-fixtures.ts";
 
 const endpoint = "http://127.0.0.1/api/mcp";
 const OWNER = "11111111-1111-4111-8111-111111111111";
@@ -40,6 +41,7 @@ function callBody(name: string, args: Record<string, unknown>, id = 3) {
 function leadDeps(options?: { stopped?: boolean; scopes?: string[]; cursorConfigured?: boolean }) {
   const store = createMemoryConnectorStore({
     stopped: options?.stopped ?? false,
+    modelResolutions: pinRows(OWNER),
     bots: [
       {
         id: BOT,

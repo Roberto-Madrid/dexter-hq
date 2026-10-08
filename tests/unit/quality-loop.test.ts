@@ -27,6 +27,7 @@ import { DESIGN_SKETCH_ROLES } from "../../hq/design-gate.ts";
 import { composeLaunchBrief } from "../../hq/personas.ts";
 import { parseRoleSheet } from "../../kernel/role-sheet.ts";
 import type { PlanCard } from "../../kernel/types.ts";
+import { pinRows } from "./pin-fixtures.ts";
 
 const OWNER = "11111111-1111-4111-8111-111111111111";
 const BOT = "22222222-2222-4222-8222-222222222222";
@@ -87,6 +88,7 @@ function fakeCursor(briefs: string[] = []) {
 
 function storeForLead() {
   return createMemoryConnectorStore({
+    modelResolutions: pinRows(OWNER),
     bots: [
       {
         id: BOT,
