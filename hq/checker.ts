@@ -42,30 +42,65 @@ export type CheckerGateway = {
   dispatch(input: CheckerDispatchInput): Promise<CheckerDispatchResult>;
   find(input: { repo: string; sha: string; nonce: string }): Promise<string | null>;
   outcome(input: { githubRunId: string; repo: string; sha: string; nonce: string }): Promise<CheckerOutcome>;
-  /** Current head commit of the request's PR (preferred) or branch on GitHub. Throws or returns null when unknown. */
+  /** Current head commit of the request's PR or branch on GitHub. Throws when both are set, or returns null/throws when unknown. */
   head?(input: { repo: string } & RequestBinding): Promise<string | null>;
+  /**
+   * Verifies a bot-chosen binding before it is stored: does the PR (and is it open) or branch exist in `repo`?
+   * `exists: false` means GitHub says it is not in that repo. Throws when GitHub cannot answer, so callers fail closed.
+   */
+  bindingState?(input: { repo: string } & RequestBinding): Promise<BindingState>;
   /** Changed paths between `base` and `head` (GitHub compare, three dots). Throws when unknown, so callers fail closed. */
   compare?(input: { repo: string; base: string; head: string }): Promise<CompareResult>;
 };
 
-const BRANCH_NAME = /^(?!\/)(?!.*\.\.)(?!.*\/\/)(?!.*\/$)[A-Za-z0-9._/-]{1,200}$/;
+export type BindingState = { exists: boolean; open: boolean; head: string | null };
 
-/** Reads a PR number or branch name from tool args. Missing fields are null; malformed ones are invalid. */
-export function bindingFromArgs(args: Record<string, unknown>): { ok: true; binding: RequestBinding } | { ok: false } {
+const BRANCH_CHARS = /^[A-Za-z0-9._/-]{1,200}$/;
+
+/**
+ * git check-ref-format rules for a branch name, on a conservative charset (no space, ~ ^ : ? * [ \ @ or controls):
+ * no empty, `.` or `..` segment, no segment starting with `.` or ending with `.lock`, no `..` anywhere,
+ * no leading `/` or `-`, no trailing `/` or `.`, and not `HEAD`.
+ */
+export function isValidBranchName(name: string): boolean {
+  if (!BRANCH_CHARS.test(name)) return false;
+  if (name === "HEAD" || name.startsWith("-") || name.endsWith(".") || name.includes("..")) return false;
+  return name.split("/").every((segment) => segment.length > 0 && !segment.startsWith(".") && !segment.endsWith(".lock"));
+}
+
+export type BindingRefusal = "invalid_binding" | "binding_pr_and_branch";
+
+/**
+ * Reads a PR number or branch name from tool args. Missing fields are null; malformed ones are invalid.
+ * A request binds to a PR or a branch, never both.
+ */
+export function bindingFromArgs(
+  args: Record<string, unknown>,
+): { ok: true; binding: RequestBinding } | { ok: false; reason: BindingRefusal } {
   const rawPr = args.pullRequest ?? args.pull_request;
   const rawBranch = args.branch;
   let pullRequest: string | null = null;
   let branch: string | null = null;
   if (rawPr !== undefined && rawPr !== null && rawPr !== "") {
     const text = String(rawPr).trim().replace(/^#/, "");
-    if (!/^[1-9][0-9]{0,9}$/.test(text)) return { ok: false };
+    if (!/^[1-9][0-9]{0,9}$/.test(text)) return { ok: false, reason: "invalid_binding" };
     pullRequest = text;
   }
   if (rawBranch !== undefined && rawBranch !== null && rawBranch !== "") {
-    if (typeof rawBranch !== "string" || !BRANCH_NAME.test(rawBranch)) return { ok: false };
+    if (typeof rawBranch !== "string" || !isValidBranchName(rawBranch)) return { ok: false, reason: "invalid_binding" };
     branch = rawBranch;
   }
+  if (pullRequest && branch) return { ok: false, reason: "binding_pr_and_branch" };
   return { ok: true, binding: { pullRequest, branch } };
+}
+
+/** Rows written before the PR-xor-branch rule may carry both; nothing may pick one of them silently. */
+export function bindingIsAmbiguous(request: { pullRequest?: string | null; branch?: string | null }): boolean {
+  return Boolean(request.pullRequest && request.branch);
+}
+
+export function sameSha(left: string | null | undefined, right: string | null | undefined): boolean {
+  return Boolean(left && right && left.toLowerCase() === right.toLowerCase());
 }
 
 export function requestIsBound(request: { pullRequest?: string | null; branch?: string | null }): boolean {
@@ -170,11 +205,15 @@ export function checkerPassedCurrentSha(request: ConnectorRequest): boolean {
   return Boolean(run?.passed && run.sha && run.githubRunId);
 }
 
+/**
+ * Folds a Checker outcome into the request. `check.head` is the request's bound PR/branch head on GitHub
+ * (null when unbound or unknown): only a pass on that exact sha may set ready_for_review.
+ */
 export function applyCheckEvidence(
   request: ConnectorRequest,
   evidence: string[],
   ready: boolean,
-  check: { sha: string; repo: string },
+  check: { sha: string; repo: string; head: string | null },
 ): ConnectorRequest {
   const merged = sanitizeBotEvidence([...request.evidence]);
   for (const item of sanitizeBotEvidence(evidence)) {
@@ -182,11 +221,12 @@ export function applyCheckEvidence(
   }
   const next: ConnectorRequest = { ...request, evidence: merged };
   const shaChanged = Boolean(request.checkRun && request.checkRun.sha !== check.sha);
-  if (ready && next.status !== "done" && next.status !== "cancelled" && next.status !== "failed") {
+  const readyOnHead = ready && sameSha(check.head, check.sha);
+  if (readyOnHead && next.status !== "done" && next.status !== "cancelled" && next.status !== "failed") {
     next.status = "ready_for_review";
   } else if (shaChanged && next.status === "ready_for_review") {
     next.status = "verifying";
-  } else if (!ready && (next.status === "queued" || next.status === "running" || next.status === "ready_for_review")) {
+  } else if (!readyOnHead && (next.status === "queued" || next.status === "running" || next.status === "ready_for_review")) {
     next.status = "verifying";
   }
   return next;
@@ -257,6 +297,7 @@ export function createGhChecker(options: {
   return {
     find,
     async head(input) {
+      if (bindingIsAmbiguous(input)) throw new Error("binding_ambiguous");
       const path = input.pullRequest
         ? `pulls/${encodeURIComponent(input.pullRequest)}`
         : input.branch
@@ -271,6 +312,32 @@ export function createGhChecker(options: {
       const body = asRecord(await response.json());
       const sha = input.pullRequest ? asRecord(body.head).sha : asRecord(body.object).sha;
       return typeof sha === "string" && /^[0-9a-f]{40}$/i.test(sha) ? sha.toLowerCase() : null;
+    },
+    async bindingState(input) {
+      if (bindingIsAmbiguous(input)) throw new Error("binding_ambiguous");
+      const path = input.pullRequest
+        ? `pulls/${encodeURIComponent(input.pullRequest)}`
+        : input.branch
+          ? `git/ref/heads/${input.branch.split("/").map(encodeURIComponent).join("/")}`
+          : null;
+      if (!path) throw new Error("binding_missing");
+      const response = await fetchImpl(`${apiBase}/repos/${input.repo}/${path}`, {
+        headers,
+        signal: AbortSignal.timeout(options.headTimeoutMs ?? HEAD_LOOKUP_TIMEOUT_MS),
+      });
+      if (response.status === 404) return { exists: false, open: false, head: null };
+      if (response.status >= 300) throw new Error(`binding_lookup_${response.status}`);
+      const body = asRecord(await response.json());
+      const shaOf = (value: unknown) => (typeof value === "string" && /^[0-9a-f]{40}$/i.test(value) ? value.toLowerCase() : null);
+      if (input.pullRequest) {
+        const baseRepo = asRecord(asRecord(body.base).repo).full_name;
+        if (typeof baseRepo !== "string" || baseRepo.toLowerCase() !== input.repo.toLowerCase()) {
+          return { exists: false, open: false, head: null };
+        }
+        return { exists: true, open: body.state === "open", head: shaOf(asRecord(body.head).sha) };
+      }
+      if (body.ref !== `refs/heads/${input.branch}`) return { exists: false, open: false, head: null };
+      return { exists: true, open: true, head: shaOf(asRecord(body.object).sha) };
     },
     async compare(input) {
       // per_page=1 trims the commit list; the file list (up to 300) always comes on the first page.

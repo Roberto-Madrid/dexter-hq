@@ -28,6 +28,7 @@ import {
   PINNED_CHECKER_WORKFLOW,
   applyCheckEvidence,
   bindingFromArgs,
+  bindingIsAmbiguous,
   bindingMatches,
   checkerPassedCurrentSha,
   checksConfigured,
@@ -35,8 +36,10 @@ import {
   createGhChecker,
   evidenceFromOutcome,
   requestIsBound,
+  sameSha,
   sanitizeBotEvidence,
   type CheckerGateway,
+  type RequestBinding,
 } from "./checker.ts";
 import { contextNotes, parseApproach, postNote, readArtifactNote, verifyNote } from "./board-notes.ts";
 import { decisionTrail } from "./decision-trail.ts";
@@ -501,7 +504,7 @@ async function handleOpenRequest(deps: ConnectorDeps, auth: ConnectorAuth, args:
   }
   const bound = bindingFromArgs(args);
   if (!bound.ok) {
-    const body = { status: "refused", reason: "invalid_binding" };
+    const body = { status: "refused", reason: bound.reason };
     await record(deps, auth, "open_request", "refused", body);
     return toolResult(body, true);
   }
@@ -591,7 +594,8 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
   if (status === "done") {
     const refusal = await doneHeadRefusal(deps, row);
     if (refusal) {
-      const body = { status: "refused", ...refusal, requestId: row.id };
+      const invalidated = refusal.reason === "done_requires_checks_on_head" && (await invalidateMovedDonePass(deps, row));
+      const body = { status: "refused", ...refusal, requestId: row.id, ...(invalidated ? { checkRunInvalidated: true } : {}) };
       await record(deps, auth, "update_request", row.id, body);
       return toolResult(body, true);
     }
@@ -620,12 +624,36 @@ function sameCheckRun(left: ConnectorRequest["checkRun"], right: ConnectorReques
   return left.nonce === right.nonce && left.sha === right.sha && left.repo === right.repo && left.passed === right.passed;
 }
 
+/**
+ * A done request whose bound head moved keeps its check run only as history: the pass was for the old sha,
+ * so it must not read as passing evidence for the new head. Writes onto a fresh read, never a stale row.
+ */
+// dexter-shortcut: a head move is only noticed when update_request done or request_checks looks the head up (no push webhook); upgrade path: invalidate from a GitHub push/synchronize webhook.
+async function invalidateMovedDonePass(deps: ConnectorDeps, row: ConnectorRequest): Promise<boolean> {
+  if (row.status !== "done" || !row.checkRun?.passed) return false;
+  const fresh = await deps.store.getRequest(row.id);
+  if (!fresh || fresh.status !== "done" || !fresh.checkRun || !sameCheckRun(fresh.checkRun, row.checkRun)) return false;
+  await deps.store.saveRequest({ ...fresh, checkRun: { ...fresh.checkRun, passed: false } });
+  return true;
+}
+
+/** The bound PR/branch head on GitHub, or null when unbound, unavailable, or unknown. */
+async function boundHead(deps: ConnectorDeps, repo: string, binding: RequestBinding): Promise<string | null> {
+  if (!requestIsBound(binding) || bindingIsAmbiguous(binding) || !deps.checker?.head) return null;
+  try {
+    return (await deps.checker.head({ repo, ...binding })) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Fail closed: done needs a bound PR/branch whose GitHub head is the sha the Checker passed. */
 async function doneHeadRefusal(
   deps: ConnectorDeps,
   row: ConnectorRequest,
 ): Promise<{ reason: string; head?: string; checkedSha?: string } | null> {
   const run = row.checkRun;
+  if (bindingIsAmbiguous(row)) return { reason: "binding_ambiguous" };
   if (!requestIsBound(row) || !row.repo) return { reason: "done_requires_binding" };
   if (!run || run.repo !== row.repo) return { reason: "done_requires_checks" };
   if (!deps.checker?.head) return { reason: "head_lookup_unavailable" };
@@ -800,6 +828,23 @@ async function approachTags(
   return { approach, repo, botId: auth.id, ...(agent ? { creditedAgentId: agent } : {}) };
 }
 
+async function botBindingRefusal(
+  checker: CheckerGateway,
+  repo: string,
+  binding: RequestBinding,
+): Promise<"binding_unverifiable" | "binding_lookup_failed" | "binding_not_in_repo" | "binding_pr_not_open" | null> {
+  if (!checker.bindingState) return "binding_unverifiable";
+  let state;
+  try {
+    state = await checker.bindingState({ repo, ...binding });
+  } catch {
+    return "binding_lookup_failed";
+  }
+  if (!state.exists) return "binding_not_in_repo";
+  if (binding.pullRequest && !state.open) return "binding_pr_not_open";
+  return null;
+}
+
 async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
   const repo = textArg(args, "repo");
   const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
@@ -835,7 +880,7 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
     return toolResult(body, true);
   }
   if (!supplied.ok || !bindingMatches(request, supplied.binding)) {
-    const body = { status: "refused", reason: supplied.ok ? "binding_mismatch" : "invalid_binding", ready: false, requestId };
+    const body = { status: "refused", reason: supplied.ok ? "binding_mismatch" : supplied.reason, ready: false, requestId };
     await record(deps, auth, "request_checks", requestId, body);
     return toolResult(body, true);
   }
@@ -861,6 +906,15 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
   if (blocked) {
     await record(deps, auth, "request_checks", requestId, blocked);
     return toolResult(blocked, true);
+  }
+  // A bot-chosen binding is verified before it is stored: an open PR or an existing branch in the request's repo.
+  if (!requestIsBound(request) && requestIsBound(binding)) {
+    const refusal = await botBindingRefusal(deps.checker, request.repo ?? repo, binding);
+    if (refusal) {
+      const body = { status: "refused", reason: refusal, ready: false, requestId };
+      await record(deps, auth, "request_checks", requestId, body);
+      return toolResult(body, true);
+    }
   }
   try {
     const at = (deps.now ?? (() => new Date().toISOString()))();
@@ -902,7 +956,11 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
       : { state: "queued" as const, conclusion: null, githubRunId: null, evidence: [] };
     if (outcome.githubRunId) checkRun = { ...checkRun, githubRunId: outcome.githubRunId };
     const ready = checksMoveRequestReady(outcome);
-    checkRun = { ...checkRun, passed: ready };
+    // Only a pass on the bound head counts toward ready_for_review, and a done request keeps a pass only while
+    // that pass is on its bound head.
+    const head = ready || request.status === "done" ? await boundHead(deps, request.repo ?? repo, binding) : null;
+    const onBoundHead = sameSha(head, sha);
+    checkRun = { ...checkRun, passed: ready && (request.status !== "done" || onBoundHead) };
     const evidence = evidenceFromOutcome({
       workflow: PINNED_CHECKER_WORKFLOW,
       sha,
@@ -912,7 +970,7 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
       githubRunId: checkRun.githubRunId,
       outcome,
     });
-    const next = applyCheckEvidence(request, evidence, ready, { sha, repo });
+    const next = applyCheckEvidence(request, evidence, ready, { sha, repo, head });
     next.checkRun = checkRun;
     next.pullRequest = pullRequest;
     next.branch = branch;
@@ -929,6 +987,7 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
       sha,
       evidence,
       requestId,
+      onBoundHead,
       requestStatus: next.status,
       ...(status === "failed" ? { gate: await gateAfterFail(deps, requestId, checkRun.nonce) } : {}),
       ...(approach ? await approachTags(deps, auth, approach, repo, args) : {}),
@@ -1129,7 +1188,7 @@ export function connectorToolDescriptors(names: readonly string[]) {
         : name === "request_council"
           ? "Run one Critic seat through path B. Returns a schema-valid verdict, or not-configured when the login is absent."
           : name === "request_checks"
-            ? "Dispatch pinned checker.yml from the trusted workers main ref against a commit SHA. Returns in_progress until GitHub has a conclusion; ready requires a completed success. Callers cannot supply a GitHub run id. The first pullRequest or branch given binds the request; update_request done then requires a pass on that PR/branch's current GitHub head. Optional approach (slug) and agentId credit a pass to the reuse scan. The third failed run blocks the request and posts one BLOCKED note."
+            ? "Dispatch pinned checker.yml from the trusted workers main ref against a commit SHA. Returns in_progress until GitHub has a conclusion; ready requires a completed success. Callers cannot supply a GitHub run id. The first pullRequest or branch given binds the request (one, never both; it must be an open PR or an existing branch in the request's repo); the request moves to ready_for_review only on a pass whose sha is that PR/branch's current GitHub head (onBoundHead), and update_request done requires the same. Optional approach (slug) and agentId credit a pass to the reuse scan. The third failed run blocks the request and posts one BLOCKED note."
             : (BOARD_TOOL_DESCRIPTIONS[name] ?? `Dexter connector tool ${name}.`),
     inputSchema: { type: "object", additionalProperties: true },
   }));

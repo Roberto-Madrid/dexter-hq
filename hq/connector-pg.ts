@@ -18,7 +18,7 @@ import {
   type ConnectorStore,
   type ModelResolutionRow,
 } from "./connector-store.ts";
-import { ventureMetaFrom, type RosterRow } from "./connector-store.ts";
+import { assertSingleBinding, ventureMetaFrom, type RosterRow } from "./connector-store.ts";
 
 const AGENT_COLUMNS = "id, owner_id, bot_id, cursor_handle, repo, role, family, status, idempotency_key, result, created_at";
 // One lock for every launch: the global cap spans all repos, so a per-repo key would not be enough.
@@ -1012,6 +1012,7 @@ function postFromRow(row: PostRow): ConnectorPost {
 }
 
 async function persistRequest(client: pg.Client, row: ConnectorRequest): Promise<void> {
+  assertSingleBinding(row);
   await client.query(
     `insert into public.requests (id, owner_id, goal, crew, tier, definition_of_done, status, caps)
      values ($1,$2,$3,$4,$5,$6,$7::public.request_status, $8::jsonb)

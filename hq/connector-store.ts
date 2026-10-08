@@ -633,6 +633,7 @@ export function createMemoryConnectorStore(seed?: {
       return { ok: true, used: used + 1 };
     },
     async saveRequest(row) {
+      assertSingleBinding(row);
       requests.set(row.id, { ...row });
     },
     async getRequest(id) {
@@ -783,4 +784,10 @@ export function createMemoryConnectorStore(seed?: {
       return { switched: true, current: to };
     },
   };
+}
+
+/** A request binds to a PR or a branch, never both. Both stores refuse the write. */
+// dexter-shortcut: a legacy row saved with both (before this rule) now fails every save until one field is cleared; upgrade path: a one-off data fix that clears the branch on such rows, then a DB check constraint.
+export function assertSingleBinding(row: { pullRequest?: string | null; branch?: string | null }): void {
+  if (row.pullRequest && row.branch) throw new Error("binding_pr_and_branch");
 }
