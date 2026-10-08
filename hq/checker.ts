@@ -31,11 +31,47 @@ export type CheckerOutcome = {
   evidence: string[];
 };
 
+export type RequestBinding = { pullRequest: string | null; branch: string | null };
+
 export type CheckerGateway = {
   dispatch(input: CheckerDispatchInput): Promise<CheckerDispatchResult>;
   find(input: { repo: string; sha: string; nonce: string }): Promise<string | null>;
   outcome(input: { githubRunId: string; repo: string; sha: string; nonce: string }): Promise<CheckerOutcome>;
+  /** Current head commit of the request's PR (preferred) or branch on GitHub. Throws or returns null when unknown. */
+  head?(input: { repo: string } & RequestBinding): Promise<string | null>;
 };
+
+const BRANCH_NAME = /^(?!\/)(?!.*\.\.)(?!.*\/\/)(?!.*\/$)[A-Za-z0-9._/-]{1,200}$/;
+
+/** Reads a PR number or branch name from tool args. Missing fields are null; malformed ones are invalid. */
+export function bindingFromArgs(args: Record<string, unknown>): { ok: true; binding: RequestBinding } | { ok: false } {
+  const rawPr = args.pullRequest ?? args.pull_request;
+  const rawBranch = args.branch;
+  let pullRequest: string | null = null;
+  let branch: string | null = null;
+  if (rawPr !== undefined && rawPr !== null && rawPr !== "") {
+    const text = String(rawPr).trim().replace(/^#/, "");
+    if (!/^[1-9][0-9]{0,9}$/.test(text)) return { ok: false };
+    pullRequest = text;
+  }
+  if (rawBranch !== undefined && rawBranch !== null && rawBranch !== "") {
+    if (typeof rawBranch !== "string" || !BRANCH_NAME.test(rawBranch)) return { ok: false };
+    branch = rawBranch;
+  }
+  return { ok: true, binding: { pullRequest, branch } };
+}
+
+export function requestIsBound(request: { pullRequest?: string | null; branch?: string | null }): boolean {
+  return Boolean(request.pullRequest || request.branch);
+}
+
+/** A bound request keeps its PR/branch: any supplied field must match what is stored. */
+export function bindingMatches(request: { pullRequest?: string | null; branch?: string | null }, supplied: RequestBinding): boolean {
+  if (!requestIsBound(request)) return true;
+  if (supplied.pullRequest && supplied.pullRequest !== (request.pullRequest ?? null)) return false;
+  if (supplied.branch && supplied.branch !== (request.branch ?? null)) return false;
+  return true;
+}
 
 type FetchLike = typeof fetch;
 
@@ -200,6 +236,19 @@ export function createGhChecker(options: {
 
   return {
     find,
+    async head(input) {
+      const path = input.pullRequest
+        ? `pulls/${encodeURIComponent(input.pullRequest)}`
+        : input.branch
+          ? `git/ref/heads/${input.branch.split("/").map(encodeURIComponent).join("/")}`
+          : null;
+      if (!path) return null;
+      const response = await fetchImpl(`${apiBase}/repos/${input.repo}/${path}`, { headers });
+      if (response.status >= 300) throw new Error(`head_lookup_${response.status}`);
+      const body = asRecord(await response.json());
+      const sha = input.pullRequest ? asRecord(body.head).sha : asRecord(body.object).sha;
+      return typeof sha === "string" && /^[0-9a-f]{40}$/i.test(sha) ? sha.toLowerCase() : null;
+    },
     async dispatch(input) {
       const existing = await find(input);
       if (existing) {

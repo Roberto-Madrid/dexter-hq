@@ -199,6 +199,19 @@ function queuedChecker(): CheckerGateway {
   };
 }
 
+function headChecker(head: string | Error | null, calls: Record<string, unknown>[] = []): CheckerGateway {
+  return {
+    ...passingChecker(),
+    async head(input) {
+      calls.push({ ...input });
+      if (head instanceof Error) throw head;
+      return head;
+    },
+  };
+}
+
+const HEAD_SHA = "cccccccccccccccccccccccccccccccccccccccc";
+
 describe("Stage 2 quality loop", () => {
   it("runs pinned checks and moves the request to ready_for_review with evidence", async () => {
     const store = storeForLead();
@@ -880,6 +893,9 @@ describe("Stage 2 quality loop", () => {
         }
         return { state: "in_progress", conclusion: null, githubRunId: input.githubRunId, evidence: [] };
       },
+      async head() {
+        return SHA;
+      },
     };
     const store = storeForLead();
     const deps = depsFor(store, { checker, checkerConfigured: true });
@@ -887,6 +903,7 @@ describe("Stage 2 quality loop", () => {
     const opened = await callConnectorTool(deps, auth, "open_request", {
       goal: "Land it",
       repo: "owner/demo",
+      pullRequest: "27",
       card: card(),
     });
     const requestId = String(opened.structuredContent.requestId);
@@ -901,6 +918,7 @@ describe("Stage 2 quality loop", () => {
     const next = await callConnectorTool(deps, auth, "open_request", {
       goal: "Land again",
       repo: "owner/demo",
+      pullRequest: "28",
       card: card(),
     });
     const requestB = String(next.structuredContent.requestId);
@@ -923,12 +941,13 @@ describe("Stage 2 quality loop", () => {
 
   it("limits assign to the CEO and lets the CEO update a request", async () => {
     const store = storeForLead();
-    const deps = depsFor(store, { checker: passingChecker(), checkerConfigured: true });
+    const deps = depsFor(store, { checker: headChecker(SHA), checkerConfigured: true });
     const lead = await store.authenticate(hashBotToken(TOKEN));
     const ceo = await store.authenticate(hashBotToken(CEO_TOKEN));
     const opened = await callConnectorTool(deps, lead, "open_request", {
       goal: "Assign later",
       repo: "owner/demo",
+      pullRequest: "29",
       card: card(),
     });
     const requestId = String(opened.structuredContent.requestId);
@@ -943,5 +962,288 @@ describe("Stage 2 quality loop", () => {
       evidence: ["preview"],
     });
     expect(done.structuredContent).toMatchObject({ status: "updated", requestStatus: "done" });
+  });
+});
+
+describe("done is tied to the request's own PR or branch head", () => {
+  async function openBound(
+    deps: ReturnType<typeof depsFor>,
+    auth: Awaited<ReturnType<ReturnType<typeof storeForLead>["authenticate"]>>,
+    binding: Record<string, unknown> = { pullRequest: "27" },
+  ) {
+    const opened = await callConnectorTool(deps, auth, "open_request", {
+      goal: "Bound request",
+      repo: "owner/demo",
+      card: card(),
+      ...binding,
+    });
+    return String(opened.structuredContent.requestId);
+  }
+
+  it("refuses done after a pass on an arbitrary sha that is not the bound PR head", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: headChecker(HEAD_SHA, calls), checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const requestId = await openBound(deps, auth);
+    const checks = await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    expect(checks.structuredContent.ready).toBe(true);
+    const done = await callConnectorTool(deps, auth, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(done.isError).toBe(true);
+    expect(done.structuredContent).toMatchObject({
+      status: "refused",
+      reason: "done_requires_checks_on_head",
+      head: HEAD_SHA,
+      checkedSha: SHA,
+    });
+    expect(calls).toEqual([{ repo: "owner/demo", pullRequest: "27", branch: null }]);
+    expect((await store.getRequest(requestId))?.status).not.toBe("done");
+  });
+
+  it("allows done when the passing check is on the bound PR head", async () => {
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: headChecker(SHA), checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const requestId = await openBound(deps, auth, { pull_request: "#27" });
+    expect((await store.getRequest(requestId))?.pullRequest).toBe("27");
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    const done = await callConnectorTool(deps, auth, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(done.structuredContent).toMatchObject({ status: "updated", requestStatus: "done" });
+  });
+
+  it("binds a branch on the first request_checks and compares against that branch head", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: headChecker(SHA, calls), checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const requestId = await openBound(deps, auth, {});
+    await callConnectorTool(deps, auth, "request_checks", {
+      requestId,
+      repo: "owner/demo",
+      sha: SHA,
+      branch: "feature/done-head",
+    });
+    expect((await store.getRequest(requestId))?.branch).toBe("feature/done-head");
+    const done = await callConnectorTool(deps, auth, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(done.structuredContent).toMatchObject({ status: "updated", requestStatus: "done" });
+    expect(calls).toEqual([{ repo: "owner/demo", pullRequest: null, branch: "feature/done-head" }]);
+  });
+
+  it("refuses to rebind a request to a different PR or branch", async () => {
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: headChecker(SHA), checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const requestId = await openBound(deps, auth);
+    const swapped = await callConnectorTool(deps, auth, "request_checks", {
+      requestId,
+      repo: "owner/demo",
+      sha: SHA,
+      pullRequest: "99",
+    });
+    expect(swapped.structuredContent).toMatchObject({ status: "refused", reason: "binding_mismatch" });
+    const branch = await callConnectorTool(deps, auth, "request_checks", {
+      requestId,
+      repo: "owner/demo",
+      sha: SHA,
+      branch: "known-good",
+    });
+    expect(branch.structuredContent).toMatchObject({ status: "refused", reason: "binding_mismatch" });
+    expect((await store.getRequest(requestId))?.checkRun).toBeFalsy();
+  });
+
+  it("refuses an invalid binding at open_request", async () => {
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: headChecker(SHA), checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const opened = await callConnectorTool(deps, auth, "open_request", {
+      goal: "Bad binding",
+      repo: "owner/demo",
+      card: card(),
+      branch: "../../etc",
+    });
+    expect(opened.structuredContent).toMatchObject({ status: "refused", reason: "invalid_binding" });
+  });
+
+  it("fails closed when no PR or branch is bound", async () => {
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: headChecker(SHA), checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const requestId = await openBound(deps, auth, {});
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    const done = await callConnectorTool(deps, auth, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(done.structuredContent).toMatchObject({ status: "refused", reason: "done_requires_binding" });
+    expect((await store.getRequest(requestId))?.status).not.toBe("done");
+  });
+
+  it("fails closed when the GitHub head lookup fails or is unavailable", async () => {
+    for (const [checker, reason] of [
+      [headChecker(new Error("head_lookup_404")), "head_lookup_failed"],
+      [headChecker(null), "head_lookup_failed"],
+      [passingChecker(), "head_lookup_unavailable"],
+    ] as const) {
+      const store = storeForLead();
+      const deps = depsFor(store, { checker, checkerConfigured: true });
+      const auth = await store.authenticate(hashBotToken(TOKEN));
+      const requestId = await openBound(deps, auth);
+      await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+      const done = await callConnectorTool(deps, auth, "update_request", {
+        requestId,
+        status: "done",
+        evidence: ["preview"],
+      });
+      expect(done.structuredContent).toMatchObject({ status: "refused", reason });
+      expect((await store.getRequest(requestId))?.status).not.toBe("done");
+    }
+  });
+
+  it("reopening after done clears the pass, so done again needs a fresh check", async () => {
+    let dispatches = 0;
+    const base = headChecker(SHA);
+    const checker: CheckerGateway = {
+      ...base,
+      async dispatch(input) {
+        dispatches += 1;
+        return base.dispatch(input);
+      },
+    };
+    const store = storeForLead();
+    const deps = depsFor(store, { checker, checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const requestId = await openBound(deps, auth);
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    const first = await callConnectorTool(deps, auth, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(first.structuredContent.requestStatus).toBe("done");
+    const reopened = await callConnectorTool(deps, auth, "update_request", { requestId, status: "queued" });
+    expect(reopened.structuredContent.requestStatus).toBe("queued");
+    expect((await store.getRequest(requestId))?.checkRun ?? null).toBeNull();
+    const again = await callConnectorTool(deps, auth, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(again.structuredContent).toMatchObject({ status: "refused", reason: "done_requires_checks" });
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    expect(dispatches).toBe(2);
+    const redone = await callConnectorTool(deps, auth, "update_request", {
+      requestId,
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(redone.structuredContent.requestStatus).toBe("done");
+  });
+
+  it("unassigned request: owner bots are refused, the CEO may update, done still needs a check", async () => {
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: headChecker(SHA), checkerConfigured: true });
+    const lead = await store.authenticate(hashBotToken(TOKEN));
+    const ceo = await store.authenticate(hashBotToken(CEO_TOKEN));
+    await store.saveRequest({
+      id: "unassigned-1",
+      ownerId: OWNER,
+      goal: "Nobody owns this",
+      status: "queued",
+      card: null,
+      evidence: [],
+      assignedBotId: null,
+      repo: "owner/demo",
+      notices: [],
+      pullRequest: "30",
+      branch: null,
+    });
+    const byLead = await callConnectorTool(deps, lead, "update_request", { requestId: "unassigned-1", status: "running" });
+    expect(byLead.structuredContent.reason).toBe("not_own_request");
+    const checks = await callConnectorTool(deps, lead, "request_checks", {
+      requestId: "unassigned-1",
+      repo: "owner/demo",
+      sha: SHA,
+    });
+    expect(checks.structuredContent.reason).toBe("not_own_request");
+    const byCeo = await callConnectorTool(deps, ceo, "update_request", { requestId: "unassigned-1", status: "running" });
+    expect(byCeo.structuredContent).toMatchObject({ status: "updated", requestStatus: "running" });
+    const ceoDone = await callConnectorTool(deps, ceo, "update_request", {
+      requestId: "unassigned-1",
+      status: "done",
+      evidence: ["preview"],
+    });
+    expect(ceoDone.structuredContent.reason).toBe("done_requires_checks");
+  });
+
+  it("CEO-claim fields in the arguments do not grant CEO rights", async () => {
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: headChecker(SHA), checkerConfigured: true });
+    const lead = await store.authenticate(hashBotToken(TOKEN));
+    const other = await store.authenticate(hashBotToken(OTHER_TOKEN));
+    const requestId = await openBound(deps, lead);
+    const claims = { kind: "ceo", role: "ceo", botId: CEO, bot_id: CEO, actor: "unit-ceo", ceo: true };
+    const update = await callConnectorTool(deps, other, "update_request", { requestId, status: "running", ...claims });
+    expect(update.structuredContent.reason).toBe("not_own_request");
+    const assign = await callConnectorTool(deps, other, "assign", { requestId, ...claims, botId: OTHER });
+    expect(assign.structuredContent.reason).toBe("ceo_only");
+    expect((await store.getRequest(requestId))?.assignedBotId).toBe(BOT);
+  });
+
+  it("rejects status variants that are not exact request states", async () => {
+    const store = storeForLead();
+    const deps = depsFor(store, { checker: headChecker(SHA), checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const requestId = await openBound(deps, auth);
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    for (const status of ["DONE", "Done", " done", "done ", "complete", "merged"]) {
+      const result = await callConnectorTool(deps, auth, "update_request", { requestId, status, evidence: ["x"] });
+      expect(result.structuredContent.reason).toBe("invalid_status");
+    }
+    const ready = await callConnectorTool(deps, auth, "update_request", { requestId, status: "ready_for_review" });
+    expect(ready.structuredContent.reason).toBe("ready_requires_checks");
+    expect((await store.getRequest(requestId))?.status).toBe("ready_for_review");
+  });
+
+  it("looks up the PR head and the branch head through the checker's GitHub token", async () => {
+    const urls: string[] = [];
+    const auths: string[] = [];
+    const checker = createGhChecker({
+      token: "unit-token",
+      hostRepo: "owner/workers",
+      apiBase: "https://example.test",
+      fetchImpl: (async (url: string, init?: RequestInit) => {
+        urls.push(String(url));
+        auths.push(String((init?.headers as Record<string, string>)?.Authorization));
+        if (String(url).endsWith("/pulls/27")) {
+          return new Response(JSON.stringify({ head: { sha: SHA.toUpperCase() } }), { status: 200 });
+        }
+        if (String(url).includes("/git/ref/heads/")) {
+          return new Response(JSON.stringify({ object: { sha: HEAD_SHA, type: "commit" } }), { status: 200 });
+        }
+        return new Response("{}", { status: 404 });
+      }) as typeof fetch,
+    });
+    expect(await checker.head?.({ repo: "owner/demo", pullRequest: "27", branch: null })).toBe(SHA);
+    expect(await checker.head?.({ repo: "owner/demo", pullRequest: null, branch: "feature/x" })).toBe(HEAD_SHA);
+    await expect(checker.head?.({ repo: "owner/demo", pullRequest: "404", branch: null })).rejects.toThrow("head_lookup_404");
+    expect(urls).toEqual([
+      "https://example.test/repos/owner/demo/pulls/27",
+      "https://example.test/repos/owner/demo/git/ref/heads/feature/x",
+      "https://example.test/repos/owner/demo/pulls/404",
+    ]);
+    expect(auths.every((value) => value === "Bearer unit-token")).toBe(true);
   });
 });

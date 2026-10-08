@@ -81,6 +81,8 @@ export type ConnectorRequest = {
   repo: string | null;
   notices: string[];
   checkRun?: ConnectorCheckRun | null;
+  pullRequest?: string | null;
+  branch?: string | null;
 };
 
 export type ConnectorApproval = {
