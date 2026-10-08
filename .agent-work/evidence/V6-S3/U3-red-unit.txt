@@ -1,0 +1,489 @@
+
+ RUN  v3.2.4 /workspace/hq-stage3-u3
+
+ ❯ tests/unit/ventures.test.ts (24 tests | 24 failed) 77ms
+   × ventures: owner-only > refuses a request with no owner session 24ms
+     → expected 501 to be 401 // Object.is equality
+   × ventures: owner-only > refuses a bot token, as a bearer header or as a cookie 2ms
+     → expected 501 to be 401 // Object.is equality
+   × ventures: owner-only > refuses a session signed with another secret 2ms
+     → expected 501 to be 401 // Object.is equality
+   × ventures: create > creates a lead with the venture repo and lead scopes, and returns the token once 2ms
+     → expected 501 to be 201 // Object.is equality
+   × ventures: create > lets the new token reach /api/mcp with lead scopes and refuses other repos 11ms
+     → expected { id: 'dexter-connector-stub', …(4) } to match object { kind: 'lead', name: 'tickets-lead' }
+(3 matching properties omitted from actual)
+   × ventures: create > refuses a duplicate venture name, repo, or lead name inline 2ms
+     → expected 501 to be 201 // Object.is equality
+   × ventures: create > refuses an unreachable repo and a failed lookup differently, and creates nothing 2ms
+     → expected 501 to be 422 // Object.is equality
+   × ventures: create > refuses while STOP ALL is on without checking the repo 2ms
+     → expected 501 to be 409 // Object.is equality
+   × ventures: create > validates the fields 2ms
+     → expected 501 to be 400 // Object.is equality
+   × ventures: token shown once and idempotent create > never returns the token from the list or from a retried create 3ms
+     → expected 501 to be 200 // Object.is equality
+   × ventures: token shown once and idempotent create > mints exactly one lead when two creates race 3ms
+     → expected [ 501, 501 ] to deeply equal [ 201, 409 ]
+   × ventures: rotate token > invalidates the old token at once and returns the new one once 2ms
+     → Cannot read properties of undefined (reading 'botId')
+   × ventures: rotate token > rotates a lead made by hand and refuses an unknown or non-lead bot 1ms
+     → expected 501 to be 200 // Object.is equality
+   × ventures: rotate token > refuses rotation from a bot token 1ms
+     → expected 501 to be 401 // Object.is equality
+   × ventures: rotate token > keeps a token rotated during STOP ALL suspended until Resume 3ms
+     → expected 501 to be 200 // Object.is equality
+   × ventures: STOP ALL covers new leads > suspends a new lead's token and Resume restores it 2ms
+     → expected undefined to be true // Object.is equality
+   × ventures: status > applies the Live / Wait / Never seen thresholds 2ms
+     → not_implemented
+   × ventures: status > lists every venture with its lead status, heartbeat age, and repo 2ms
+     → expected undefined to be false // Object.is equality
+   × ventures: Dexter's roster > gives the CEO every bot with kind, repos and status, and no token material 2ms
+     → Cannot read properties of undefined (reading 'map')
+   × ventures: Dexter's roster > gives a lead no roster and no other venture's repo 1ms
+     → expected true to be false // Object.is equality
+   × GitHub repo check > calls the GitHub repo endpoint with the HQ token 1ms
+     → not_implemented
+   × GitHub repo check > maps 404 to not reachable and every other failure to unavailable 0ms
+     → not_implemented
+   × GitHub repo check > fails closed with no token and on a timeout 1ms
+     → not_implemented
+   × /api/mcp with a revoked token > answers 401 for an unknown bearer token and still serves the anonymous stub 2ms
+     → expected 200 to be 401 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 24 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: owner-only > refuses a request with no owner session
+AssertionError: expected 501 to be 401 // Object.is equality
+
+- Expected
++ Received
+
+- 401
++ 501
+
+ ❯ tests/unit/ventures.test.ts:173:68
+    171|   it("refuses a request with no owner session", async () => {
+    172|     const store = seedStore();
+    173|     expect((await call(deps(store), "GET", undefined, {})).status).toB…
+       |                                                                    ^
+    174|     expect((await call(deps(store), "POST", TICKETS, {})).status).toBe…
+    175|     expect((await store.listBots()).length).toBe(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: owner-only > refuses a bot token, as a bearer header or as a cookie
+AssertionError: expected 501 to be 401 // Object.is equality
+
+- Expected
++ Received
+
+- 401
++ 501
+
+ ❯ tests/unit/ventures.test.ts:181:27
+    179|     const store = seedStore();
+    180|     const bearer = await call(deps(store), "POST", TICKETS, { authoriz…
+    181|     expect(bearer.status).toBe(401);
+       |                           ^
+    182|     const cookie = await call(deps(store), "POST", TICKETS, { cookie: …
+    183|     expect(cookie.status).toBe(401);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: owner-only > refuses a session signed with another secret
+AssertionError: expected 501 to be 401 // Object.is equality
+
+- Expected
++ Received
+
+- 401
++ 501
+
+ ❯ tests/unit/ventures.test.ts:192:83
+    190|     const store = seedStore();
+    191|     const forged = `dexter_session=${issueSession(OWNER_EMAIL, "other-…
+    192|     expect((await call(deps(store), "POST", TICKETS, { cookie: forged …
+       |                                                                                   ^
+    193|   });
+    194| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: create > creates a lead with the venture repo and lead scopes, and returns the token once
+AssertionError: expected 501 to be 201 // Object.is equality
+
+- Expected
++ Received
+
+- 201
++ 501
+
+ ❯ tests/unit/ventures.test.ts:200:28
+    198|     const store = seedStore();
+    199|     const created = await call(deps(store), "POST", TICKETS);
+    200|     expect(created.status).toBe(201);
+       |                            ^
+    201|     expect(created.headers.get("cache-control")).toBe("no-store");
+    202|     const token = String(created.json.token);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: create > lets the new token reach /api/mcp with lead scopes and refuses other repos
+AssertionError: expected { id: 'dexter-connector-stub', …(4) } to match object { kind: 'lead', name: 'tickets-lead' }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "kind": "lead",
+-   "name": "tickets-lead",
++   "kind": "stub",
++   "name": "Dexter connector",
+  }
+
+ ❯ tests/unit/ventures.test.ts:233:43
+    231|     expect(whoami.status).toBe(200);
+    232|     const body = (await whoami.json()) as { result: { structuredConten…
+    233|     expect(body.result.structuredContent).toMatchObject({ kind: "lead"…
+       |                                           ^
+    234| 
+    235|     const auth = await store.authenticate(hashBotToken(token));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: create > refuses a duplicate venture name, repo, or lead name inline
+AssertionError: expected 501 to be 201 // Object.is equality
+
+- Expected
++ Received
+
+- 201
++ 501
+
+ ❯ tests/unit/ventures.test.ts:247:63
+    245|   it("refuses a duplicate venture name, repo, or lead name inline", as…
+    246|     const store = seedStore();
+    247|     expect((await call(deps(store), "POST", TICKETS)).status).toBe(201…
+       |                                                               ^
+    248|     const name = await call(deps(store), "POST", { ...TICKETS, name: "…
+    249|     expect(name.status).toBe(409);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: create > refuses an unreachable repo and a failed lookup differently, and creates nothing
+AssertionError: expected 501 to be 422 // Object.is equality
+
+- Expected
++ Received
+
+- 422
++ 501
+
+ ❯ tests/unit/ventures.test.ts:264:28
+    262|     const store = seedStore();
+    263|     const missing = await call(deps(store, { repoCheck: async () => "n…
+    264|     expect(missing.status).toBe(422);
+       |                            ^
+    265|     expect(missing.json).toMatchObject({ status: "refused", reason: "r…
+    266|     const down = await call(deps(store, { repoCheck: async () => "unav…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: create > refuses while STOP ALL is on without checking the repo
+AssertionError: expected 501 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 501
+
+ ❯ tests/unit/ventures.test.ts:286:28
+    284|     const calls: string[] = [];
+    285|     const stopped = await call(deps(store, { repoCheck: reachable(call…
+    286|     expect(stopped.status).toBe(409);
+       |                            ^
+    287|     expect(stopped.json).toMatchObject({ status: "refused", reason: "s…
+    288|     expect(calls).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: create > validates the fields
+AssertionError: expected 501 to be 400 // Object.is equality
+
+- Expected
++ Received
+
+- 400
++ 501
+
+ ❯ tests/unit/ventures.test.ts:295:25
+    293|     const store = seedStore();
+    294|     const repo = await call(deps(store), "POST", { ...TICKETS, repo: "…
+    295|     expect(repo.status).toBe(400);
+       |                         ^
+    296|     expect(repo.json).toMatchObject({ reason: "invalid_input", field: …
+    297|     const name = await call(deps(store), "POST", { ...TICKETS, name: "…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: token shown once and idempotent create > never returns the token from the list or from a retried create
+AssertionError: expected 501 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 501
+
+ ❯ tests/unit/ventures.test.ts:314:25
+    312|     const token = String(first.json.token);
+    313|     const list = await call(deps(store), "GET");
+    314|     expect(list.status).toBe(200);
+       |                         ^
+    315|     expect(JSON.stringify(list.json)).not.toContain(token);
+    316|     expect(JSON.stringify(list.json)).not.toContain(hashBotToken(token…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: token shown once and idempotent create > mints exactly one lead when two creates race
+AssertionError: expected [ 501, 501 ] to deeply equal [ 201, 409 ]
+
+- Expected
++ Received
+
+  [
+-   201,
+-   409,
++   501,
++   501,
+  ]
+
+ ❯ tests/unit/ventures.test.ts:338:55
+    336|       call(deps(store), "POST", { ...TICKETS, idempotencyKey: "b" }),
+    337|     ]);
+    338|     expect(results.map((item) => item.status).sort()).toEqual([201, 40…
+       |                                                       ^
+    339|     expect((await store.listBots()).filter((bot) => bot.name === "tick…
+    340|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: rotate token > invalidates the old token at once and returns the new one once
+TypeError: Cannot read properties of undefined (reading 'botId')
+ ❯ tests/unit/ventures.test.ts:348:76
+    346|     const created = await call(deps(store), "POST", TICKETS);
+    347|     const oldToken = String(created.json.token);
+    348|     const botId = String((created.json.venture as Record<string, unkno…
+       |                                                                            ^
+    349| 
+    350|     const rotated = await call(deps(store), "POST", { action: "rotate_…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: rotate token > rotates a lead made by hand and refuses an unknown or non-lead bot
+AssertionError: expected 501 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 501
+
+ ❯ tests/unit/ventures.test.ts:375:28
+    373|     const store = seedStore();
+    374|     const rotated = await call(deps(store), "POST", { action: "rotate_…
+    375|     expect(rotated.status).toBe(200);
+       |                            ^
+    376|     expect(await store.authenticate(hashBotToken(BARBER_TOKEN))).toBeN…
+    377|     const unknown = await call(deps(store), "POST", { action: "rotate_…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: rotate token > refuses rotation from a bot token
+AssertionError: expected 501 to be 401 // Object.is equality
+
+- Expected
++ Received
+
+- 401
++ 501
+
+ ❯ tests/unit/ventures.test.ts:388:28
+    386|     const store = seedStore();
+    387|     const refused = await call(deps(store), "POST", { action: "rotate_…
+    388|     expect(refused.status).toBe(401);
+       |                            ^
+    389|     expect(await store.authenticate(hashBotToken(BARBER_TOKEN))).not.t…
+    390|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: rotate token > keeps a token rotated during STOP ALL suspended until Resume
+AssertionError: expected 501 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 501
+
+ ❯ tests/unit/ventures.test.ts:397:28
+    395|     await stopAll(hq, hqDeps(store));
+    396|     const rotated = await call(deps(store), "POST", { action: "rotate_…
+    397|     expect(rotated.status).toBe(200);
+       |                            ^
+    398|     const token = String(rotated.json.token);
+    399|     expect((await store.authenticate(hashBotToken(token)))?.suspended)…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: STOP ALL covers new leads > suspends a new lead's token and Resume restores it
+AssertionError: expected undefined to be true // Object.is equality
+
+- Expected: 
+true
+
++ Received: 
+undefined
+
+ ❯ tests/unit/ventures.test.ts:411:72
+    409|     const hq = new MemoryStore();
+    410|     await stopAll(hq, hqDeps(store));
+    411|     expect((await store.authenticate(hashBotToken(token)))?.suspended)…
+       |                                                                        ^
+    412|     await resumeAll(hq, hqDeps(store));
+    413|     expect((await store.authenticate(hashBotToken(token)))?.suspended)…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: status > applies the Live / Wait / Never seen thresholds
+Error: not_implemented
+ ❯ heartbeatStatus hq/ventures.ts:20:9
+     18|   _now: Date,
+     19| ): { status: "live" | "wait" | "never_seen"; heartbeatAgeSeconds: numb…
+     20|   throw new Error("not_implemented");
+       |         ^
+     21| }
+     22| 
+ ❯ tests/unit/ventures.test.ts:422:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: status > lists every venture with its lead status, heartbeat age, and repo
+AssertionError: expected undefined to be false // Object.is equality
+
+- Expected: 
+false
+
++ Received: 
+undefined
+
+ ❯ tests/unit/ventures.test.ts:438:31
+    436|     const token = String(created.json.token);
+    437|     const list = await call(deps(store), "GET");
+    438|     expect(list.json.stopped).toBe(false);
+       |                               ^
+    439|     const ventures = list.json.ventures as Record<string, unknown>[];
+    440|     expect(ventures.map((item) => [item.name, item.repo, item.leadName…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: Dexter's roster > gives the CEO every bot with kind, repos and status, and no token material
+TypeError: Cannot read properties of undefined (reading 'map')
+ ❯ tests/unit/ventures.test.ts:458:17
+    456|     const context = await callConnectorTool(connectorDeps(store), ceo,…
+    457|     const bots = context.structuredContent.bots as Record<string, unkn…
+    458|     expect(bots.map((bot) => [bot.name, bot.kind, bot.repos, bot.statu…
+       |                 ^
+    459|       ["Dexter", "ceo", [], "never_seen"],
+    460|       ["barber-lead", "lead", ["Roberto-Madrid/dexter-barber"], "live"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > ventures: Dexter's roster > gives a lead no roster and no other venture's repo
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/unit/ventures.test.ts:476:29
+    474|     const lead = await store.authenticate(hashBotToken(token));
+    475|     const context = await callConnectorTool(connectorDeps(store), lead…
+    476|     expect(context.isError).toBe(false);
+       |                             ^
+    477|     expect(context.structuredContent).not.toHaveProperty("bots");
+    478|     const text = JSON.stringify(context);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > GitHub repo check > calls the GitHub repo endpoint with the HQ token
+Error: not_implemented
+ ❯ hq/ventures.ts:30:11
+     28| }): RepoCheck {
+     29|   return async () => {
+     30|     throw new Error("not_implemented");
+       |           ^
+     31|   };
+     32| }
+ ❯ tests/unit/ventures.test.ts:499:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > GitHub repo check > maps 404 to not reachable and every other failure to unavailable
+Error: not_implemented
+ ❯ hq/ventures.ts:30:11
+     28| }): RepoCheck {
+     29|   return async () => {
+     30|     throw new Error("not_implemented");
+       |           ^
+     31|   };
+     32| }
+ ❯ tests/unit/ventures.test.ts:504:77
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > GitHub repo check > fails closed with no token and on a timeout
+Error: not_implemented
+ ❯ hq/ventures.ts:30:11
+     28| }): RepoCheck {
+     29|   return async () => {
+     30|     throw new Error("not_implemented");
+       |           ^
+     31|   };
+     32| }
+ ❯ tests/unit/ventures.test.ts:519:89
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/24]⎯
+
+ FAIL  tests/unit/ventures.test.ts > /api/mcp with a revoked token > answers 401 for an unknown bearer token and still serves the anonymous stub
+AssertionError: expected 200 to be 401 // Object.is equality
+
+- Expected
++ Received
+
+- 401
++ 200
+
+ ❯ tests/unit/ventures.test.ts:537:28
+    535|     const store = seedStore();
+    536|     const unknown = await mcp("dxt_not_a_live_token", "whoami", {}, st…
+    537|     expect(unknown.status).toBe(401);
+       |                            ^
+    538|     const anonymous = await handleMcpHttp(
+    539|       new Request("http://127.0.0.1/api/mcp", {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/24]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  24 failed (24)
+   Start at  01:48:00
+   Duration  1.40s (transform 418ms, setup 0ms, collect 792ms, tests 77ms, environment 0ms, prepare 134ms)
+

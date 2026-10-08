@@ -11,6 +11,7 @@ import { parseRoleSheet } from "../kernel/role-sheet.ts";
 import { REQUEST_STATES, type PlanCard, type RoleSheet, type RunHandle, type Runtime, type Verdict } from "../kernel/types.ts";
 import {
   CONNECTOR_TOOLS,
+  botRoster,
   createMemoryConnectorStore,
   isActiveAgent,
   withoutFollowupClaim,
@@ -170,6 +171,7 @@ async function whoamiBody(deps: ConnectorDeps, auth: ConnectorAuth | null): Prom
     id: auth.id,
     name: auth.name,
     kind: auth.kind,
+    repos: auth.repos,
     scopes: auth.scopes,
     stopped,
     capsLeft: capsLeft(agents, null),
@@ -925,8 +927,10 @@ export async function callConnectorTool(
     const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
     const events = await deps.store.listEvents();
     const why = requestId ? decisionTrail(events, requestId) : [];
-    const body = { ...notes.body, why, requestId };
-    await record(deps, auth, name, notes.target, { ...notes.event, why: why.length });
+    // Only Dexter sees the roster (who leads which repo). A lead never gets other bots, repos, or tokens.
+    const bots = auth.kind === "ceo" ? await botRoster(deps.store, new Date((deps.now ?? (() => new Date().toISOString()))())) : null;
+    const body = { ...notes.body, why, requestId, ...(bots ? { bots } : {}) };
+    await record(deps, auth, name, notes.target, { ...notes.event, why: why.length, ...(bots ? { bots: bots.length } : {}) });
     return toolResult(body);
   }
   const body = { status: "error", reason: "unknown_tool" };

@@ -13,6 +13,7 @@ import {
   type ConnectorRequest,
   type ConnectorStore,
 } from "./connector-store.ts";
+import { ventureMetaFrom, type RosterRow } from "./connector-store.ts";
 
 const AGENT_COLUMNS = "id, owner_id, bot_id, cursor_handle, repo, role, family, status, idempotency_key, result, created_at";
 // One lock for every launch: the global cap spans all repos, so a per-repo key would not be enough.
@@ -122,6 +123,61 @@ function agentFromRow(row: {
     result: asRecord(row.result),
     ...(row.created_at ? { createdAt: new Date(row.created_at).toISOString() } : {}),
   };
+}
+
+/** One lock for every venture create and rotate, so duplicate checks and inserts cannot interleave. */
+const VENTURE_LOCK_SQL = "select pg_advisory_xact_lock(hashtext('dexter.ventures'))";
+// Same row the connector's stopped() reads. `for share` makes a concurrent STOP ALL wait for this
+// transaction, so its token suspend that follows also sees the row written here.
+const STOP_FOR_SHARE_SQL = "select stop_all from public.control limit 1 for share";
+
+async function readRoster(client: pg.Client): Promise<RosterRow[]> {
+  // dexter-shortcut: venture name/brief live in the newest add_venture event (no ventures table, and
+  // events has no index on action, so this scans events once per read); upgrade path: a ventures table or
+  // an events(action, target) index in a migration once events grows large.
+  const found = await client.query<{
+    id: string;
+    owner_id: string;
+    name: string;
+    kind: string;
+    repos: unknown;
+    tools: unknown;
+    current_task: string | null;
+    heartbeat_at: Date | string | null;
+    token_issued_at: Date | string | null;
+    venture: unknown;
+  }>(
+    `with v as (
+       select distinct on (target) target, result
+       from public.events where action = 'add_venture'
+       order by target, at desc
+     ), t as (
+       select bot_id, max(created_at) as issued from public.bot_tokens group by bot_id
+     )
+     select b.id, b.owner_id, b.name, b.kind, b.repos, b.tools, b.current_task, b.heartbeat_at,
+            t.issued as token_issued_at, v.result as venture
+     from public.bots b
+     left join t on t.bot_id = b.id
+     left join v on v.target = b.id::text
+     order by b.created_at asc, b.id asc`,
+  );
+  return found.rows.map((row) => ({
+    bot: botFromRow(row),
+    tokenIssuedAt: row.token_issued_at ? new Date(row.token_issued_at).toISOString() : null,
+    venture: ventureMetaFrom(row.venture),
+  }));
+}
+
+async function ventureTransaction<T>(client: pg.Client, fn: () => Promise<{ commit: boolean; value: T }>): Promise<T> {
+  await client.query("begin");
+  try {
+    const { commit, value } = await fn();
+    await client.query(commit ? "commit" : "rollback");
+    return value;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  }
 }
 
 export function createPgConnectorStore(url: string): ConnectorStore {
@@ -515,6 +571,71 @@ export function createPgConnectorStore(url: string): ConnectorStore {
         const found = await client.query<PostRow>(`${POST_SELECT} order by created_at asc`);
         return found.rows.map(postFromRow);
       });
+    },
+    async listRoster() {
+      return withClient(url, readRoster);
+    },
+    async createVenture(input) {
+      return withClient(url, (client) =>
+        ventureTransaction<Awaited<ReturnType<ConnectorStore["createVenture"]>>>(client, async () => {
+          await client.query(VENTURE_LOCK_SQL);
+          const stop = await client.query<{ stop_all: boolean }>(STOP_FOR_SHARE_SQL);
+          const decision = input.decide(await readRoster(client), stop.rows[0]?.stop_all ?? false);
+          if (!decision.ok) return { commit: false, value: { ok: false as const, refusal: decision.refusal } };
+          const bot: ConnectorBot = { ...input.bot, ownerId: decision.ownerId };
+          await client.query(
+            `insert into public.bots (id, owner_id, name, kind, repos, tools, created_at)
+             values ($1, $2, $3, $4, $5::text[], $6::text[], $7::timestamptz)`,
+            [bot.id, bot.ownerId, bot.name, bot.kind, bot.repos, bot.tools, input.at],
+          );
+          await client.query(
+            `insert into public.bot_tokens (owner_id, bot_id, token_hash, scopes, suspended, created_at)
+             values ($1, $2, $3, $4::text[], false, $5::timestamptz)`,
+            [bot.ownerId, bot.id, input.tokenHash, input.scopes, input.at],
+          );
+          await client.query("select public.append_event($1, $2, 'add_venture', $3, $4::jsonb, null, null)", [
+            bot.ownerId,
+            input.actor,
+            bot.id,
+            { ...input.meta, leadName: bot.name },
+          ]);
+          return { commit: true, value: { ok: true as const, bot } };
+        }),
+      );
+    },
+    async rotateToken(input) {
+      return withClient(url, (client) =>
+        ventureTransaction<Awaited<ReturnType<ConnectorStore["rotateToken"]>>>(client, async () => {
+          await client.query(VENTURE_LOCK_SQL);
+          const found = await client.query(
+            `select id, owner_id, name, kind, repos, tools, current_task, heartbeat_at
+             from public.bots where id::text = $1 and kind = 'lead' for update`,
+            [input.botId],
+          );
+          const row = found.rows[0];
+          if (!row) return { commit: false, value: { ok: false as const, reason: "unknown_venture" as const } };
+          const bot = botFromRow(row);
+          const stop = await client.query<{ stop_all: boolean }>(STOP_FOR_SHARE_SQL);
+          const latest = await client.query<{ scopes: unknown }>(
+            "select scopes from public.bot_tokens where bot_id = $1 order by created_at desc limit 1",
+            [bot.id],
+          );
+          const scopes = latest.rows[0] ? asStringArray(latest.rows[0].scopes) : input.fallbackScopes;
+          const removed = await client.query("delete from public.bot_tokens where bot_id = $1", [bot.id]);
+          await client.query(
+            `insert into public.bot_tokens (owner_id, bot_id, token_hash, scopes, suspended, created_at)
+             values ($1, $2, $3, $4::text[], $5, $6::timestamptz)`,
+            [bot.ownerId, bot.id, input.tokenHash, scopes, stop.rows[0]?.stop_all ?? false, input.at],
+          );
+          await client.query("select public.append_event($1, $2, 'rotate_token', $3, $4::jsonb, null, null)", [
+            bot.ownerId,
+            input.actor,
+            bot.id,
+            { leadName: bot.name, revoked: removed.rowCount ?? 0 },
+          ]);
+          return { commit: true, value: { ok: true as const, bot } };
+        }),
+      );
     },
   };
 }

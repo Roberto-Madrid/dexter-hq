@@ -12,6 +12,7 @@ import { decideApproval, type DecideApprovalResult } from "./approval.ts";
 import { createPgConnectorStore } from "./connector-pg.ts";
 import { createMemoryConnectorStore, type ConnectorStore } from "./connector-store.ts";
 import { ownerBoardView } from "./board-notes.ts";
+import { createGhRepoCheck, handleVenturesHttp } from "./ventures.ts";
 import { resumeAll, stopAll } from "./stop.ts";
 import { createDefaultConnectorDeps } from "./connector.ts";
 import { reconcileConnector } from "./reconcile.ts";
@@ -360,6 +361,20 @@ export async function getBoardNotes(
 function connectorFromEnv() {
   const url = process.env.SUPABASE_DB_URL?.trim();
   return url ? createPgConnectorStore(url) : undefined;
+}
+
+// Local runs without a database keep ventures in memory for the life of the process.
+let ventureMemory: ConnectorStore | null = null;
+
+/** Add venture / rotate token / list ventures. Owner session cookie only; see hq/ventures.ts. */
+export async function venturesHttp(request: Request): Promise<Response> {
+  current();
+  const store = connectorFromEnv() ?? (ventureMemory ??= createMemoryConnectorStore());
+  return handleVenturesHttp(request, {
+    store,
+    repoCheck: createGhRepoCheck({ token: process.env.GH_HQ_TOKEN?.trim() }),
+    ownerFromCookie: (header) => emailFromCookie(header),
+  });
 }
 
 function parseDecision(value: unknown): "approved" | "denied" | null {

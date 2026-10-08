@@ -1,0 +1,32 @@
+local integration database ready
+
+ RUN  v3.2.4 /workspace/hq-stage3-u3
+
+ ❯ tests/integration/ventures.test.ts (5 tests | 5 failed) 70ms
+   × ventures on Postgres > stores the lead, a hashed token only, and an event without the token 14ms
+     → Unexpected token 'o', "not implemented" is not valid JSON
+   × ventures on Postgres > mints exactly one lead when the same venture is created three times at once 3ms
+     → Unexpected token 'o', "not implemented" is not valid JSON
+   × ventures on Postgres > replays a create with the same idempotency key without a second lead or token 2ms
+     → Unexpected token 'o', "not implemented" is not valid JSON
+   × ventures on Postgres > rotation deletes the old token row, so the old token gets 401 right away 1ms
+     → Unexpected token 'o', "not implemented" is not valid JSON
+   × ventures on Postgres > lists ventures and gives the CEO a roster with status from the database 1ms
+     → Unexpected token 'o', "not implemented" is not valid JSON
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/integration/ventures.test.ts > ventures on Postgres > stores the lead, a hashed token only, and an event without the token
+ FAIL  tests/integration/ventures.test.ts > ventures on Postgres > mints exactly one lead when the same venture is created three times at once
+ FAIL  tests/integration/ventures.test.ts > ventures on Postgres > replays a create with the same idempotency key without a second lead or token
+ FAIL  tests/integration/ventures.test.ts > ventures on Postgres > rotation deletes the old token row, so the old token gets 401 right away
+ FAIL  tests/integration/ventures.test.ts > ventures on Postgres > lists ventures and gives the CEO a roster with status from the database
+SyntaxError: Unexpected token 'o', "not implemented" is not valid JSON
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed (5)
+   Start at  01:48:15
+   Duration  1.11s (transform 347ms, setup 0ms, collect 645ms, tests 70ms, environment 0ms, prepare 102ms)
+
