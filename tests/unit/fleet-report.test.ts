@@ -143,6 +143,7 @@ describe("fleet report aggregation", () => {
       findings: { posted: 1, verified: 1 },
       deadEnds: { posted: 1, onBoard: 2 },
       waste: { cancelled: 1, errored: 1, launchFailed: 1, refused: 4, total: 7 },
+      usage: { receipts: 0, unavailable: 0, inputTokens: 0, outputTokens: 0, chargedCents: null },
     });
     const barber = report.bots.find((line) => line.bot === "barber-lead");
     expect(barber).toMatchObject({
