@@ -1,7 +1,8 @@
 // Stage 3 unit 6: daily self-tests. Cheap, read-only checks run once per America/Tijuana day from the
 // existing tick. Failures raise one Needs-you approval; the owner reads them from chat or
-// GET /api/board?view=selftest. No new screen. Pin / held-version checks wait on U2.
+// GET /api/board?view=selftest. No new screen. Pin checks read `model_resolutions` the way launches do (hq/pins.ts).
 import { createHash, timingSafeEqual } from "node:crypto";
+import { readCatalogMatch } from "../gateway/catalog.ts";
 import { parseRoleSheet } from "../kernel/role-sheet.ts";
 import { SANDBOX_SLOT_CAP } from "../kernel/police.ts";
 import {
@@ -11,7 +12,14 @@ import {
   createDefaultConnectorDeps,
   loadConnectorSheetText,
 } from "./connector.ts";
-import { isActiveAgent, type ConnectorAgent, type ConnectorStore } from "./connector-store.ts";
+import {
+  MODEL_UPGRADE_ACTION,
+  isActiveAgent,
+  latestPins,
+  modelUpgradeTarget,
+  type ConnectorAgent,
+  type ConnectorStore,
+} from "./connector-store.ts";
 import { redact } from "../kernel/redact.ts";
 
 export const SELFTEST_CHECKS = [
@@ -25,6 +33,8 @@ export const SELFTEST_CHECKS = [
   "tick_gaps",
   "checker_credential",
   "role_sheet",
+  "pins_present",
+  "held_versions",
 ] as const;
 
 export type SelftestCheckName = (typeof SELFTEST_CHECKS)[number];
@@ -121,6 +131,84 @@ function safeError(error: unknown, fallback: string): string {
   }
   const message = error instanceof Error ? error.message : fallback;
   return redact(message.replace(/postgres(?:ql)?:\/\/\S+/gi, "[db]")).slice(0, 80);
+}
+
+/**
+ * `pins_present` and `held_versions`, read the way launches read them. The required families are the role sheet's
+ * `catalog_match` families (the ones the daily check in hq/pins.ts resolves). A launch uses the latest non-held
+ * `model_resolutions` row of its family and refuses `model_held` when there is none, so:
+ * - pins_present fails when an owner has no rows, or no non-held pin for a required family;
+ * - held_versions fails when a family has only held rows (every launch of it is refused), or when a held version that is
+ *   not the pin has no `model_upgrade` card (the owner can never approve it).
+ */
+async function pinChecks(connector: ConnectorStore, sheetText: string | null): Promise<SelftestCheck[]> {
+  let families: string[];
+  try {
+    if (sheetText === null) throw new Error("role sheet unreadable");
+    families = [...new Set(readCatalogMatch(sheetText).map((row) => row.family))];
+  } catch (error) {
+    const detail = safeError(error, "catalog_match_unreadable");
+    return [check("pins_present", false, detail), check("held_versions", false, detail)];
+  }
+  if (families.length === 0) {
+    const detail = "role sheet has no catalog_match families";
+    return [check("pins_present", false, detail), check("held_versions", false, detail)];
+  }
+
+  try {
+    const owners = [...new Set((await connector.listBots()).map((bot) => bot.ownerId))].sort();
+    if (owners.length === 0) {
+      const detail = "no bots, so no model_resolutions rows";
+      return [check("pins_present", false, detail), check("held_versions", true, "none held")];
+    }
+    const approvals = (await connector.listApprovals()).filter((row) => row.action === MODEL_UPGRADE_ACTION);
+    const empty: string[] = [];
+    const missing = new Set<string>();
+    const heldOnly = new Set<string>();
+    const noCard = new Set<string>();
+    let awaiting = 0;
+    for (const ownerId of owners) {
+      const rows = await connector.listModelResolutions(ownerId);
+      if (rows.length === 0) {
+        empty.push(ownerId);
+        continue;
+      }
+      const pinned = new Map(latestPins(rows).map((pin) => [pin.family, pin.version]));
+      for (const family of families) {
+        if (pinned.has(family)) continue;
+        missing.add(family);
+        if (rows.some((row) => row.family === family && row.held)) heldOnly.add(family);
+      }
+      const waiting = new Set(
+        rows.filter((row) => row.held && pinned.get(row.family) !== row.version).map((row) => modelUpgradeTarget(row)),
+      );
+      for (const target of waiting) {
+        const cards = approvals.filter((row) => row.ownerId === ownerId && row.target === target);
+        if (cards.length === 0) noCard.add(target);
+        else if (cards.some((row) => row.status === "pending")) awaiting += 1;
+      }
+    }
+
+    const pinProblems: string[] = [];
+    if (empty.length > 0) pinProblems.push(`no model_resolutions rows for ${empty.length} owner(s)`);
+    if (missing.size > 0) pinProblems.push(`no pin for ${[...missing].join(", ")}`);
+    const pinsPresent =
+      pinProblems.length === 0
+        ? check("pins_present", true, `${families.length} famil${families.length === 1 ? "y" : "ies"} pinned for ${owners.length} owner(s)`)
+        : check("pins_present", false, pinProblems.join("; "));
+
+    const heldProblems: string[] = [];
+    if (heldOnly.size > 0) heldProblems.push(`model_held: ${[...heldOnly].join(", ")} has only held versions`);
+    if (noCard.size > 0) heldProblems.push(`no Needs-you card for ${[...noCard].join(", ")}`);
+    const heldVersions =
+      heldProblems.length > 0
+        ? check("held_versions", false, heldProblems.join("; "))
+        : check("held_versions", true, awaiting === 0 ? "none held" : `${awaiting} held version(s) awaiting the owner`);
+    return [pinsPresent, heldVersions];
+  } catch (error) {
+    const detail = safeError(error, "pins_failed");
+    return [check("pins_present", false, detail), check("held_versions", false, detail)];
+  }
 }
 
 export async function runSelftestChecks(input: {
@@ -252,16 +340,16 @@ export async function runSelftestChecks(input: {
     );
   }
 
+  let sheetText: string | null = null;
   try {
-    const text = input.sheetText ?? loadConnectorSheetText();
-    parseRoleSheet(text);
+    sheetText = input.sheetText ?? loadConnectorSheetText();
+    parseRoleSheet(sheetText);
     checks.push(check("role_sheet", true, "parsed"));
   } catch (error) {
     checks.push(check("role_sheet", false, safeError(error, "parse_failed")));
   }
 
-  // dexter-shortcut: no pin / held-version check yet (U2's `hq/pins.ts` landed in parallel); upgrade path: add
-  // "pins_present" and "held_versions" to SELFTEST_CHECKS reading today's `model_resolutions` rows.
+  checks.push(...(await pinChecks(connector, sheetText)));
 
   const failed = checks.filter((item) => !item.ok).map((item) => item.name);
   return { day, at: now.toISOString(), ok: failed.length === 0, failed, checks };

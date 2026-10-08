@@ -39,9 +39,10 @@ const BOTS: ConnectorBot[] = [
 ];
 
 const POSTS: ConnectorPost[] = [
-  { id: "p0", ownerId: OWNER, type: "dead_end", author: "hq-dev", body: "older dead end", repo: HQ, verified: false },
+  // Expired before GENERATED_AT: no longer on the board.
+  { id: "p0", ownerId: OWNER, type: "dead_end", author: "hq-dev", body: "older dead end", repo: HQ, verified: false, expiresAt: "2026-10-01T00:00:00.000Z" },
   { id: "p1", ownerId: OWNER, type: "finding", author: "barber-lead", body: "finding", repo: BARBER, verified: true },
-  { id: "p2", ownerId: OWNER, type: "dead_end", author: "hq-dev", body: "dead end", repo: HQ, verified: false },
+  { id: "p2", ownerId: OWNER, type: "dead_end", author: "hq-dev", body: "dead end", repo: HQ, verified: false, expiresAt: "2026-11-01T00:00:00.000Z" },
 ];
 
 let seq = 0;
@@ -141,7 +142,7 @@ describe("fleet report aggregation", () => {
       council: { seatsUsed: 2, cap: COUNCIL_WEEKLY_CAP, verdicts: { pass: 1 } },
       checks: { passed: 1, failed: 1 },
       findings: { posted: 1, verified: 1 },
-      deadEnds: { posted: 1, onBoard: 2 },
+      deadEnds: { posted: 1, onBoard: 1 },
       waste: { cancelled: 1, errored: 1, launchFailed: 1, refused: 4, total: 7 },
       usage: { receipts: 0, unavailable: 0, inputTokens: 0, outputTokens: 0, chargedCents: null },
     });
@@ -207,6 +208,35 @@ describe("fleet report aggregation", () => {
     expect(text).toContain("Stale (no heartbeat in 24h): barber-lead.");
     expect(text).toContain("Never seen: scout.");
     expect(text).toContain("Idle this week: scout.");
+    expect(text).toContain("Dead ends: 1 posted, 1 on the board.");
+  });
+
+  it("counts only active dead ends on the board", () => {
+    const deadEnd = (id: string, expiresAt: string | null | undefined, extra: Partial<ConnectorPost> = {}): ConnectorPost => ({
+      id,
+      ownerId: OWNER,
+      type: "dead_end",
+      author: "hq-dev",
+      body: id,
+      repo: HQ,
+      verified: false,
+      ...(expiresAt === undefined ? {} : { expiresAt }),
+      ...extra,
+    });
+    const posts = [
+      deadEnd("expired", "2026-10-01T00:00:00.000Z"),
+      deadEnd("expires-now", GENERATED_AT),
+      deadEnd("no-expiry", undefined),
+      deadEnd("null-expiry", null),
+      deadEnd("stale", "2026-12-01T00:00:00.000Z", { status: "stale" }),
+      deadEnd("active-1", "2026-10-09T00:00:00.000Z"),
+      deadEnd("active-2", "2027-01-01T00:00:00.000Z"),
+    ];
+    const report = buildFleetReport({ week: W40, events: [], bots: BOTS, posts, generatedAt: GENERATED_AT });
+    expect(report.totals.deadEnds).toEqual({ posted: 0, onBoard: 2 });
+    // The same rows read a month later: every dead end has expired.
+    const later = buildFleetReport({ week: W40, events: [], bots: BOTS, posts, generatedAt: "2027-02-01T00:00:00.000Z" });
+    expect(later.totals.deadEnds.onBoard).toBe(0);
   });
 });
 

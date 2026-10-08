@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createMemoryConnectorStore, type ConnectorAgent, type ConnectorStore } from "../../hq/connector-store.ts";
+import { readCatalogMatch } from "../../gateway/catalog.ts";
+import {
+  MODEL_UPGRADE_ACTION,
+  createMemoryConnectorStore,
+  type ConnectorAgent,
+  type ConnectorBot,
+  type ConnectorStore,
+} from "../../hq/connector-store.ts";
 import {
   SELFTEST_CHECKS,
   isSelftestQuestion,
@@ -89,8 +96,38 @@ function agent(id: string, status: string, repo: string, ageMinutes: number, now
   };
 }
 
-async function connectorWith(agents: ConnectorAgent[], stopped = false): Promise<ConnectorStore> {
-  const store = createMemoryConnectorStore({ stopped });
+const OWNER = "o";
+const LEAD: ConnectorBot = {
+  id: "b",
+  ownerId: OWNER,
+  name: "lead",
+  kind: "lead",
+  repos: ["owner/a"],
+  tools: [],
+  currentTask: null,
+  heartbeatAt: null,
+};
+/** Every family the role sheet's catalog_match pins, as the daily check would have recorded them. */
+const FAMILIES = [...new Set(readCatalogMatch(SHEET).map((row) => row.family))];
+const PINS = FAMILIES.map((family) => ({
+  ownerId: OWNER,
+  family,
+  version: `${family}-1`,
+  held: false,
+  reason: "baseline",
+  resolvedAt: "2026-10-07T00:00:00.000Z",
+}));
+
+async function connectorWith(
+  agents: ConnectorAgent[],
+  stopped = false,
+  seed: { bots?: ConnectorBot[]; modelResolutions?: typeof PINS } = {},
+): Promise<ConnectorStore> {
+  const store = createMemoryConnectorStore({
+    stopped,
+    bots: seed.bots ?? [LEAD],
+    modelResolutions: seed.modelResolutions ?? PINS,
+  });
   for (const row of agents) await store.saveAgent(row);
   return store;
 }
@@ -332,5 +369,76 @@ describe("self-test reads", () => {
       throw new Error("down");
     };
     expect(await selftestHealth(down, MORNING)).toMatchObject({ ok: false, reasons: ["db_unreachable"] });
+  });
+});
+
+describe("daily self-test: model pins", () => {
+  it("pins_present: fails when model_resolutions has no rows", async () => {
+    const db = fakeDb();
+    const result = await run(db, { connector: await connectorWith([], false, { modelResolutions: [] }) });
+    expect(result).toMatchObject({ status: "ran", ok: false });
+    expect(check(db.records[0], "pins_present")).toMatchObject({ ok: false });
+    expect(check(db.records[0], "pins_present").detail).toContain("no model_resolutions rows");
+    expect(db.alerts[0]?.failed).toContain("pins_present");
+  });
+
+  it("pins_present: names each required family without a pin", async () => {
+    const db = fakeDb();
+    const [kept, ...dropped] = FAMILIES;
+    expect(dropped.length).toBeGreaterThan(0);
+    await run(db, { connector: await connectorWith([], false, { modelResolutions: PINS.filter((row) => row.family === kept) }) });
+    const found = check(db.records[0], "pins_present");
+    expect(found.ok).toBe(false);
+    for (const family of dropped) expect(found.detail).toContain(family);
+    expect(found.detail).not.toContain(`${kept},`);
+  });
+
+  it("pins_present: fails when there is no owner to hold pins", async () => {
+    const db = fakeDb();
+    await run(db, { connector: await connectorWith([], false, { bots: [] }) });
+    expect(check(db.records[0], "pins_present")).toMatchObject({ ok: false });
+  });
+
+  it("pins_present: passes when every catalog family has a non-held pin", async () => {
+    const db = fakeDb();
+    await run(db);
+    expect(check(db.records[0], "pins_present")).toMatchObject({ ok: true });
+    expect(check(db.records[0], "held_versions")).toMatchObject({ ok: true, detail: "none held" });
+  });
+
+  it("held_versions: fails when a family has only held rows (launches refuse model_held)", async () => {
+    const db = fakeDb();
+    const [family] = FAMILIES;
+    const rows = PINS.map((row) => (row.family === family ? { ...row, held: true, reason: "held: pinned none" } : row));
+    await run(db, { connector: await connectorWith([], false, { modelResolutions: rows }) });
+    expect(check(db.records[0], "held_versions")).toMatchObject({ ok: false });
+    expect(check(db.records[0], "held_versions").detail).toContain(`model_held: ${family}`);
+    expect(check(db.records[0], "pins_present")).toMatchObject({ ok: false });
+  });
+
+  it("held_versions: fails when a held version has no Needs-you card", async () => {
+    const db = fakeDb();
+    const [family] = FAMILIES;
+    const held = { ...PINS[0]!, family: family!, version: `${family}-2`, held: true, reason: `held: pinned ${family}-1`, resolvedAt: "2026-10-08T00:00:00.000Z" };
+    await run(db, { connector: await connectorWith([], false, { modelResolutions: [...PINS, held] }) });
+    expect(check(db.records[0], "pins_present")).toMatchObject({ ok: true });
+    expect(check(db.records[0], "held_versions")).toMatchObject({ ok: false });
+    expect(check(db.records[0], "held_versions").detail).toContain(`${family}:${family}-2`);
+  });
+
+  it("held_versions: passes with a held version that carries its model_upgrade card", async () => {
+    const db = fakeDb();
+    const connector = await connectorWith([]);
+    const [family] = FAMILIES;
+    const rows = FAMILIES.map((name) =>
+      name === family
+        ? { family: name, version: `${name}-2`, held: true, reason: `held: pinned ${name}-1` }
+        : { family: name, version: `${name}-1`, held: false, reason: "confirmed" },
+    );
+    const written = await connector.recordPinResolutions({ ownerId: OWNER, since: "2026-10-08T00:00:00.000Z", at: "2026-10-08T00:00:01.000Z", rows });
+    expect(written.approvals.map((row) => row.action)).toEqual([MODEL_UPGRADE_ACTION]);
+    await run(db, { connector });
+    expect(check(db.records[0], "pins_present")).toMatchObject({ ok: true });
+    expect(check(db.records[0], "held_versions")).toMatchObject({ ok: true, detail: "1 held version(s) awaiting the owner" });
   });
 });

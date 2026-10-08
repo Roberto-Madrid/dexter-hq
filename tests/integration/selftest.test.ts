@@ -99,6 +99,13 @@ describe("self-test on Postgres", () => {
     for (const name of ["database", "connector_whoami", "role_sheet", "checker_credential", "tick_fresh"]) {
       expect(checked.checks.find((item) => item.name === name)).toMatchObject({ ok: true });
     }
+    // The pin checks read model_resolutions, bots and approvals from Postgres; their verdict depends on shared rows,
+    // but the reads themselves must work (a driver error would surface as "error <code>").
+    for (const name of ["pins_present", "held_versions"]) {
+      const found = checked.checks.find((item) => item.name === name);
+      expect(found).toBeDefined();
+      expect(found?.detail).not.toMatch(/^error /);
+    }
     expect(JSON.stringify(checked)).not.toContain("ghp_integration_value_not_real");
   });
 });
