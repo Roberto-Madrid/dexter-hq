@@ -8,6 +8,7 @@ import { PINNED_CHECKS, checkerPassedCurrentSha, requestIsBound, type CompareFil
 /** The first fail plus two retries; the third failed Checker run blocks the request. */
 export const GATE_FAIL_LIMIT = 3;
 export const BLOCKED_LOG_LINES = 5;
+export const BLOCKED_NEXT_STEP = "TODO";
 const BLOCKED_LINE_CHARS = 200;
 /** agent-brake `diffstat(path_cap=20)`. */
 export const DIFF_PATH_CAP = 20;

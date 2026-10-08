@@ -360,6 +360,19 @@ export async function getBoardNotes(
   return ownerBoardView(posts, new URLSearchParams(search), nowIso);
 }
 
+export async function getUsageView(
+  _cookie: string | null,
+  _search: string | URLSearchParams,
+  _store?: ConnectorStore,
+  _nowIso = new Date().toISOString(),
+): Promise<{ status: number; body: unknown }> {
+  return { status: 501, body: { status: "error", reason: "not_implemented" } };
+}
+
+export async function getArtifactView(_cookie: string | null, _id: string | null, _store?: ConnectorStore): Promise<{ status: number; body: unknown }> {
+  return { status: 501, body: { status: "error", reason: "not_implemented" } };
+}
+
 function connectorFromEnv() {
   const url = process.env.SUPABASE_DB_URL?.trim();
   return url ? createPgConnectorStore(url) : undefined;

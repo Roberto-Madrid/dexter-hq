@@ -1,0 +1,66 @@
+# V6-S3 police-b RED (failing tests first, stubs only)
+# 2026-10-08 02:47 PDT on ddb115e (main ddb115e) + tests and constant stubs
+# env: SUPABASE_DB_URL, DATABASE_URL, POSTGRES_*, CURSOR_API_KEY, GH_HQ_TOKEN unset; PGUSER=ubuntu; local Postgres 16
+
+$ npx vitest run tests/unit/police-b.test.ts
+   × verdict board post type > is a kernel post type that starts claimed and can be verified 13ms
+   × verdict board post type > needs pass or fail, the sha it judges, and a run or request 36ms
+   × verdict board post type > refuses a verdict on the poster's own work 8ms
+   × verdict board post type > follows the verify rules: never the author or the judged bot, yes a different bot or a matching Checker run 6ms
+   × verdict board post type > comes back under verdicts in get_context and in the owner view, not as findings 6ms
+   × BLOCKED board post > writes one board post with the fixed BLOCKED template when the gate blocks 15ms
+   × BLOCKED board post > is idempotent: further refusals and a repeated record write no second post, and a missing post is restored 5ms
+   × BLOCKED board post > restores the post when the blocked event exists but the post write was lost 4ms
+   × BLOCKED board post > reaches the assigned lead and the CEO through get_context, never another venture 4ms
+   × tool output over 200 chars goes to an artifact > keeps short output inline and writes no artifact 7ms
+   × tool output over 200 chars goes to an artifact > stores long output in full and replies with a pointer plus the first 200 chars 7ms
+   × tool output over 200 chars goes to an artifact > scrubs secrets, pages long artifacts, caps the stored size, and keeps the post's read scope 7ms
+   × tool output over 200 chars goes to an artifact > an idempotent replay writes no second artifact 6ms
+   × tool output over 200 chars goes to an artifact > lets the owner read the full artifact over GET /api/board?view=artifact 6ms
+   × usage receipt card (owner read path, no screen) > is owner-only and totals recorded receipts, keeping unknown cost unknown 1ms
+   × usage receipt card (owner read path, no screen) > filters by repo, request and status and caps the list 4ms
+   × usage receipt card (owner read path, no screen) > answers 'usage' in HQ chat from the receipts with no model call; cost asks stay cost 2ms
+   ✓ reuse scan: skill suggestion to the CEO > uses agent-brake's thresholds 0ms
+   × reuse scan: skill suggestion to the CEO > refuses an approach that is not a lowercase slug 3ms
+   × reuse scan: skill suggestion to the CEO > suggests once after 3 verified successes across 2 agents, and only the CEO sees it 4ms
+   ✓ reuse scan: skill suggestion to the CEO > does not count claimed notes, or three successes by one agent 4ms
+   × reuse scan: skill suggestion to the CEO > counts Checker passes with an approach, one per run, crediting validated agents 5ms
+   ✓ reuse scan: skill suggestion to the CEO > does not credit made-up agent ids as distinct agents 4ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 20 ⎯⎯⎯⎯⎯⎯⎯
+AssertionError: expected [ Array(8) ] to include 'verdict'
+AssertionError: expected { status: 'refused', …(2) } to match object { status: 'refused', …(1) }
+AssertionError: expected { status: 'refused', …(2) } to match object { status: 'refused', …(1) }
+AssertionError: expected { status: 'refused', …(1) } to match object { status: 'refused', …(1) }
+AssertionError: expected undefined to deeply equal [ ObjectContaining{…} ]
+AssertionError: expected [] to have a length of 1 but got +0
+AssertionError: expected [] to have a length of 1 but got +0
+AssertionError: expected [] to have a length of 1 but got +0
+AssertionError: Target cannot be null or undefined.
+AssertionError: expected undefined to deeply equal { text: '12 passed', chars: 9 }
+AssertionError: expected undefined to match object { …(3) }
+TypeError: Cannot read properties of undefined (reading 'artifactId')
+TypeError: Cannot read properties of undefined (reading 'artifactId')
+TypeError: Cannot read properties of undefined (reading 'artifactId')
+AssertionError: expected 501 to be 401 // Object.is equality
+AssertionError: expected undefined to be 2 // Object.is equality
+AssertionError: usage: expected 'cost' to be 'usage' // Object.is equality
+AssertionError: expected { status: 'posted', …(5) } to match object { status: 'refused', …(1) }
+AssertionError: expected { status: 'verified', …(3) } to match object { status: 'verified', …(1) }
+AssertionError: expected { status: 'ready', ready: true, …(8) } to match object { status: 'ready', …(1) }
+ Test Files  1 failed (1)
+      Tests  20 failed | 3 passed (23)
+
+$ npx vitest run tests/integration/police-b.test.ts
+   × token police part B on Postgres > round-trips a verdict post and enforces own-work and same-author rules 78ms
+   × token police part B on Postgres > writes one BLOCKED board post per block 400ms
+   × token police part B on Postgres > stores long tool output as a tool_output event and reads it back in pages 37ms
+   × token police part B on Postgres > builds the usage card from usage_receipt events 8ms
+   × token police part B on Postgres > posts one skill suggestion after three verified successes across two agents 267ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+AssertionError: expected { status: 'refused', …(2) } to match object { reason: 'own_work' }
+AssertionError: expected [] to have a length of 1 but got +0
+AssertionError: expected undefined to match object { …(2) }
+TypeError: store.listEventsByAction is not a function
+AssertionError: expected [] to have a length of 1 but got +0
+ Test Files  1 failed (1)
+      Tests  5 failed (5)
