@@ -1,3 +1,4 @@
+import { WEB3_COUNCIL_MODE, WEB3_CREW, WEB3_TIER } from "./web3.ts";
 import type { PlanCard } from "./types.ts";
 
 export const CREW_ORDER = [
@@ -48,6 +49,12 @@ export function validatePlanCard(input: PlanCard, shipped: readonly string[]): V
   if (card.outwardAction) {
     card.requiresApproval = true;
     card.needsOwner = withNeed(card.needsOwner, "approval");
+  }
+  // The web3 crew is always T3 and always faces the adversarial Council (kernel/web3.ts), whatever the card asked for.
+  if (card.crew === WEB3_CREW && (card.tier !== WEB3_TIER || card.councilMode !== WEB3_COUNCIL_MODE)) {
+    card.tier = WEB3_TIER;
+    card.councilMode = WEB3_COUNCIL_MODE;
+    notices.push("web3_requires_adversarial_council");
   }
   if (card.tier === "T3" && card.councilMode !== "adversarial") {
     card.councilMode = "adversarial";

@@ -1,0 +1,137 @@
+name: web3
+# HQ (hq/web3.ts, request_publish) dispatches this from the workers main ref. A test-only run has publish=false.
+# publish=true is dispatched only after the owner approved a web3_publish card for this repo, sha and chain, and the
+# adversarial Council passed. Testnet only: the chain guard refuses mainnets and unknown chains in both jobs.
+run-name: dexter-web3 ${{ inputs.target_repo }} ${{ inputs.target_sha }} ${{ inputs.chain_id }} ${{ inputs.nonce }}
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo: { required: true, type: string }
+      target_sha: { required: true, type: string }
+      chain_id: { required: true, type: string }
+      nonce: { required: true, type: string }
+      publish: { required: false, type: boolean, default: false }
+      approval_id: { required: false, type: string, default: "" }
+permissions:
+  contents: read
+jobs:
+  # Builds, tests and simulates the target's contracts. Runs target code, so it holds no key: the only secret is the
+  # read token, used by the checkout step alone and not persisted.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      FOUNDRY_FFI: "false"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          path: tools
+      - name: Chain guard
+        env:
+          CHAIN_ID: ${{ inputs.chain_id }}
+        run: bash tools/web3/chain-guard.sh "$CHAIN_ID"
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.target_repo }}
+          ref: ${{ inputs.target_sha }}
+          token: ${{ secrets.CHECKER_READ_TOKEN || github.token }}
+          persist-credentials: false
+          path: subject
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
+      - name: Build and test
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          if [ ! -f foundry.toml ] || [ ! -f script/Deploy.s.sol ]; then
+            echo "web3 not applicable: needs foundry.toml and script/Deploy.s.sol" >&2
+            exit 1
+          fi
+          forge build
+          forge test -vvv
+      - name: Simulate on a local chain
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          anvil --chain-id 31337 --silent &
+          for _ in $(seq 1 30); do cast chain-id --rpc-url http://127.0.0.1:8545 >/dev/null 2>&1 && break; sleep 1; done
+          # anvil's first dev account, unlocked: no key is needed for the local run.
+          forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --unlocked \
+            --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+      - name: Plan the testnet deploy
+        if: ${{ inputs.publish }}
+        working-directory: subject
+        env:
+          CHAIN_ID: ${{ inputs.chain_id }}
+          DEPLOYER_ADDRESS: ${{ vars.TESTNET_DEPLOYER_ADDRESS }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOYER_ADDRESS" || { echo "variable TESTNET_DEPLOYER_ADDRESS is not set" >&2; exit 1; }
+          out="$(mktemp)"
+          GITHUB_OUTPUT="$out" CHECK_RPC=1 bash ../tools/web3/chain-guard.sh "$CHAIN_ID"
+          rpc="$(sed -n 's/^rpc_url=//p' "$out")"
+          # A dry run against the live testnet: no --broadcast, no key. The publish job signs exactly this plan.
+          forge script script/Deploy.s.sol --rpc-url "$rpc" --sender "$DEPLOYER_ADDRESS"
+          mkdir -p ../plan
+          cp "broadcast/Deploy.s.sol/$CHAIN_ID/dry-run/run-latest.json" ../plan/plan.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.publish }}
+        with:
+          name: dexter-web3-plan-${{ inputs.nonce }}
+          path: plan/plan.json
+          retention-days: 7
+  # Signs and sends the planned transactions. The only job that can read the deployer key (an environment secret of
+  # testnet-publish). It never checks out or runs target code: only this repo's scripts and cast.
+  publish:
+    needs: test
+    if: ${{ inputs.publish && inputs.approval_id != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: testnet-publish
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          path: tools
+      - name: Chain guard
+        env:
+          CHAIN_ID: ${{ inputs.chain_id }}
+          CHECK_RPC: "1"
+        run: bash tools/web3/chain-guard.sh "$CHAIN_ID"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dexter-web3-plan-${{ inputs.nonce }}
+          path: plan
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
+      - name: Deployer address
+        id: deployer
+        env:
+          DEPLOYER_KEY: ${{ secrets.TESTNET_DEPLOYER_KEY }}
+          EXPECTED: ${{ vars.TESTNET_DEPLOYER_ADDRESS }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOYER_KEY" || { echo "environment secret TESTNET_DEPLOYER_KEY is not set" >&2; exit 1; }
+          address="$(cast wallet address --private-key "$DEPLOYER_KEY")"
+          if [ "${address,,}" != "${EXPECTED,,}" ]; then
+            echo "refused: the key's address is not TESTNET_DEPLOYER_ADDRESS" >&2
+            exit 1
+          fi
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+      - name: Sign and send
+        env:
+          DEPLOYER_KEY: ${{ secrets.TESTNET_DEPLOYER_KEY }}
+          CHAIN_ID: ${{ inputs.chain_id }}
+          EXPECTED_SENDER: ${{ steps.deployer.outputs.address }}
+          APPROVAL_ID: ${{ inputs.approval_id }}
+        run: |
+          set -euo pipefail
+          echo "publishing under approval card $APPROVAL_ID"
+          bash tools/web3/send-planned.sh plan/plan.json

@@ -10935,6 +10935,11 @@ async function signAuthor(author, secret) {
   return hex2(sig);
 }
 
+// kernel/web3.ts
+var WEB3_CREW = "web3";
+var WEB3_COUNCIL_MODE = "adversarial";
+var WEB3_TIER = "T3";
+
 // kernel/plan-card.ts
 var CREW_ORDER = [
   "answer",
@@ -10978,6 +10983,11 @@ function validatePlanCard(input, shipped) {
   if (card.outwardAction) {
     card.requiresApproval = true;
     card.needsOwner = withNeed(card.needsOwner, "approval");
+  }
+  if (card.crew === WEB3_CREW && (card.tier !== WEB3_TIER || card.councilMode !== WEB3_COUNCIL_MODE)) {
+    card.tier = WEB3_TIER;
+    card.councilMode = WEB3_COUNCIL_MODE;
+    notices.push("web3_requires_adversarial_council");
   }
   if (card.tier === "T3" && card.councilMode !== "adversarial") {
     card.councilMode = "adversarial";

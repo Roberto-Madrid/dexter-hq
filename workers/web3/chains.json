@@ -1,0 +1,55 @@
+{
+  "testnets": {
+    "11155111": {
+      "name": "sepolia",
+      "rpc": "https://ethereum-sepolia-rpc.publicnode.com"
+    },
+    "560048": {
+      "name": "hoodi",
+      "rpc": "https://ethereum-hoodi-rpc.publicnode.com"
+    },
+    "84532": {
+      "name": "base-sepolia",
+      "rpc": "https://sepolia.base.org"
+    },
+    "11155420": {
+      "name": "op-sepolia",
+      "rpc": "https://sepolia.optimism.io"
+    },
+    "421614": {
+      "name": "arbitrum-sepolia",
+      "rpc": "https://sepolia-rollup.arbitrum.io/rpc"
+    },
+    "80002": {
+      "name": "polygon-amoy",
+      "rpc": "https://rpc-amoy.polygon.technology"
+    }
+  },
+  "mainnets": [
+    1,
+    10,
+    56,
+    100,
+    130,
+    137,
+    146,
+    250,
+    252,
+    324,
+    480,
+    1101,
+    1135,
+    5000,
+    8453,
+    34443,
+    42161,
+    42170,
+    42220,
+    43114,
+    59144,
+    81457,
+    534352,
+    7777777
+  ],
+  "local": 31337
+}

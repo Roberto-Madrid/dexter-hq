@@ -1,0 +1,25 @@
+name: web3
+tier: T3
+council: adversarial
+personas: [researcher, web3, contracts]
+# "Prototype this onchain idea." research -> mechanism and threat model -> owner gate -> Contracts on testnet ->
+# simulations. Testnet only: HQ refuses mainnet chain ids (kernel/web3.ts) and so does the workers guard
+# (workers/web3/chain-guard.sh). The Contracts lane starts only with an approved web3_mechanism card (the owner gate).
+# Contracts are built, tested and simulated on a local chain by the workers web3 workflow's test job, which holds no
+# key. Publishing to a testnet needs an approved web3_publish card for the exact repo, sha and chain, plus a complete
+# adversarial Council pass; only then does request_publish dispatch the publish job, the one job that can read the
+# deployer key. Agents never see, request, or handle a private key. Checklist: checklists/web3-testnet.md.
+tasks:
+  - persona: researcher
+    role: researcher
+    artifact: note
+  - persona: web3
+    role: web3
+    artifact: note
+    depends_on: researcher
+  - persona: contracts
+    role: contracts
+    artifact: diff
+    depends_on: web3
+capabilities: [read_repo, open_branch, open_pull_request, run_checks, read_board, post_board, request_approval]
+chains: testnet_only

@@ -4,7 +4,8 @@ import { parse } from "yaml";
 import { bundledCrews } from "./bundled-assets.ts";
 
 // handoff: launch_agent attaches the bundle (hq/handoff-launch.ts) to every launch on a handoff request.
-export const SHIPPED_CREWS = ["answer", "research", "change", "custom", "venture-check", "job-scan", "handoff"] as const;
+// web3: testnet only; publishing goes through request_publish (hq/web3-publish.ts) and the adversarial Council.
+export const SHIPPED_CREWS = ["answer", "research", "change", "custom", "venture-check", "job-scan", "handoff", "web3"] as const;
 
 export type CrewTask = {
   persona: string;
