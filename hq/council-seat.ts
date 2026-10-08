@@ -7,6 +7,7 @@ import { VerdictSchema } from "../kernel/schemas.ts";
 import type { Verdict } from "../kernel/types.ts";
 import { resolveCodexBin } from "./codex-bin.ts";
 import { loadCodexLogin, storeCodexLogin } from "./codex-login.ts";
+import { loadPersonas } from "./personas.ts";
 
 const SEAT_MAX_SECONDS = 300;
 
@@ -36,15 +37,46 @@ export function councilVerdictSchema(): {
   };
 }
 
-export function criticPrompt(packet: string): string {
+/** The Council seats in the master plan's order (docs/MASTER_PLAN_V6.md §5). Each has a persona file in personas/. */
+export const COUNCIL_SEATS = ["architect", "strategist", "critic", "security", "devil"] as const;
+export type CouncilSeatId = (typeof COUNCIL_SEATS)[number];
+
+const SEAT_FOCUS: Record<CouncilSeatId, string> = {
+  architect: "Review for structure, coupling, and debt.",
+  strategist: "Review for approach, completeness, and fit with the goal.",
+  critic: "Review for bugs, edge cases, and correctness.",
+  security: "Review for auth, injection, secrets, and dependency risk.",
+  devil: "Attack the consensus and find the strongest reason not to ship.",
+};
+
+function seatTitle(seat: CouncilSeatId): string {
+  return seat.charAt(0).toUpperCase() + seat.slice(1);
+}
+
+function readPersonas(): Map<string, string> {
+  try {
+    return loadPersonas();
+  } catch {
+    return new Map();
+  }
+}
+
+/** One seat's prompt: its persona contract and the packet. Seats never see each other's verdicts. */
+export function seatPrompt(seat: CouncilSeatId, packet: string, personas: Map<string, string> = readPersonas()): string {
+  const persona = (personas.get(seat) ?? SEAT_FOCUS[seat]).replace(/^#.*\n+/, "").trim();
   return [
-    "You are the Critic seat.",
-    "Review only this packet for bugs, edge cases, and correctness.",
+    `You are the ${seatTitle(seat)} seat on the Council.`,
+    `Persona contract: ${persona}`,
+    "Review only this packet. You do not see the other seats' verdicts.",
     "Return only the schema. result is pass, changes, or discuss.",
     "actions is a list of concrete fixes. Do not invent files that are not in the packet.",
     "Packet:",
     packet,
   ].join(" ");
+}
+
+export function criticPrompt(packet: string): string {
+  return seatPrompt("critic", packet);
 }
 
 export function parseCouncilVerdict(value: unknown): Verdict {
@@ -77,17 +109,22 @@ export function councilSeatCall(input: {
   };
 }
 
-export async function runCriticSeat(input: {
+export type CouncilSession = {
+  runSeat(seat: CouncilSeatId, packet: string): Promise<Verdict>;
+  /** Writes the (possibly refreshed) login back. Call once, after the last seat. */
+  close(): Promise<void>;
+};
+
+/**
+ * Opens one path-B review: resolves the verified codex binary and reads the login once; seats then run one after
+ * another under one shared deadline, and close() writes the login back once (docs/MASTER_PLAN_V6.md §8.1).
+ */
+export async function openCouncilSession(input: {
   sheetText: string;
-  packet: string;
   dbUrl: string;
   resolveCodex?: () => Promise<string>;
-}): Promise<Verdict> {
+}): Promise<CouncilSession> {
   const model = ceoVersionFromSheet(input.sheetText);
-  const dir = mkdtempSync(join(tmpdir(), "dexter-council-"));
-  const outputPath = join(dir, "out.json");
-  const schemaPath = join(dir, "verdict.json");
-  writeFileSync(schemaPath, JSON.stringify(councilVerdictSchema()));
   if (!input.dbUrl) throw new Error("codex_login_missing");
   // Fail closed before the login is decrypted: no verified binary, no seat.
   const codexBin = await (input.resolveCodex ?? resolveCodexBin)();
@@ -95,19 +132,41 @@ export async function runCriticSeat(input: {
   if (loginKind !== "chatgpt") {
     throw new Error(loginKind === "api_key" ? "codex_login_not_chatgpt" : "codex_login_unknown");
   }
-  const started = Date.now();
+  const deadline = Date.now() + (SEAT_MAX_SECONDS - 10) * 1000;
+  const personas = readPersonas();
+  return {
+    async runSeat(seat, packet) {
+      const dir = mkdtempSync(join(tmpdir(), "dexter-council-"));
+      const outputPath = join(dir, "out.json");
+      const schemaPath = join(dir, "verdict.json");
+      writeFileSync(schemaPath, JSON.stringify(councilVerdictSchema()));
+      const raw = await runCeo(councilSeatCall({ model, prompt: seatPrompt(seat, packet, personas), schemaPath, outputPath, codexBin }), () => {}, {
+        deadline,
+      });
+      return parseCouncilVerdict(raw);
+    },
+    async close() {
+      await storeCodexLogin(input.dbUrl);
+    },
+  };
+}
+
+export async function runCriticSeat(input: {
+  sheetText: string;
+  packet: string;
+  dbUrl: string;
+  resolveCodex?: () => Promise<string>;
+}): Promise<Verdict> {
+  const session = await openCouncilSession(input);
   let runError: unknown;
   let parsed: Verdict | null = null;
   try {
-    const raw = await runCeo(councilSeatCall({ model, prompt: criticPrompt(input.packet), schemaPath, outputPath, codexBin }), () => {}, {
-      deadline: started + (SEAT_MAX_SECONDS - 10) * 1000,
-    });
-    parsed = parseCouncilVerdict(raw);
+    parsed = await session.runSeat("critic", input.packet);
   } catch (error) {
     runError = error;
   }
   try {
-    await storeCodexLogin(input.dbUrl);
+    await session.close();
   } catch (error) {
     if (!runError) runError = error;
   }

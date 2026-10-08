@@ -1,6 +1,7 @@
 // Proves the function bundle rules after `next build`:
 //   1. no function trace includes the Codex binary (it is fetched at runtime; function storage is capped);
-//   2. /api/chat and /api/mcp both trace the age binary and the age public key used by path B login.
+//   2. /api/chat and /api/mcp both trace the age binary and the age public key used by path B login;
+//   3. /api/mcp traces every Council seat persona.
 // Usage: node scripts/check-traces.mjs [nextDir=.next]
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve, dirname } from "node:path";
@@ -9,7 +10,12 @@ const nextDir = resolve(process.argv[2] ?? ".next");
 const serverDir = join(nextDir, "server");
 const REQUIRED = {
   "app/api/chat/route.js.nft.json": ["vendor/age/age", "workers/age.pub"],
-  "app/api/mcp/route.js.nft.json": ["vendor/age/age", "workers/age.pub"],
+  "app/api/mcp/route.js.nft.json": [
+    "vendor/age/age",
+    "workers/age.pub",
+    // Council seat prompts (hq/council-seat.ts) read these at runtime.
+    ...["architect", "strategist", "critic", "security", "devil"].map((seat) => `personas/${seat}.md`),
+  ],
 };
 const FORBIDDEN = [/(^|\/)vendor\/codex(\/|$)/, /(^|\/)codex-x86_64-unknown-linux-musl$/];
 const MAX_TRACED_FILE_BYTES = 50 * 1024 * 1024;
