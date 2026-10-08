@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { noteLive } from "./board-notes.ts";
 import { COUNCIL_WEEKLY_SEAT_CAP } from "./connector.ts";
 import type { ConnectorBot, ConnectorEvent, ConnectorPost, ConnectorStore } from "./connector-store.ts";
 
@@ -408,8 +409,8 @@ export function buildFleetReport(input: {
     council: { seatsUsed: 0, cap: COUNCIL_WEEKLY_CAP, verdicts: {} },
     checks: { passed: 0, failed: 0 },
     findings: { posted: 0, verified: 0 },
-    // dexter-shortcut: counts every dead_end post because ConnectorPost has no expiry yet; upgrade path: count only deadEndActive() rows once U4 reads expires_at.
-    deadEnds: { posted: 0, onBoard: input.posts.filter((post) => post.type === "dead_end").length },
+    // On the board = live at generation time: not stale and not past expires_at (a dead end without one is not live).
+    deadEnds: { posted: 0, onBoard: input.posts.filter((post) => post.type === "dead_end" && noteLive(post, input.generatedAt)).length },
     waste: { cancelled: 0, errored: 0, launchFailed: 0, refused: 0, total: 0 },
     usage: { receipts: 0, unavailable: 0, inputTokens: 0, outputTokens: 0, chargedCents: null },
   };
