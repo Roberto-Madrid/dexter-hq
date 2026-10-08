@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { bundledCrews } from "./bundled-assets.ts";
 
+// dexter-shortcut: crews/handoff.yaml ships but is not in SHIPPED_CREWS, so a plan card cannot pick it yet. Launching it
+// needs the rendered bundle (hq/handoff.ts + kernel/handoff-bundle.ts) in the launch brief, which hq/connector.ts builds;
+// upgrade path: add "handoff" here once launch_agent attaches renderHandoffBundle() for handoff requests.
 export const SHIPPED_CREWS = ["answer", "research", "change", "custom"] as const;
 
 export type CrewTask = {

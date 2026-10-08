@@ -1,0 +1,24 @@
+name: handoff
+tier: T2
+council: quick
+personas: [writer, builder]
+# Maintenance handoff. HQ assembles the bundle (kernel/handoff-bundle.ts, read by hq/handoff.ts): charter,
+# architecture, runbook, deployment, tests, known issues, the shortcut debt list, open tasks, and the capabilities
+# below, with secret values redacted and a schema check. The writer checks it reads cold; the builder proves it by
+# running the listed checks from the bundle alone.
+tasks:
+  - persona: writer
+    role: writer
+    artifact: note
+  - persona: builder
+    role: builder
+    artifact: check
+    depends_on: writer
+# What the agent taking over must be able to do. Names only, never credentials.
+capabilities:
+  - read_repo
+  - open_branch
+  - open_pull_request
+  - run_checks
+  - read_board
+  - post_board
