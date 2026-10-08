@@ -105,13 +105,13 @@ describe("kernel post types", () => {
 });
 
 describe("post: typed notes", () => {
-  it("refuses a type outside finding, dead_end, shortcut, handoff", async () => {
+  it("refuses a type outside finding, dead_end, shortcut, handoff, verdict", async () => {
     const t = setup();
     for (const type of ["rumor", "alert", "question", ""]) {
       const out = await t.call(leadA, "post", { type, body: "x", repo: ALPHA });
       expect(out.isError).toBe(true);
       expect(out.body.reason).toBe("invalid_type");
-      expect(out.body.allowed).toEqual(["finding", "dead_end", "shortcut", "handoff"]);
+      expect(out.body.allowed).toEqual(["finding", "dead_end", "shortcut", "handoff", "verdict"]);
     }
     const missing = await t.call(leadA, "post", { body: "no type", repo: ALPHA });
     expect(missing.body.reason).toBe("invalid_type");

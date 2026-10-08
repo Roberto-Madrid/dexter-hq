@@ -8,6 +8,7 @@ import { isQuickEdit, loadCrews, type CrewFile } from "./crews.ts";
 import type { HqDeps } from "./deps.ts";
 import { fleetChatAnswer } from "./fleet-report.ts";
 import { newId } from "./memory.ts";
+import { USAGE_RECEIPT_ACTION, USAGE_SCAN_LIMIT, answerUsage } from "./usage-card.ts";
 import type { HqStore, RequestRow, TaskRow } from "./model.ts";
 
 function tasksFor(request: RequestRow, text: string, crew: CrewFile | undefined, now: string): TaskRow[] {
@@ -58,6 +59,20 @@ export async function handleChat(
     const body = answerBoard(posts, text, store.now());
     await store.addMessage("dexter", body, null);
     return { kind: "list", text: body, modelCalls: 0, card: null, notices: [], requestId: null, asOf: store.now() };
+  }
+  if (kind === "usage") {
+    // DB-only: the token police usage receipts, never the model. Answered as kind "cost" (an existing ChatResult kind).
+    let receipts = null;
+    let bots: Awaited<ReturnType<NonNullable<HqDeps["connector"]>["listBots"]>> = [];
+    try {
+      receipts = deps.connector ? await deps.connector.listRecentEvents(USAGE_RECEIPT_ACTION, { limit: USAGE_SCAN_LIMIT }) : null;
+      bots = deps.connector ? await deps.connector.listBots() : [];
+    } catch {
+      receipts = null;
+    }
+    const body = answerUsage(receipts, bots, store.now());
+    await store.addMessage("dexter", body, null);
+    return { kind: "cost", text: body, modelCalls: 0, card: null, notices: [], requestId: null, asOf: store.now() };
   }
   if (kind !== "work") {
     const board = await snapshot(store, deps.slotCap);

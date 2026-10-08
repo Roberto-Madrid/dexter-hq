@@ -34,7 +34,8 @@ export type PostType =
   | "dead_end"
   | "alert"
   | "handoff"
-  | "shortcut";
+  | "shortcut"
+  | "verdict";
 export type FindingStatus = "claimed" | "verified" | "stale";
 export type Sensitivity = "none" | "client" | "personal";
 export type CancelState = "confirmed" | "requested" | "unsupported" | "unconfirmed";

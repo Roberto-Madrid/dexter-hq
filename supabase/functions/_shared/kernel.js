@@ -4127,7 +4127,7 @@ var RunSchema = external_exports.object({
 var PostSchema = external_exports.object({
   id: uuid,
   ownerId: uuid,
-  type: external_exports.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff", "shortcut"]),
+  type: external_exports.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff", "shortcut", "verdict"]),
   author: external_exports.string().min(1),
   signature: external_exports.string().min(1),
   taskId: uuid.nullable(),
@@ -10903,9 +10903,10 @@ var POST_TYPES = [
   "dead_end",
   "alert",
   "handoff",
-  "shortcut"
+  "shortcut",
+  "verdict"
 ];
-var VERIFIABLE_POST_TYPES = ["finding", "shortcut"];
+var VERIFIABLE_POST_TYPES = ["finding", "shortcut", "verdict"];
 function verifyFinding(post, actor) {
   if (!VERIFIABLE_POST_TYPES.includes(post.type)) return { ok: false, reason: "not_a_finding" };
   if (post.status !== "claimed") return { ok: false, reason: "not_claimed" };

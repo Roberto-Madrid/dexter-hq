@@ -85,6 +85,10 @@ export function getFleetView(
 export function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }>;
 export function venturesHttp(request: Request): Promise<Response>;
 export function getBoardNotes(cookie: string | null, search: string | URLSearchParams): Promise<{ status: number; body: unknown }>;
+/** Token police usage-receipt card (owner only). */
+export function getUsageView(cookie: string | null, search: string | URLSearchParams): Promise<{ status: number; body: unknown }>;
+/** Full tool output behind a board note's preview (owner only). */
+export function getArtifactView(cookie: string | null, id: string | null): Promise<{ status: number; body: unknown }>;
 export type SelftestCheck = { name: string; ok: boolean; detail: string };
 export type SelftestRecord = { day: string; at: string; ok: boolean; failed: string[]; checks: SelftestCheck[] };
 export function getTickHealth(header: string | null): Promise<{

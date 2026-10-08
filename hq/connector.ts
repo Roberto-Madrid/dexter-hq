@@ -38,11 +38,12 @@ import {
   sanitizeBotEvidence,
   type CheckerGateway,
 } from "./checker.ts";
-import { contextNotes, postNote, verifyNote } from "./board-notes.ts";
+import { contextNotes, parseApproach, postNote, readArtifactNote, verifyNote } from "./board-notes.ts";
 import { decisionTrail } from "./decision-trail.ts";
 import { launchBlockedByDesignGate } from "./design-gate.ts";
 import { composeLaunchBrief } from "./personas.ts";
 import { closeIfTerminal, runHandleFor } from "./reconcile.ts";
+import { creditedAgentId, reuseScan } from "./reuse-scan.ts";
 import { approvalGate, gateAfterFail, gateBlockedRefusal, normalizeAction, recordGateBlocked } from "./token-police.ts";
 import { createCursorUsage, recordUsageReceipt, type CursorUsageFn } from "./usage-receipts.ts";
 
@@ -788,6 +789,17 @@ function botMayCheckRequest(
   return { ok: true };
 }
 
+async function approachTags(
+  deps: ConnectorDeps,
+  auth: ConnectorAuth,
+  approach: string,
+  repo: string,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const agent = await creditedAgentId(deps.store, auth.id, textArg(args, "agentId") ?? textArg(args, "agent_id"));
+  return { approach, repo, botId: auth.id, ...(agent ? { creditedAgentId: agent } : {}) };
+}
+
 async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
   const repo = textArg(args, "repo");
   const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
@@ -806,6 +818,13 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
   }
   if (!repo || !sha) {
     const body = { status: "refused", reason: "repo_and_sha_required", ready: false, requestId };
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, true);
+  }
+  // Reuse scan input: the approach this run tries, and the launched agent (if any) to credit with a pass.
+  const approach = parseApproach(args);
+  if (approach === false) {
+    const body = { status: "refused", reason: "invalid_approach", ready: false, requestId };
     await record(deps, auth, "request_checks", requestId, body);
     return toolResult(body, true);
   }
@@ -912,10 +931,15 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
       requestId,
       requestStatus: next.status,
       ...(status === "failed" ? { gate: await gateAfterFail(deps, requestId, checkRun.nonce) } : {}),
+      ...(approach ? await approachTags(deps, auth, approach, repo, args) : {}),
     };
     await record(deps, auth, "request_checks", requestId, body);
+    if (status === "ready" && approach) {
+      const scan = await reuseScan(deps.store, auth.ownerId, approach, (deps.now ?? (() => new Date().toISOString()))());
+      if (scan.postId) return toolResult({ ...body, skillSuggestion: scan.postId });
+    }
     if (status === "failed" && body.gate && body.gate.retriesLeft === 0) {
-      return toolResult(await recordGateBlocked(deps, auth, next, { sha, evidence }), true);
+      return toolResult(await recordGateBlocked(deps, auth, next, { sha, evidence, githubRunId: checkRun.githubRunId, nonce: checkRun.nonce }), true);
     }
     return toolResult(body, status === "failed");
   } catch (error) {
@@ -1022,6 +1046,19 @@ export async function callConnectorTool(
   if (name === "post" || name === "verify_post") {
     const at = (deps.now ?? (() => new Date().toISOString()))();
     const out = name === "post" ? await postNote(deps.store, auth, args, at) : await verifyNote(deps.store, auth, args);
+    // A newly verified note that names an approach feeds the reuse scan (a suggestion to Dexter, never a written skill).
+    if (name === "verify_post" && !out.isError && out.approach && out.body.idempotent !== true) {
+      const scan = await reuseScan(deps.store, auth.ownerId, out.approach, at);
+      if (scan.postId) {
+        out.body = { ...out.body, skillSuggestion: scan.postId };
+        out.event = { ...out.event, skillSuggestion: scan.postId };
+      }
+    }
+    await record(deps, auth, name, out.target, out.event);
+    return toolResult(out.body, out.isError);
+  }
+  if (name === "get_context" && (textArg(args, "artifactId") ?? textArg(args, "artifact_id"))) {
+    const out = await readArtifactNote(deps.store, auth, args);
     await record(deps, auth, name, out.target, out.event);
     return toolResult(out.body, out.isError);
   }
@@ -1076,11 +1113,11 @@ export function createDefaultConnectorDeps(overrides?: Partial<ConnectorDeps>): 
 
 const BOARD_TOOL_DESCRIPTIONS: Record<string, string> = {
   post:
-    "Save one board note. Args: type (finding | dead_end | shortcut | handoff), body (<=2000 chars, secrets are redacted), optional repo, scope (shared | project | mission; a lead defaults to project on its own repo, shared must be explicit), requestId (required for mission), agentId, runId, sha, link, idempotencyKey. dead_end needs conditions and gets expiresAt or expiresInDays (default 30, max 180). Findings and shortcuts start claimed.",
+    "Save one board note. Args: type (finding | dead_end | shortcut | handoff | verdict), body (<=2000 chars, secrets are redacted), optional repo, scope (shared | project | mission; a lead defaults to project on its own repo, shared must be explicit), requestId (required for mission), agentId, runId, sha, link, idempotencyKey, approach (lowercase slug naming the method, for the reuse scan), output (raw tool output: over 200 chars it is stored in full as an artifact and the reply returns artifactId plus the first 200 chars). dead_end needs conditions and gets expiresAt or expiresInDays (default 30, max 180). verdict needs verdict (pass | fail), sha, and runId or requestId, and never judges your own work (own_work). Findings, shortcuts and verdicts start claimed.",
   verify_post:
-    "Verify a claimed finding or shortcut. Args: postId, optional checkRequestId (the note's own request with a passed Checker run on the note's repo). The author cannot verify its own note unless the Checker passed.",
+    "Verify a claimed finding, shortcut or verdict. Args: postId, optional checkRequestId (the note's own request with a Checker run on the note's repo and sha that agrees: passed for a pass verdict or a finding, a completed failed run for a fail verdict). The author cannot verify its own note, nor the bot a verdict judges, unless the Checker agrees.",
   get_context:
-    "Notes you may read, ranked verified first, then this request, then this repo, then newest; capped and clipped. Args: optional repo (must be yours), requestId, type, limit (<=30). Returns findings (verified), claimed (unverified: never change a plan on them), deadEnds (live only), handoffs, unverified ids, omitted count, and the request's why trail.",
+    "Notes you may read, ranked verified first, then this request, then this repo, then newest; capped and clipped. Args: optional repo (must be yours), requestId, type, limit (<=30); or artifactId (+ offset) to page through the full tool output behind a note. Returns findings (verified), claimed (unverified: never change a plan on them), deadEnds (live only), handoffs, verdicts, blocked (BLOCKED requests), suggestions (CEO only: skill suggestions), unverified ids, omitted count, and the request's why trail.",
 };
 
 export function connectorToolDescriptors(names: readonly string[]) {
@@ -1092,7 +1129,7 @@ export function connectorToolDescriptors(names: readonly string[]) {
         : name === "request_council"
           ? "Run one Critic seat through path B. Returns a schema-valid verdict, or not-configured when the login is absent."
           : name === "request_checks"
-            ? "Dispatch pinned checker.yml from the trusted workers main ref against a commit SHA. Returns in_progress until GitHub has a conclusion; ready requires a completed success. Callers cannot supply a GitHub run id. The first pullRequest or branch given binds the request; update_request done then requires a pass on that PR/branch's current GitHub head."
+            ? "Dispatch pinned checker.yml from the trusted workers main ref against a commit SHA. Returns in_progress until GitHub has a conclusion; ready requires a completed success. Callers cannot supply a GitHub run id. The first pullRequest or branch given binds the request; update_request done then requires a pass on that PR/branch's current GitHub head. Optional approach (slug) and agentId credit a pass to the reuse scan. The third failed run blocks the request and posts one BLOCKED note."
             : (BOARD_TOOL_DESCRIPTIONS[name] ?? `Dexter connector tool ${name}.`),
     inputSchema: { type: "object", additionalProperties: true },
   }));

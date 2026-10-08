@@ -3,14 +3,25 @@ import { deadEndActive, POST_TYPES, VERIFIABLE_POST_TYPES, verifyFinding } from 
 import { redact } from "../kernel/redact.ts";
 import type { FindingStatus, PostType } from "../kernel/types.ts";
 import type { ConnectorAuth, ConnectorPost, ConnectorRequest, ConnectorStore, PostScope } from "./connector-store.ts";
+import { TOOL_OUTPUT_MAX_CHARS, artifactPage, readToolArtifact, spillToolOutput, type OutputRef } from "./tool-artifacts.ts";
 
 // The agent board: typed notes on `posts`, with the kernel's findings rules and per-venture scopes.
 // Scopes map onto `posts` with no schema change: shared = fleet-wide, project = one venture repo,
 // mission = one request (its id lives in `posts.evidence`).
 // dexter-shortcut: `memory_items` (0001_core.sql) stays unused; notes are the only memory. upgrade path: move long-lived verified facts into memory_items once something reads them.
 
-export const BOARD_NOTE_TYPES = ["finding", "dead_end", "shortcut", "handoff"] as const;
+export const BOARD_NOTE_TYPES = ["finding", "dead_end", "shortcut", "handoff", "verdict"] as const;
 export type BoardNoteType = (typeof BOARD_NOTE_TYPES)[number];
+/** Facts and tips: these are what `findings` / `claimed` hold. Verdicts are verifiable too but come back under `verdicts`. */
+const FACT_TYPES = new Set<string>(["finding", "shortcut"]);
+export const VERDICTS = ["pass", "fail"] as const;
+/** HQ-written alert notes that bots read through get_context. */
+export const BLOCKED_KIND = "blocked";
+export const SKILL_SUGGESTION_KIND = "skill_suggestion";
+/** agent-brake `operation`: a lowercase hyphenated slug of at most 64 characters. */
+export const APPROACH_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const HQ_NOTE_LIMIT = 5;
+const HQ_NOTE_BODY_CHARS = 400;
 export const POST_SCOPES: readonly PostScope[] = ["shared", "project", "mission"];
 
 export const POST_LIMITS = {
@@ -43,6 +54,8 @@ export type BoardOutcome = {
   isError: boolean;
   target: string;
   event: Record<string, unknown>;
+  /** Set when a verify_post newly verified a note that names an approach (the reuse scan runs on it). */
+  approach?: string | null;
 };
 
 // dexter-shortcut: board-only secret shapes the kernel SECRET_RULES lack (JWTs, URL passwords, other GitHub token kinds, bearer headers, key=value secrets); upgrade path: move them into kernel/patterns.ts once preflight is re-checked against them.
@@ -79,7 +92,7 @@ function isNoteType(value: string | null): value is BoardNoteType {
   return Boolean(value && (BOARD_NOTE_TYPES as readonly string[]).includes(value));
 }
 
-function stableId(seed: string): string {
+export function stableId(seed: string): string {
   const hex = createHash("sha256").update(seed, "utf8").digest("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
@@ -95,6 +108,15 @@ function noteScope(post: ConnectorPost): PostScope {
 function noteStatus(post: ConnectorPost): string | null {
   if (post.status !== undefined) return post.status;
   return post.verified ? "verified" : VERIFIABLE_POST_TYPES.includes(post.type as PostType) ? "claimed" : null;
+}
+
+/** A valid approach slug, null when absent, or false when malformed. */
+export function parseApproach(args: Record<string, unknown>): string | null | false {
+  const value = args.approach;
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return false;
+  const slug = value.trim();
+  return slug.length <= 64 && APPROACH_PATTERN.test(slug) ? slug : false;
 }
 
 function isAuthor(auth: ConnectorAuth, post: ConnectorPost): boolean {
@@ -135,6 +157,8 @@ function requestCache(store: ConnectorStore): RequestCache {
  */
 export async function canReadNote(auth: ConnectorAuth, post: ConnectorPost, requests: RequestCache): Promise<boolean> {
   if (post.ownerId !== auth.ownerId) return false;
+  // Skill suggestions are addressed to Dexter only.
+  if (post.kind === SKILL_SUGGESTION_KIND) return auth.kind === "ceo";
   if (auth.kind === "ceo" || isAuthor(auth, post)) return true;
   const scope = noteScope(post);
   if (scope === "shared") return true;
@@ -184,7 +208,16 @@ function parseLink(value: string | null): { ok: boolean; value: string | null } 
   }
 }
 
+/** The reply's view of a note's tool output: inline text, or a pointer plus the first 200 chars. */
+function outputBody(post: ConnectorPost): Record<string, unknown> | null {
+  if (post.output === undefined || post.output === null) return null;
+  const chars = post.outputChars ?? post.output.length;
+  if (!post.artifactId) return { text: post.output, chars };
+  return { preview: post.output, artifactId: post.artifactId, chars, truncated: chars > TOOL_OUTPUT_MAX_CHARS };
+}
+
 function postedBody(post: ConnectorPost, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  const verdict = post.type === "verdict";
   return omitEmpty({
     status: "posted",
     postId: post.id,
@@ -194,6 +227,11 @@ function postedBody(post: ConnectorPost, extra: Record<string, unknown> = {}): R
     requestId: post.requestId,
     noteStatus: noteStatus(post),
     expiresAt: post.expiresAt,
+    verdict: post.verdict,
+    sha: verdict ? post.sha : null,
+    runId: verdict ? post.runId : null,
+    approach: post.approach,
+    output: outputBody(post),
     ...extra,
   });
 }
@@ -227,6 +265,18 @@ export async function postNote(
   if (sha && !/^[0-9a-f]{7,40}$/i.test(sha)) return refuse("invalid_sha", "refused");
   const link = parseLink(text(args, "link", "url"));
   if (!link.ok) return refuse("invalid_link", "refused");
+  const approach = parseApproach(args);
+  if (approach === false) return refuse("invalid_approach", "refused", { pattern: APPROACH_PATTERN.source, maxChars: 64 });
+  const rawOutput = args.output;
+  if (rawOutput !== undefined && rawOutput !== null && typeof rawOutput !== "string") return refuse("invalid_output", "refused");
+  const verdictArg = text(args, "verdict");
+  if (type === "verdict") {
+    if (!verdictArg || !(VERDICTS as readonly string[]).includes(verdictArg.toLowerCase())) {
+      return refuse("invalid_verdict", "refused", { allowed: [...VERDICTS] });
+    }
+    if (!sha) return refuse("verdict_needs_sha", "refused");
+    if (!text(args, "runId", "run_id") && !text(args, "requestId", "request_id")) return refuse("verdict_needs_run", "refused");
+  }
 
   const repoArg = text(args, "repo");
   if (repoArg && auth.kind !== "ceo" && !auth.repos.includes(repoArg)) return refuse("repo_out_of_scope", repoArg);
@@ -255,6 +305,15 @@ export async function postNote(
     if (auth.kind !== "ceo" && !auth.repos.includes(repo)) return refuse("repo_out_of_scope", repo);
   }
 
+  // A verdict judges someone else's work, like verify_post never lets an author verify itself.
+  let subjectBotId: string | null = null;
+  if (type === "verdict") {
+    const agentRef = text(args, "agentId", "agent_id") ?? text(args, "runId", "run_id")?.split(":")[0] ?? null;
+    const agent = agentRef ? await store.getAgent(agentRef) : null;
+    subjectBotId = request?.assignedBotId ?? (agent && agent.ownerId === auth.ownerId ? agent.botId : null);
+    if (subjectBotId === auth.id || (agent && agent.botId === auth.id)) return refuse("own_work", requestId ?? agentRef ?? "refused");
+  }
+
   const rawConditions = text(args, "conditions", "condition");
   if (type === "dead_end" && !rawConditions) return refuse("dead_end_needs_condition", "refused");
   const expiry = parseExpiry(args, type, nowIso);
@@ -275,8 +334,27 @@ export async function postNote(
   const safeLink = link.value ? scrubSecrets(link.value) : null;
   const agentId = text(args, "agentId", "agent_id");
   const runId = text(args, "runId", "run_id");
-  const redacted = body !== rawBody || (rawConditions !== null && conditions !== clip(rawConditions, POST_LIMITS.conditionsChars)) || safeLink !== link.value;
+  const scrubbedOutput = typeof rawOutput === "string" && rawOutput.length > 0 ? scrubSecrets(rawOutput) : null;
+  const redacted =
+    body !== rawBody ||
+    (rawConditions !== null && conditions !== clip(rawConditions, POST_LIMITS.conditionsChars)) ||
+    safeLink !== link.value ||
+    (scrubbedOutput !== null && scrubbedOutput !== rawOutput);
   const status: FindingStatus | null = VERIFIABLE_POST_TYPES.includes(type) ? "claimed" : null;
+  let output: OutputRef | null = null;
+  if (scrubbedOutput !== null) {
+    output = await spillToolOutput(store, {
+      ownerId: auth.ownerId,
+      postId: id,
+      author: auth.name,
+      authorId: auth.id,
+      text: scrubbedOutput,
+      repo,
+      scope,
+      requestId,
+      at: nowIso,
+    });
+  }
   const row: ConnectorPost = {
     id,
     ownerId: auth.ownerId,
@@ -297,6 +375,12 @@ export async function postNote(
     conditions,
     expiresAt: expiry.value,
     createdAt: nowIso,
+    verdict: type === "verdict" ? ((verdictArg ?? "").toLowerCase() as "pass" | "fail") : null,
+    subjectBotId,
+    approach: approach || null,
+    output: output ? (output.kind === "inline" ? output.text : output.preview) : null,
+    outputChars: output ? output.chars : null,
+    artifactId: output?.kind === "artifact" ? output.artifactId : null,
   };
   await store.savePost(row);
   const out = postedBody(row, { redacted });
@@ -327,10 +411,17 @@ export async function verifyNote(
       post.requestId === request.id &&
       Boolean(run && post.repo && run.repo === post.repo) &&
       (!post.sha || Boolean(run?.sha.toLowerCase().startsWith(post.sha.toLowerCase())));
-    if (!sameWork) return refuse("check_mismatch", post.id);
-    if (!run?.passed) return refuse("check_not_passed", post.id);
+    if (!sameWork || !run) return refuse("check_mismatch", post.id);
+    if (post.type === "verdict" && post.verdict === "fail") {
+      // The Checker confirms a fail only with a completed failed run on the judged sha, and no pass on it since.
+      const failed = await failedCheckOn(store, request, post.sha ?? run.sha);
+      if (!failed || run.passed) return refuse("check_not_failed", post.id);
+      check = { requestId: request.id, sha: failed.sha, nonce: failed.nonce };
+    } else {
+      if (!run.passed) return refuse("check_not_passed", post.id);
+      check = { requestId: request.id, sha: run.sha, githubRunId: run.githubRunId };
+    }
     deterministic = true;
-    check = { requestId: request.id, sha: run.sha, githubRunId: run.githubRunId };
   }
 
   const status = noteStatus(post);
@@ -346,9 +437,38 @@ export async function verifyNote(
     }
     return refuse(verdict.reason, post.id);
   }
+  // The bot whose work a verdict judges cannot verify it either; only the Checker can, deterministically.
+  if (!deterministic && post.subjectBotId && post.subjectBotId === auth.id) return refuse("own_work", post.id);
   await store.savePost({ ...post, status: "verified", verified: true, verifiedBy });
   const body = { status: "verified", postId: post.id, verifiedBy, via: deterministic ? "checker" : "bot" };
-  return { body, isError: false, target: post.id, event: check ? { ...body, check } : body };
+  return { body, isError: false, target: post.id, event: check ? { ...body, check } : body, approach: post.approach ?? null };
+}
+
+async function failedCheckOn(store: ConnectorStore, request: ConnectorRequest, sha: string): Promise<{ sha: string; nonce: string | null } | null> {
+  const prefix = sha.toLowerCase();
+  for (const event of await store.listRecentEvents("request_checks", { target: request.id, limit: 200 })) {
+    const result = event.result;
+    if (event.ownerId === request.ownerId && result?.status === "failed" && typeof result.sha === "string" && result.sha.toLowerCase().startsWith(prefix)) {
+      return { sha: result.sha, nonce: typeof result.nonce === "string" ? result.nonce : null };
+    }
+  }
+  return null;
+}
+
+/** get_context({artifactId}): the full tool output behind a note's preview, one page at a time, under the note's read scope. */
+export async function readArtifactNote(store: ConnectorStore, auth: ConnectorAuth, args: Record<string, unknown>): Promise<BoardOutcome> {
+  const id = text(args, "artifactId", "artifact_id") ?? "missing";
+  const artifact = await readToolArtifact(store, id);
+  const post = artifact && artifact.ownerId === auth.ownerId ? await store.getPost(artifact.postId) : null;
+  // Another venture's artifact answers like a missing one.
+  if (!artifact || !post || !(await canReadNote(auth, post, requestCache(store)))) return refuse("unknown_artifact", id);
+  const page = artifactPage(artifact, args.offset);
+  return {
+    body: { status: "ok", rule: CONTEXT_RULE, artifact: page },
+    isError: false,
+    target: id,
+    event: { status: "ok", artifactId: id, offset: page.offset, chars: String(page.text).length },
+  };
 }
 
 export type CompactNote = Record<string, string>;
@@ -371,6 +491,11 @@ function compactNote(post: ConnectorPost): CompactNote {
     agentId: post.agentId,
     runId: post.runId,
     at: post.createdAt,
+    verdict: post.verdict,
+    approach: post.approach,
+    output: post.output,
+    outputChars: post.artifactId && post.outputChars ? String(post.outputChars) : null,
+    artifactId: post.artifactId,
   };
   return omitEmpty(out) as CompactNote;
 }
@@ -402,7 +527,12 @@ export async function contextNotes(
   const limit = Number.isFinite(limitRaw) && limitRaw >= 1 ? Math.min(Math.floor(limitRaw), CONTEXT_LIMITS.maxNotes) : CONTEXT_LIMITS.defaultNotes;
 
   const candidates: ConnectorPost[] = [];
+  const hqNotes: ConnectorPost[] = [];
   for (const post of await store.listPosts()) {
+    if (post.type === "alert" && (post.kind === BLOCKED_KIND || post.kind === SKILL_SUGGESTION_KIND)) {
+      if (noteLive(post, nowIso) && (await canReadNote(auth, post, requests))) hqNotes.push(post);
+      continue;
+    }
     if (!isNoteType(post.type) || (typeArg && post.type !== typeArg)) continue;
     if (!noteLive(post, nowIso)) continue;
     if (repo && post.repo !== repo && noteScope(post) !== "shared" && !(requestId && post.requestId === requestId)) continue;
@@ -419,11 +549,20 @@ export async function contextNotes(
     .sort((a, b) => b.verified - a.verified || b.relevance - a.relevance || b.at - a.at)
     .map((item) => compactNote(item.post));
 
+  const newest = (kind: string) =>
+    hqNotes
+      .filter((post) => post.kind === kind)
+      .sort((a, b) => Date.parse(b.createdAt ?? "") - Date.parse(a.createdAt ?? ""))
+      .slice(0, HQ_NOTE_LIMIT)
+      .map((post) => ({ ...compactNote(post), body: clip(post.body, HQ_NOTE_BODY_CHARS) }));
+  const blocked = newest(BLOCKED_KIND);
+  const suggestions = auth.kind === "ceo" ? newest(SKILL_SUGGESTION_KIND) : null;
   const picked = ranked.slice(0, limit);
-  while (picked.length > 0 && JSON.stringify(picked).length > CONTEXT_LIMITS.totalChars) picked.pop();
-  const verifiable = new Set<string>(VERIFIABLE_POST_TYPES);
-  const findings = picked.filter((note) => verifiable.has(note.type ?? "") && note.status === "verified");
-  const claimed = picked.filter((note) => verifiable.has(note.type ?? "") && note.status !== "verified");
+  const size = () => JSON.stringify([picked, blocked, suggestions]).length;
+  while (picked.length > 0 && size() > CONTEXT_LIMITS.totalChars) picked.pop();
+  const findings = picked.filter((note) => FACT_TYPES.has(note.type ?? "") && note.status === "verified");
+  const claimed = picked.filter((note) => FACT_TYPES.has(note.type ?? "") && note.status !== "verified");
+  const verdicts = picked.filter((note) => note.type === "verdict");
   const body = {
     status: "ok",
     rule: CONTEXT_RULE,
@@ -431,7 +570,10 @@ export async function contextNotes(
     claimed,
     deadEnds: picked.filter((note) => note.type === "dead_end"),
     handoffs: picked.filter((note) => note.type === "handoff"),
-    unverified: claimed.map((note) => note.id),
+    verdicts,
+    blocked,
+    ...(suggestions ? { suggestions } : {}),
+    unverified: [...claimed, ...verdicts.filter((note) => note.status !== "verified")].map((note) => note.id),
     omitted: ranked.length - picked.length,
   };
   return {
@@ -465,6 +607,12 @@ function ownerNote(post: ConnectorPost, nowIso: string): Record<string, unknown>
     agentId: post.agentId,
     runId: post.runId,
     at: post.createdAt,
+    verdict: post.verdict,
+    kind: post.kind,
+    approach: post.approach,
+    output: post.output,
+    outputChars: post.outputChars,
+    artifactId: post.artifactId,
   });
 }
 
@@ -514,6 +662,7 @@ function invalidFilter(filter: string): { status: 400; body: Record<string, unkn
 }
 
 const CHAT_TYPE_WORDS: readonly [RegExp, BoardNoteType][] = [
+  [/verdicts?/i, "verdict"],
   [/dead[ -]?ends?/i, "dead_end"],
   [/shortcuts?/i, "shortcut"],
   [/handoffs?/i, "handoff"],
@@ -525,11 +674,13 @@ const CHAT_LINES = 10;
 function chatLine(post: ConnectorPost): string {
   const status = noteStatus(post);
   const label =
-    post.type === "dead_end"
-      ? `dead end, until ${post.expiresAt?.slice(0, 10) ?? "?"}`
-      : post.type === "handoff"
-        ? "handoff"
-        : `${status === "verified" ? "verified" : "claimed"} ${post.type}`;
+    post.kind === BLOCKED_KIND
+      ? "BLOCKED"
+      : post.type === "dead_end"
+        ? `dead end, until ${post.expiresAt?.slice(0, 10) ?? "?"}`
+        : post.type === "handoff"
+          ? "handoff"
+          : `${status === "verified" ? "verified" : "claimed"} ${post.type}${post.verdict ? ` ${post.verdict}` : ""}`;
   const where = post.repo ?? noteScope(post);
   const when = post.conditions ? ` (when: ${clip(post.conditions, 80)})` : "";
   return `- [${label}] ${where} · ${post.author}: ${clip(post.body.replace(/\s+/g, " "), 140)}${when} #${post.id.slice(0, 8)}`;
@@ -540,7 +691,11 @@ export function answerBoard(posts: ConnectorPost[] | null, ask: string, nowIso: 
   if (!posts) return `Board unavailable. As of ${nowIso}.`;
   const type = CHAT_TYPE_WORDS.find(([pattern]) => pattern.test(ask))?.[1] ?? null;
   const live = posts
-    .filter((post) => isNoteType(post.type) && (!type || post.type === type) && noteLive(post, nowIso))
+    .filter(
+      (post) =>
+        (isNoteType(post.type) ? !type || post.type === type : !type && post.type === "alert" && post.kind === BLOCKED_KIND) &&
+        noteLive(post, nowIso),
+    )
     .sort(
       (a, b) =>
         Number(noteStatus(b) === "verified") - Number(noteStatus(a) === "verified") ||

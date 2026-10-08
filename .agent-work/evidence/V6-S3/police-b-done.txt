@@ -1,0 +1,98 @@
+# V6-S3 police-b done-command
+# 2026-10-08 03:00 PDT on 5df9a55 (branch v6/S3-police-b, main 601a931 merged in)
+# env: SUPABASE_DB_URL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL, POSTGRES_*, CURSOR_API_KEY, GH_HQ_TOKEN, DEXTER_AGE_PRIVATE_KEY, VAPID_PRIVATE_KEY, VERCEL_TOKEN unset; PGUSER=ubuntu; local Postgres 16 (127.0.0.1:54329/dexter_g2)
+# SUPABASE_DB_URL set in this shell: no
+
+$ npm run typecheck
+> typecheck
+> tsc --noEmit && tsc --noEmit -p tsconfig.app.json
+exit 0
+
+$ npm run lint
+> lint
+> eslint kernel adapters hq gateway tests app
+exit 0
+
+$ npm run test
+> test
+> vitest run tests/unit tests/security
+ RUN  v3.2.4 /workspace/hq-stage3-police-b
+stderr | tests/unit/fleet-report-server.test.ts > the per-minute tick writes the weekly report once > keeps the tick green when the report fails
+db down [db]
+ Test Files  29 passed (29)
+      Tests  356 passed (356)
+   Start at  03:00:15
+   Duration  3.53s (transform 2.21s, setup 0ms, collect 10.19s, tests 3.20s, environment 12ms, prepare 2.48s)
+exit 0
+
+$ npm run check:vendor
+> check:vendor
+> bash scripts/check-vendor-neutral.sh
+exit 0
+
+$ npm run check:briefs
+> check:briefs
+> bash scripts/check-briefs.sh
+exit 0
+
+$ npm run check:bundle
+> build
+> node scripts/fetch-codex.mjs && node scripts/bundle-hq.mjs && next build
+{"codexBytes":289101384,"ageBytes":4986442,"functionLimitBytes":262144000}
+   ▲ Next.js 15.5.27
+   Creating an optimized production build ...
+   Using tsconfig file: tsconfig.app.json
+   Using tsconfig file: tsconfig.app.json
+   Using tsconfig file: tsconfig.app.json
+ ✓ Compiled successfully in 2.9s
+   Linting and checking validity of types ...
+ ⚠ The Next.js plugin was not detected in your ESLint configuration. See https://nextjs.org/docs/app/api-reference/config/eslint#migrating-existing-config
+   Collecting page data ...
+   Generating static pages (0/13) ...
+   Generating static pages (3/13) 
+   Generating static pages (6/13) 
+   Generating static pages (9/13) 
+ ✓ Generating static pages (13/13)
+   Finalizing page optimization ...
+   Collecting build traces ...
+Route (app)                                 Size  First Load JS
+┌ ƒ /                                    6.89 kB         110 kB
+├ ○ /_not-found                            998 B         104 kB
+├ ƒ /api/approval                          153 B         103 kB
+├ ƒ /api/board                             153 B         103 kB
+├ ƒ /api/callback                          153 B         103 kB
+├ ƒ /api/chat                              153 B         103 kB
+├ ƒ /api/login                             153 B         103 kB
+├ ƒ /api/mcp                               153 B         103 kB
+├ ƒ /api/resume                            153 B         103 kB
+├ ƒ /api/stop                              153 B         103 kB
+├ ƒ /api/tick-now                          153 B         103 kB
+├ ƒ /login                                 153 B         103 kB
+└ ○ /manifest.webmanifest                  153 B         103 kB
++ First Load JS shared by all             103 kB
+  ├ chunks/255-ce8c7c75002f810b.js       46.5 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.2 kB
+  └ other shared chunks (total)           1.9 kB
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+check:build: next build passed
+exit 0
+
+$ npm run scan:secrets
+> scan:secrets
+> node scripts/scan-secrets.mjs
+secret scan clean
+exit 0
+
+$ npm run test:integration
+> test:integration
+> node scripts/ensure-integration-db.mjs && vitest run tests/integration
+local integration database ready
+ RUN  v3.2.4 /workspace/hq-stage3-police-b
+ Test Files  13 passed (13)
+      Tests  49 passed (49)
+   Start at  03:00:45
+   Duration  3.04s (transform 1.07s, setup 0ms, collect 4.47s, tests 7.03s, environment 3ms, prepare 1.06s)
+exit 0
+
+DONE rc=0

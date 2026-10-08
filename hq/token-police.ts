@@ -4,10 +4,13 @@
 import type { ConnectorAuth, ConnectorEvent, ConnectorRequest } from "./connector-store.ts";
 import type { ConnectorDeps } from "./connector.ts";
 import { PINNED_CHECKS, checkerPassedCurrentSha, requestIsBound, type CompareFile } from "./checker.ts";
+import { BLOCKED_KIND, scrubSecrets, stableId } from "./board-notes.ts";
 
 /** The first fail plus two retries; the third failed Checker run blocks the request. */
 export const GATE_FAIL_LIMIT = 3;
 export const BLOCKED_LOG_LINES = 5;
+/** The fixed last part of every BLOCKED board post. */
+export const BLOCKED_NEXT_STEP = "no more Checker runs on this request; Dexter re-plans it (new approach or new request) or asks the owner.";
 const BLOCKED_LINE_CHARS = 200;
 /** agent-brake `diffstat(path_cap=20)`. */
 export const DIFF_PATH_CAP = 20;
@@ -142,6 +145,74 @@ function blockedLog(evidence: readonly string[]): string[] {
   return [...failing, ...rest].slice(0, BLOCKED_LOG_LINES).map((line) => line.slice(0, BLOCKED_LINE_CHARS));
 }
 
+/** The BLOCKED board post's id: one per request, so a block posts once however often it is recorded. */
+export function blockedPostId(ownerId: string, requestId: string): string {
+  return stableId(`blocked:${ownerId}:${requestId}`);
+}
+
+/** Fixed template: `BLOCKED: <what failed>. Last check run: <run> on <sha12>. Next step: <BLOCKED_NEXT_STEP>` */
+export function blockedPostBody(input: {
+  repo: string | null;
+  fails: number;
+  limit: number;
+  evidence: readonly string[];
+  githubRunId?: string | null;
+  nonce?: string | null;
+  sha: string;
+}): string {
+  const failing = [...new Set(input.evidence.map((line) => /^checker:([a-z0-9_-]+):fail$/i.exec(line)?.[1]).filter((name): name is string => Boolean(name)))];
+  const what = `Checker gate failed ${input.fails} of ${input.limit} runs on ${input.repo ?? "its repo"} (${failing.length > 0 ? failing.join(", ") : "conclusion failure"})`;
+  const run = input.githubRunId ? input.githubRunId : input.nonce ? `nonce ${input.nonce.slice(0, 8)}` : "unknown";
+  return `BLOCKED: ${what}. Last check run: ${run} on ${input.sha.slice(0, 12)}. Next step: ${BLOCKED_NEXT_STEP}`;
+}
+
+function checkerLink(evidence: readonly string[]): string | null {
+  for (const line of evidence) {
+    if (!line.startsWith("checker:url:")) continue;
+    const value = line.slice("checker:url:".length);
+    try {
+      const url = new URL(value);
+      if ((url.protocol === "https:" || url.protocol === "http:") && value.length <= 500) return value;
+    } catch {
+      // not a url; skip
+    }
+  }
+  return null;
+}
+
+/** One board post per block (type alert, author hq, the request's mission scope). Safe to repeat. */
+async function writeBlockedPost(
+  deps: Pick<ConnectorDeps, "store" | "now">,
+  request: ConnectorRequest,
+  failure: { sha: string; evidence: readonly string[]; githubRunId?: string | null; nonce?: string | null },
+  fails: number,
+): Promise<void> {
+  const id = blockedPostId(request.ownerId, request.id);
+  if (await deps.store.getPost(id)) return;
+  const body = scrubSecrets(
+    blockedPostBody({ repo: request.repo, fails: Math.max(fails, GATE_FAIL_LIMIT), limit: GATE_FAIL_LIMIT, evidence: failure.evidence, githubRunId: failure.githubRunId, nonce: failure.nonce, sha: failure.sha }),
+  );
+  await deps.store.savePost({
+    id,
+    ownerId: request.ownerId,
+    type: "alert",
+    author: "hq",
+    body,
+    repo: request.repo,
+    verified: false,
+    authorId: null,
+    status: null,
+    verifiedBy: null,
+    scope: "mission",
+    requestId: request.id,
+    runId: failure.githubRunId ?? null,
+    sha: /^[0-9a-f]{7,40}$/i.test(failure.sha) ? failure.sha.toLowerCase() : null,
+    link: checkerLink(failure.evidence),
+    kind: BLOCKED_KIND,
+    createdAt: (deps.now ?? (() => new Date().toISOString()))(),
+  });
+}
+
 /**
  * Third fail: one `blocked` event (actor hq) with at most five log lines, and the request moves to blocked.
  * Safe to repeat: a second call finds the event and writes nothing.
@@ -150,12 +221,16 @@ export async function recordGateBlocked(
   deps: Pick<ConnectorDeps, "store" | "now">,
   auth: ConnectorAuth,
   request: ConnectorRequest,
-  failure: { sha: string; evidence: readonly string[] },
+  failure: { sha: string; evidence: readonly string[]; githubRunId?: string | null; nonce?: string | null },
 ): Promise<Refusal> {
   const state = await stateFor(deps, request.id);
   const log = blockedLog(failure.evidence);
   const refusal: Refusal = { status: "refused", reason: "gate_blocked", requestId: request.id, fails: state.fails, limit: GATE_FAIL_LIMIT, log };
-  if (state.blockedRecorded) return refusal;
+  if (state.blockedRecorded) {
+    // The event is the block; the post follows it. A post lost to a crash is restored on the next record.
+    await writeBlockedPost(deps, request, failure, state.fails);
+    return refusal;
+  }
   await deps.store.appendEvent({
     ownerId: request.ownerId,
     actor: "hq",
@@ -176,7 +251,7 @@ export async function recordGateBlocked(
     },
     at: (deps.now ?? (() => new Date().toISOString()))(),
   });
-  // TODO(token police part B): also write the BLOCKED board post once unit 4 lands post types.
+  await writeBlockedPost(deps, request, failure, state.fails);
   const fresh = await deps.store.getRequest(request.id);
   if (fresh && fresh.status !== "done" && fresh.status !== "cancelled") await deps.store.saveRequest({ ...fresh, status: "blocked" });
   return refusal;

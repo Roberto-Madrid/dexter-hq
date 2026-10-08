@@ -28,6 +28,8 @@ import {
   type SelftestTickResult,
 } from "./selftest.ts";
 import { createPgSelftestDb } from "./selftest-pg.ts";
+import { readToolArtifact } from "./tool-artifacts.ts";
+import { USAGE_RECEIPT_ACTION, USAGE_SCAN_LIMIT, usageCard } from "./usage-card.ts";
 import { resumeAll, stopAll } from "./stop.ts";
 import { createDefaultConnectorDeps, loadConnectorSheetText } from "./connector.ts";
 import { connectorTick } from "./pins.ts";
@@ -373,6 +375,56 @@ export async function getBoardNotes(
     return { status: 503, body: { status: "error", reason: "board_unavailable" } };
   }
   return ownerBoardView(posts, new URLSearchParams(search), nowIso);
+}
+
+/** GET /api/board?view=usage: owner session only; the token police usage-receipt card (repo, requestId, status, limit). */
+export async function getUsageView(
+  cookie: string | null,
+  search: string | URLSearchParams,
+  store?: ConnectorStore,
+  nowIso = new Date().toISOString(),
+): Promise<{ status: number; body: unknown }> {
+  if (!emailFromCookie(cookie)) return { status: 401, body: { status: "refused", reason: "unauthorized" } };
+  const source = store ?? connectorFromEnv() ?? createMemoryConnectorStore();
+  let receipts;
+  let bots;
+  try {
+    receipts = await source.listRecentEvents(USAGE_RECEIPT_ACTION, { limit: USAGE_SCAN_LIMIT });
+    bots = await source.listBots();
+  } catch {
+    return { status: 503, body: { status: "error", reason: "usage_unavailable" } };
+  }
+  return usageCard(receipts, bots, new URLSearchParams(search), nowIso);
+}
+
+/** GET /api/board?view=artifact&id=…: owner session only; the full stored tool output behind a note's preview. */
+export async function getArtifactView(cookie: string | null, id: string | null, store?: ConnectorStore): Promise<{ status: number; body: unknown }> {
+  if (!emailFromCookie(cookie)) return { status: 401, body: { status: "refused", reason: "unauthorized" } };
+  const source = store ?? connectorFromEnv() ?? createMemoryConnectorStore();
+  let artifact;
+  try {
+    artifact = id ? await readToolArtifact(source, id) : null;
+  } catch {
+    return { status: 503, body: { status: "error", reason: "artifact_unavailable" } };
+  }
+  if (!artifact) return { status: 404, body: { status: "refused", reason: "unknown_artifact" } };
+  return {
+    status: 200,
+    body: {
+      id: artifact.id,
+      postId: artifact.postId,
+      by: artifact.author,
+      repo: artifact.repo,
+      scope: artifact.scope,
+      requestId: artifact.requestId,
+      chars: artifact.chars,
+      storedChars: artifact.storedChars,
+      truncated: artifact.truncated,
+      sha256: artifact.sha256,
+      at: artifact.at,
+      text: artifact.text,
+    },
+  };
 }
 
 function connectorFromEnv() {
