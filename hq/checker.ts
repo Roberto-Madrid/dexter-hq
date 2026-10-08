@@ -75,6 +75,9 @@ export function bindingMatches(request: { pullRequest?: string | null; branch?: 
 
 type FetchLike = typeof fetch;
 
+/** A hung GitHub head lookup must not hold update_request open; a timeout throws, and done fails closed. */
+export const HEAD_LOOKUP_TIMEOUT_MS = 10_000;
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -202,6 +205,7 @@ export function createGhChecker(options: {
   fetchImpl?: FetchLike;
   apiBase?: string;
   findAttempts?: number;
+  headTimeoutMs?: number;
 }): CheckerGateway {
   const fetchImpl = options.fetchImpl ?? fetch;
   const apiBase = options.apiBase ?? "https://api.github.com";
@@ -243,7 +247,10 @@ export function createGhChecker(options: {
           ? `git/ref/heads/${input.branch.split("/").map(encodeURIComponent).join("/")}`
           : null;
       if (!path) return null;
-      const response = await fetchImpl(`${apiBase}/repos/${input.repo}/${path}`, { headers });
+      const response = await fetchImpl(`${apiBase}/repos/${input.repo}/${path}`, {
+        headers,
+        signal: AbortSignal.timeout(options.headTimeoutMs ?? HEAD_LOOKUP_TIMEOUT_MS),
+      });
       if (response.status >= 300) throw new Error(`head_lookup_${response.status}`);
       const body = asRecord(await response.json());
       const sha = input.pullRequest ? asRecord(body.head).sha : asRecord(body.object).sha;

@@ -430,7 +430,7 @@ async function handleOpenRequest(deps: ConnectorDeps, auth: ConnectorAuth, args:
 async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
   const id = textArg(args, "requestId") ?? textArg(args, "request_id");
   const status = textArg(args, "status");
-  const row = id ? await deps.store.getRequest(id) : null;
+  let row = id ? await deps.store.getRequest(id) : null;
   if (!row) {
     const body = { status: "refused", reason: "unknown_request" };
     await record(deps, auth, "update_request", id ?? "missing", body);
@@ -451,7 +451,7 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
     await record(deps, auth, "update_request", row.id, body);
     return toolResult(body, true);
   }
-  const evidence = Array.isArray(args.evidence)
+  let evidence = Array.isArray(args.evidence)
     ? sanitizeBotEvidence(args.evidence.map((item) => String(item)))
     : row.evidence;
   if (status === "done" && evidence.length === 0) {
@@ -471,6 +471,15 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
       await record(deps, auth, "update_request", row.id, body);
       return toolResult(body, true);
     }
+    // The head lookup awaited GitHub; a request_checks may have saved meanwhile. Write onto a fresh read, never the stale row.
+    const fresh = await deps.store.getRequest(row.id);
+    if (!fresh || fresh.status !== row.status || !sameCheckRun(fresh.checkRun, row.checkRun)) {
+      const body = { status: "refused", reason: "request_changed", requestId: row.id };
+      await record(deps, auth, "update_request", row.id, body);
+      return toolResult(body, true);
+    }
+    if (!Array.isArray(args.evidence)) evidence = fresh.evidence;
+    row = fresh;
   }
   // Reopening a done request drops its pass, so returning to done needs a fresh check.
   if (row.status === "done" && status && status !== "done") row.checkRun = null;
@@ -480,6 +489,11 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
   const body = { status: "updated", requestId: row.id, requestStatus: row.status };
   await record(deps, auth, "update_request", row.id, body);
   return toolResult(body);
+}
+
+function sameCheckRun(left: ConnectorRequest["checkRun"], right: ConnectorRequest["checkRun"]): boolean {
+  if (!left || !right) return !left && !right;
+  return left.nonce === right.nonce && left.sha === right.sha && left.repo === right.repo && left.passed === right.passed;
 }
 
 /** Fail closed: done needs a bound PR/branch whose GitHub head is the sha the Checker passed. */
