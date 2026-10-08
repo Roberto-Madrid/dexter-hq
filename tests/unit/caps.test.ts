@@ -121,6 +121,8 @@ describe("U1 caps", () => {
       "launched",
     ]);
     const again = await launch(deps, "same", "owner/a", "req-0-1");
+    expect(again.structuredContent.status).toBe("idempotent");
+    expect(again.structuredContent.agentStatus).toBe("launched");
     expect(again.structuredContent.agentId).toBe(both.find((item) => item.structuredContent.status === "launched")?.structuredContent.agentId);
     expect(cursor.starts).toHaveLength(1);
   });

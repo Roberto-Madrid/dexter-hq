@@ -71,7 +71,7 @@ describe("connector caps under concurrency (Postgres)", () => {
     const caps = { global: 1000, perRepo: 2, perRequest: 3 };
     const first = await store.reserveLaunch({ agent: row(`req-${requestId}-0`, `it/${randomUUID()}`, requestId), requestId, caps });
     expect(first.ok).toBe(true);
-    if (first.ok) expect(await store.setAgentStatus(first.agent.id, ["reserving"], "finished")).toBe(true);
+    if (first.ok) expect(await store.setAgentStatus({ id: first.agent.id, from: ["reserving"], status: "finished" })).toBe(true);
     const results = await Promise.all(
       [1, 2, 3].map((n) =>
         store.reserveLaunch({ agent: row(`req-${requestId}-${n}`, `it/${randomUUID()}`, requestId), requestId, caps }),
@@ -90,7 +90,7 @@ describe("connector caps under concurrency (Postgres)", () => {
     expect(results.filter((item) => !item.ok && item.reason === "duplicate")).toHaveLength(1);
     const won = results.find((item) => item.ok);
     if (!won?.ok) throw new Error("no reservation");
-    expect(await store.setAgentStatus(won.agent.id, ["reserving"], "launch_failed")).toBe(true);
+    expect(await store.setAgentStatus({ id: won.agent.id, from: ["reserving"], status: "launch_failed" })).toBe(true);
     const retry = await store.reserveLaunch({ agent: row(key, repo), requestId: null, caps });
     expect(retry.ok).toBe(true);
     if (retry.ok) expect(retry.agent.id).toBe(won.agent.id);
@@ -102,8 +102,8 @@ describe("connector caps under concurrency (Postgres)", () => {
     const reserved = await store.reserveLaunch({ agent: row(`term-${randomUUID()}`, repo), requestId: null, caps });
     if (!reserved.ok) throw new Error("no reservation");
     await store.saveAgent({ ...reserved.agent, cursorHandle: `bc-${randomUUID()}:run-1`, status: "launched" });
-    expect(await store.setAgentStatus(reserved.agent.id, ACTIVE_AGENT_STATUSES, "finished", { status: "finished" })).toBe(true);
-    expect(await store.setAgentStatus(reserved.agent.id, ACTIVE_AGENT_STATUSES, "error")).toBe(false);
+    expect(await store.setAgentStatus({ id: reserved.agent.id, from: ACTIVE_AGENT_STATUSES, status: "finished", result: { status: "finished" } })).toBe(true);
+    expect(await store.setAgentStatus({ id: reserved.agent.id, from: ACTIVE_AGENT_STATUSES, status: "error" })).toBe(false);
     const agent = await store.getAgent(reserved.agent.id);
     expect(agent?.status).toBe("finished");
     expect(agent?.result).toMatchObject({ status: "finished" });
@@ -120,5 +120,61 @@ describe("connector caps under concurrency (Postgres)", () => {
     const event = { ownerId: owner, actor: "it-lead", action: "council_seat", target: "it", result: null, at: new Date().toISOString() };
     const results = await Promise.all([1, 2, 3].map(() => store.reserveCouncilSeat({ event, since, cap })));
     expect(results.filter((item) => item.ok)).toHaveLength(1);
+  });
+
+  async function seeded(repo: string, status: string, handle = `bc-${randomUUID()}:run-1`): Promise<ConnectorAgent> {
+    const reserved = await store.reserveLaunch({ agent: row(`seed-${randomUUID()}`, repo), requestId: null, caps: { global: 1000, perRepo: 1000, perRequest: 1000 } });
+    if (!reserved.ok) throw new Error("no reservation");
+    const agent = { ...reserved.agent, cursorHandle: handle, status, result: { requestId: null } };
+    await store.saveAgent(agent);
+    return agent;
+  }
+
+  it("lets only one of a follow-up and a launch take the last global slot", async () => {
+    const finished = await seeded(`it/${randomUUID()}`, "finished");
+    const caps = { global: (await activeCount()) + 1, perRepo: 2, perRequest: 5 };
+    const [follow, launch] = await Promise.all([
+      store.reserveFollowup({ id: finished.id, caps, at: new Date().toISOString() }),
+      store.reserveLaunch({ agent: row(`last-${randomUUID()}`, `it/${randomUUID()}`), requestId: null, caps }),
+    ]);
+    expect([follow.ok, launch.ok].filter(Boolean)).toHaveLength(1);
+    const refused = !follow.ok ? follow : !launch.ok ? launch : null;
+    expect(refused?.reason).toBe("agent_cap");
+  });
+
+  it("lets exactly one of two finished agents on a full-but-one repo reopen", async () => {
+    const repo = `it/${randomUUID()}`;
+    await seeded(repo, "launched");
+    const a = await seeded(repo, "finished");
+    const b = await seeded(repo, "error");
+    const caps = { global: 1000, perRepo: 2, perRequest: 5 };
+    const at = new Date().toISOString();
+    const results = await Promise.all([store.reserveFollowup({ id: a.id, caps, at }), store.reserveFollowup({ id: b.id, caps, at })]);
+    expect(results.filter((item) => item.ok)).toHaveLength(1);
+    expect(results.filter((item) => !item.ok && item.reason === "per_repo_cap")).toHaveLength(1);
+  });
+
+  it("claims one follow-up when two arrive for the same agent, and refuses a cancelled agent", async () => {
+    const repo = `it/${randomUUID()}`;
+    const live = await seeded(repo, "launched");
+    const caps = { global: 1000, perRepo: 2, perRequest: 5 };
+    const at = new Date().toISOString();
+    const results = await Promise.all([store.reserveFollowup({ id: live.id, caps, at }), store.reserveFollowup({ id: live.id, caps, at })]);
+    expect(results.filter((item) => item.ok)).toHaveLength(1);
+    expect(results.filter((item) => !item.ok && item.reason === "followup_in_progress")).toHaveLength(1);
+    const cancelled = await seeded(`it/${randomUUID()}`, "cancelled");
+    const refused = await store.reserveFollowup({ id: cancelled.id, caps, at });
+    expect(refused).toMatchObject({ ok: false, reason: "agent_not_active" });
+    expect((await store.getAgent(cancelled.id))?.status).toBe("cancelled");
+  });
+
+  it("does not close an agent whose run changed since it was read", async () => {
+    const agent = await seeded(`it/${randomUUID()}`, "launched", `bc-${randomUUID()}:run-1`);
+    await store.saveAgent({ ...agent, status: "running", result: { ...agent.result, latestRunHandle: `${agent.cursorHandle}-2` } });
+    const stale = await store.setAgentStatus({ id: agent.id, from: ACTIVE_AGENT_STATUSES, status: "finished", run: agent.cursorHandle });
+    expect(stale).toBe(false);
+    expect((await store.getAgent(agent.id))?.status).toBe("running");
+    const current = await store.setAgentStatus({ id: agent.id, from: ACTIVE_AGENT_STATUSES, status: "finished", run: `${agent.cursorHandle}-2` });
+    expect(current).toBe(true);
   });
 });

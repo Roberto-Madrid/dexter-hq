@@ -29,15 +29,17 @@ const auth: ConnectorAuth = {
   suspended: false,
 };
 
-export type FakeCursor = CursorGateway & { starts: RunSpec[]; states: Map<string, string> };
+export type FakeCursor = CursorGateway & { starts: RunSpec[]; states: Map<string, string>; followups: string[] };
 
-export function fakeCursor(options?: { delayMs?: number; failStart?: boolean }): FakeCursor {
+export function fakeCursor(options?: { delayMs?: number; failStart?: boolean; failFollowup?: boolean }): FakeCursor {
   const starts: RunSpec[] = [];
   const states = new Map<string, string>();
+  const followups: string[] = [];
   let count = 0;
   return {
     starts,
     states,
+    followups,
     async start(spec) {
       starts.push(spec);
       count += 1;
@@ -57,6 +59,9 @@ export function fakeCursor(options?: { delayMs?: number; failStart?: boolean }):
       return [];
     },
     async followup(handle) {
+      followups.push(handle.id);
+      if (options?.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
+      if (options?.failFollowup) throw new Error("followup_failed");
       count += 1;
       const id = `${handle.id.split(":")[0]}:run-${count}`;
       states.set(id, "RUNNING");
