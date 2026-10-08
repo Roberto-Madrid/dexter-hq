@@ -16,8 +16,8 @@ import { readFleetView, runFleetReportTick, type FleetDb, type FleetTickResult, 
 import { createPgFleetReports } from "./fleet-report-pg.ts";
 import { createGhRepoCheck, handleVenturesHttp } from "./ventures.ts";
 import { resumeAll, stopAll } from "./stop.ts";
-import { createDefaultConnectorDeps } from "./connector.ts";
-import { reconcileConnector } from "./reconcile.ts";
+import { createDefaultConnectorDeps, loadConnectorSheetText } from "./connector.ts";
+import { connectorTick } from "./pins.ts";
 import { snapshot, type BoardSnapshot } from "./board.ts";
 import { SHIPPED_CREWS } from "./crews.ts";
 import type { HqDeps } from "./deps.ts";
@@ -424,10 +424,11 @@ export async function postTick(
   current();
   const expected = process.env.DEXTER_TICK_SECRET ?? "";
   if (!expected || !header || !tokenMatch(header, expected)) return { status: 401 };
-  // The tick no longer dispatches. It closes finished connector agents so their cap slots free up.
-  const reconcile = await reconcileConnector(createDefaultConnectorDeps({ store: connectorFromEnv() }));
+  // The tick no longer dispatches. It closes finished connector agents so their cap slots free up,
+  // then runs the once-a-day model version check.
+  const { reconcile, pins } = await connectorTick(createDefaultConnectorDeps({ store: connectorFromEnv() }), loadConnectorSheetText());
   const fleet = await fleetTick(options.fleetReports ?? fleetFromEnv(), options.now ?? new Date());
-  return { status: 200, body: { ok: true, reconcile, fleet } };
+  return { status: 200, body: { ok: true, reconcile, fleet, pins } };
 }
 
 function fleetFromEnv(): FleetDb | undefined {

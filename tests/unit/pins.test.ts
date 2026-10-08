@@ -149,11 +149,23 @@ describe("launch_agent resolves repo and the pinned model", () => {
   });
 
   it("lets a scout launch without a repo, still on a pinned model", async () => {
-    const { deps, cursor } = await capsDeps({ bots: [scout] });
+    const { deps, cursor, store } = await capsDeps({ bots: [scout] });
+    await store.saveRequest({
+      id: "req-scout",
+      ownerId: OWNER,
+      goal: "Research pricing pages.",
+      status: "queued",
+      card: { crew: "research", newScreen: false, requiresDesignApproval: false },
+      evidence: [],
+      assignedBotId: scout.id,
+      repo: null,
+      notices: [],
+    });
     const result = await callConnectorTool(deps, scout, "launch_agent", {
       role: "researcher",
       brief: "Read the public docs and summarize the pricing page.",
       idempotencyKey: "scout-1",
+      requestId: "req-scout",
     });
     expect(result.structuredContent.status).toBe("launched");
     expect(cursor.starts[0]?.repo ?? null).toBeNull();
