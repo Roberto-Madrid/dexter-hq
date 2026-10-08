@@ -1,0 +1,15 @@
+name: venture-check
+tier: T2
+council: standard
+personas: [researcher, venture]
+# "Is this idea worth building?" The researcher gathers sourced evidence; the venture persona turns it into a
+# recommendation posted to the board. A build is a separate request the owner confirms. Nothing outward (messages,
+# sign-ups, spending) happens in this crew without an approval card.
+tasks:
+  - persona: researcher
+    role: researcher
+    artifact: note
+  - persona: venture
+    role: venture
+    artifact: note
+    depends_on: researcher

@@ -16,7 +16,7 @@ const ROLE_PERSONA: Record<string, string> = {
   security: "security",
   architect: "writer",
   strategist: "writer",
-  venture: "researcher",
+  venture: "venture",
   ceo: "dexter",
 };
 
