@@ -40,10 +40,20 @@ describe("self-test on Postgres", () => {
     await db.ping();
     const control = await pool.query<{ n: number }>("select count(*)::int as n from public.control");
     expect((await db.controlRows()).length).toBe(control.rows[0]?.n);
-    const tokens = await pool.query<{ total: number; suspended: number }>(
-      "select count(*)::int as total, (count(*) filter (where suspended))::int as suspended from public.bot_tokens",
-    );
-    expect(await db.tokenSuspension()).toEqual(tokens.rows[0]);
+    // Other integration files add bot tokens in parallel on the shared DB: bracket the read with SQL counts.
+    const countTokens = async () =>
+      (
+        await pool.query<{ total: number; suspended: number }>(
+          "select count(*)::int as total, (count(*) filter (where suspended))::int as suspended from public.bot_tokens",
+        )
+      ).rows[0]!;
+    const before = await countTokens();
+    const read = await db.tokenSuspension();
+    const after = await countTokens();
+    expect(read.total).toBeGreaterThanOrEqual(Math.min(before.total, after.total));
+    expect(read.total).toBeLessThanOrEqual(Math.max(before.total, after.total));
+    expect(read.suspended).toBeGreaterThanOrEqual(Math.min(before.suspended, after.suspended));
+    expect(read.suspended).toBeLessThanOrEqual(Math.max(before.suspended, after.suspended));
     await pool.query("insert into public.spike_heartbeats default values");
     const stats = await db.tickStats(new Date(Date.now() - 24 * 3_600_000).toISOString());
     expect(Date.now() - Date.parse(stats.lastBeatAt ?? "1970-01-01")).toBeLessThan(10_000);
@@ -77,6 +87,7 @@ describe("self-test on Postgres", () => {
     const approvals = await pool.query("select id from public.approvals where id = $1", [alertApprovalId(day)]);
     expect(approvals.rows).toHaveLength(0);
 
+    await pool.query("insert into public.spike_heartbeats default values");
     const checked = await runSelftestChecks({
       db,
       connector: createPgConnectorStore(databaseUrl()),
