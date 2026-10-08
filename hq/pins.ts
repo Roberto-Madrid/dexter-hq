@@ -44,8 +44,9 @@ async function recordFailure(store: ConnectorStore, ownerId: string, at: string,
 /**
  * The daily version check. Once per UTC day per owner it reads the catalog, picks one id per role-sheet family, and
  * appends one `model_resolutions` row per family: the first pin is the baseline, the same version is `confirmed`, and a
- * new version is a `held` row plus a pending `model_upgrade` approval. A held version never becomes the pin.
- * dexter-shortcut: approving a model_upgrade card does not switch the pin yet; upgrade path: the U7 upgrade check appends the approved version as a non-held row.
+ * new version is a `held` row plus a pending `model_upgrade` approval. A held version never becomes the pin by itself:
+ * approving the card starts the upgrade check (hq/upgrade-check.ts), which appends a non-held `upgrade:` row only after
+ * the version passes. Those switch rows (and `rollback:` rows) never count as the daily check.
  */
 export async function resolveDailyPins(input: {
   store: ConnectorStore;

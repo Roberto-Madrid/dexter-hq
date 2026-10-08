@@ -11,6 +11,8 @@ import { parseRoleSheet } from "../kernel/role-sheet.ts";
 import { REQUEST_STATES, type PlanCard, type RoleSheet, type RunHandle, type Runtime, type Verdict } from "../kernel/types.ts";
 import {
   CONNECTOR_TOOLS,
+  HQ_ONLY_APPROVAL_ACTIONS,
+  UPGRADE_BOT_NAME,
   botRoster,
   createMemoryConnectorStore,
   isActiveAgent,
@@ -41,7 +43,7 @@ import { decisionTrail } from "./decision-trail.ts";
 import { launchBlockedByDesignGate } from "./design-gate.ts";
 import { composeLaunchBrief } from "./personas.ts";
 import { closeIfTerminal, runHandleFor } from "./reconcile.ts";
-import { approvalGate, gateAfterFail, gateBlockedRefusal, recordGateBlocked } from "./token-police.ts";
+import { approvalGate, gateAfterFail, gateBlockedRefusal, normalizeAction, recordGateBlocked } from "./token-police.ts";
 import { createCursorUsage, recordUsageReceipt, type CursorUsageFn } from "./usage-receipts.ts";
 
 export { CONNECTOR_TOOLS, createMemoryConnectorStore };
@@ -78,6 +80,13 @@ export type ConnectorDeps = {
   /** Token police usage receipts: Cursor's usage endpoint with HQ's key. Null when no key. */
   usage?: CursorUsageFn | null;
 };
+
+/**
+ * Options only HQ's own code can pass; the MCP route never does. `modelOverride` lets the internal `hq-upgrade` bot
+ * run a saved task on a specific version of the role's family (the incoming one, or the current pin for a baseline).
+ * Bots still never name a model: a `model`-like argument is refused before this is read.
+ */
+export type InternalLaunchOptions = { modelOverride?: string };
 
 export type ToolResult = {
   content: { type: "text"; text: string }[];
@@ -184,7 +193,27 @@ async function whoamiBody(deps: ConnectorDeps, auth: ConnectorAuth | null): Prom
   };
 }
 
-async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
+/** The override's version, when the internal upgrade bot names a version this owner's family has seen; else a refusal. */
+async function overrideModel(
+  deps: ConnectorDeps,
+  auth: ConnectorAuth,
+  family: string,
+  version: string,
+): Promise<{ modelId: string } | { reason: "model_override_not_allowed" | "model_override_unknown" }> {
+  const bot = await deps.store.getBot(auth.id);
+  if (auth.kind !== "other" || auth.name !== UPGRADE_BOT_NAME || bot?.kind !== "other" || bot.name !== UPGRADE_BOT_NAME) {
+    return { reason: "model_override_not_allowed" };
+  }
+  const seen = (await deps.store.listModelResolutions(auth.ownerId)).some((row) => row.family === family && row.version === version);
+  return seen ? { modelId: version } : { reason: "model_override_unknown" };
+}
+
+async function handleLaunch(
+  deps: ConnectorDeps,
+  auth: ConnectorAuth,
+  args: Record<string, unknown>,
+  internal: InternalLaunchOptions = {},
+): Promise<ToolResult> {
   if (namedModel(args)) {
     const body = { status: "refused", reason: "callers_never_name_a_model" };
     await record(deps, auth, "launch_agent", "refused", body);
@@ -245,7 +274,19 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     return toolResult(body, true);
   }
   // Bots never name a model: the role's family resolves to the owner's current pin. No pin fails closed.
-  const modelId = (await deps.store.currentPins(auth.ownerId)).find((pin) => pin.family === family)?.version;
+  // Only HQ's upgrade check may pin a run to another version of the same family (see InternalLaunchOptions).
+  let modelId: string | undefined;
+  if (internal.modelOverride) {
+    const override = await overrideModel(deps, auth, family, internal.modelOverride);
+    if ("reason" in override) {
+      const body = { status: "refused", reason: override.reason, family, requestId };
+      await record(deps, auth, "launch_agent", idempotencyKey, body);
+      return toolResult(body, true);
+    }
+    modelId = override.modelId;
+  } else {
+    modelId = (await deps.store.currentPins(auth.ownerId)).find((pin) => pin.family === family)?.version;
+  }
   if (!modelId) {
     const body = { status: "refused", reason: "model_held", family, requestId };
     await record(deps, auth, "launch_agent", idempotencyKey, body);
@@ -890,6 +931,7 @@ export async function callConnectorTool(
   auth: ConnectorAuth | null,
   name: string,
   rawArgs: unknown,
+  internal: InternalLaunchOptions = {},
 ): Promise<ToolResult> {
   const args = asArgs(rawArgs);
   const stopped = await deps.store.stopped();
@@ -937,7 +979,7 @@ export async function callConnectorTool(
   if (name === "open_request") return handleOpenRequest(deps, auth, args);
   if (name === "update_request") return handleUpdateRequest(deps, auth, args);
   if (name === "assign") return handleAssign(deps, auth, args);
-  if (name === "launch_agent") return handleLaunch(deps, auth, args);
+  if (name === "launch_agent") return handleLaunch(deps, auth, args, internal);
   if (name === "agent_status" || name === "followup_agent" || name === "cancel_agent") {
     return handleAgentTool(deps, auth, name, args);
   }
@@ -946,6 +988,12 @@ export async function callConnectorTool(
   if (name === "request_approval") {
     const action = textArg(args, "action") ?? "unknown";
     const target = textArg(args, "target") ?? action;
+    // Upgrade cards come only from HQ (daily pins check, upgrade check): approving one starts runs or moves a pin.
+    if (HQ_ONLY_APPROVAL_ACTIONS.has(normalizeAction(action))) {
+      const body = { status: "refused", reason: "hq_only_action", action };
+      await record(deps, auth, name, action, body);
+      return toolResult(body, true);
+    }
     const gate = await approvalGate(deps, args);
     if (!gate.ok) {
       await record(deps, auth, name, target, gate.body);

@@ -1,0 +1,103 @@
+# U7 red (integration, local Postgres 16 on 127.0.0.1:54329), 2026-10-08 02:41 PDT; tests + names-only stub
+# live DB URLs and API keys unset (u7-safe-env)
+local integration database ready
+
+ RUN  v3.2.4 /workspace/hq-stage3-u1
+
+ ❯ tests/integration/upgrade-check.test.ts (5 tests | 5 failed) 153ms
+   × upgrade check storage (Postgres) > creates one internal bot with no token, even under concurrent calls, and follows the sandbox repo 6ms
+     → store.ensureInternalBot is not a function
+   × upgrade check storage (Postgres) > writes one model_outcomes row per run, even under concurrent calls, linked to the version's resolution row 45ms
+     → .toMatch() expects to receive a string, but got undefined
+   × upgrade check storage (Postgres) > applies a check decision once: switch row, rollback card and done event together; a moved pin refuses 19ms
+     → store.applyUpgradeDecision is not a function
+   × upgrade check storage (Postgres) > switches a pin only while it is still the expected version, and switch rows never count as the daily check 17ms
+     → store.switchPin is not a function
+   × upgrade check end to end on Postgres (fake Cursor) > tap → ticks launch through the capped path → pin switches → rollback tap restores it 53ms
+     → expected { status: 'approved', …(4) } to match object { status: 'approved', …(1) }
+(5 matching properties omitted from actual)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/integration/upgrade-check.test.ts > upgrade check storage (Postgres) > creates one internal bot with no token, even under concurrent calls, and follows the sandbox repo
+TypeError: store.ensureInternalBot is not a function
+ ❯ tests/integration/upgrade-check.test.ts:60:33
+     58|     const at = "2026-10-09T10:00:00.000Z";
+     59|     const made = await Promise.all(
+     60|       [1, 2, 3].map(() => store.ensureInternalBot({ ownerId: owner, na…
+       |                                 ^
+     61|     );
+     62|     expect(new Set(made.map((bot) => bot.id)).size).toBe(1);
+ ❯ tests/integration/upgrade-check.test.ts:60:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/integration/upgrade-check.test.ts > upgrade check storage (Postgres) > writes one model_outcomes row per run, even under concurrent calls, linked to the version's resolution row
+TypeError: .toMatch() expects to receive a string, but got undefined
+ ❯ tests/integration/upgrade-check.test.ts:75:25
+     73|     await seedPins(owner);
+     74|     const heldRow = (await store.listModelResolutions(owner)).find((ro…
+     75|     expect(heldRow?.id).toMatch(/^[0-9a-f-]{36}$/);
+       |                         ^
+     76|     const runId = randomUUID();
+     77|     const writes = await Promise.all(
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/integration/upgrade-check.test.ts > upgrade check storage (Postgres) > applies a check decision once: switch row, rollback card and done event together; a moved pin refuses
+TypeError: store.applyUpgradeDecision is not a function
+ ❯ tests/integration/upgrade-check.test.ts:98:46
+     96|       approval,
+     97|     };
+     98|     const results = await Promise.all([store.applyUpgradeDecision(inpu…
+       |                                              ^
+     99|     expect(results.filter((row) => row.applied)).toHaveLength(1);
+    100|     expect(results.find((row) => !row.applied)).toMatchObject({ reason…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  tests/integration/upgrade-check.test.ts > upgrade check storage (Postgres) > switches a pin only while it is still the expected version, and switch rows never count as the daily check
+TypeError: store.switchPin is not a function
+ ❯ tests/integration/upgrade-check.test.ts:117:31
+    115|     const owner = newOwner();
+    116|     await seedPins(owner);
+    117|     const first = await store.switchPin({ ownerId: owner, family: "gro…
+       |                               ^
+    118|     expect(first).toEqual({ switched: true, current: "grok-4.8" });
+    119|     const stale = await store.switchPin({ ownerId: owner, family: "gro…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  tests/integration/upgrade-check.test.ts > upgrade check end to end on Postgres (fake Cursor) > tap → ticks launch through the capped path → pin switches → rollback tap restores it
+AssertionError: expected { status: 'approved', …(4) } to match object { status: 'approved', …(1) }
+(5 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "execution": {
+-     "reason": "upgrade_check_started",
++     "ran": false,
++     "status": "ok",
+    },
+    "status": "approved",
+  }
+
+ ❯ tests/integration/upgrade-check.test.ts:140:17
+    138|     const deps = createDefaultConnectorDeps({ store, sheet, cursor, cu…
+    139|     const tap = await decideApproval(store, { approvalId: card.id, dec…
+    140|     expect(tap).toMatchObject({ status: "approved", execution: { reaso…
+       |                 ^
+    141|     const env = { [SANDBOX_ENV]: `it/sandbox-${owner.slice(0, 8)}` };
+    142|     let status = "running";
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed (5)
+   Start at  02:41:27
+   Duration  1.02s (transform 312ms, setup 0ms, collect 532ms, tests 153ms, environment 0ms, prepare 69ms)
+
+exit 1

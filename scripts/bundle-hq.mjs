@@ -20,9 +20,17 @@ const inlineAssets = {
         if (!name.endsWith(".md")) continue;
         personas[name] = readFileSync(join("personas", name), "utf8");
       }
+      const upgradeTasks = {};
+      for (const family of readdirSync("config/upgrade-tasks", { withFileTypes: true })) {
+        if (!family.isDirectory()) continue;
+        for (const name of readdirSync(join("config/upgrade-tasks", family.name))) {
+          if (!name.endsWith(".md")) continue;
+          upgradeTasks[`${family.name}/${name}`] = readFileSync(join("config/upgrade-tasks", family.name, name), "utf8");
+        }
+      }
       return {
         loader: "ts",
-        contents: `export function bundledRoleSheet(){return ${JSON.stringify(roleSheet)};}export function bundledCrews(){return ${JSON.stringify(crews)};}export function bundledPersonas(){return ${JSON.stringify(personas)};}`,
+        contents: `export function bundledRoleSheet(){return ${JSON.stringify(roleSheet)};}export function bundledCrews(){return ${JSON.stringify(crews)};}export function bundledPersonas(){return ${JSON.stringify(personas)};}export function bundledUpgradeTasks(){return ${JSON.stringify(upgradeTasks)};}`,
       };
     });
   },
