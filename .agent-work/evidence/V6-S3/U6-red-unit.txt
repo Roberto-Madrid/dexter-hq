@@ -1,0 +1,418 @@
+
+ RUN  v3.2.4 /workspace/hq-stage3-u3
+
+ ❯ tests/unit/selftest.test.ts (18 tests | 18 failed) 39ms
+   × daily self-test: schedule and idempotency > does nothing before 07:00 PT 9ms
+     → not_implemented
+   × daily self-test: schedule and idempotency > runs once per PT day and again the next day 2ms
+     → not_implemented
+   × daily self-test: schedule and idempotency > writes one record when two ticks race 2ms
+     → not_implemented
+   × daily self-test: schedule and idempotency > checks every invariant and passes on a healthy fleet 2ms
+     → not_implemented
+   × daily self-test: schedule and idempotency > has no side effects on agents and never calls a runtime 2ms
+     → not_implemented
+   × daily self-test: each check fails on its fixture > database: reports an error code and never the driver message 2ms
+     → not_implemented
+   × daily self-test: each check fails on its fixture > stop_state: flags more than one control row 2ms
+     → not_implemented
+   × daily self-test: each check fails on its fixture > stop_state: flags active tokens while STOP ALL is on, and suspended tokens while it is off 1ms
+     → not_implemented
+   × daily self-test: each check fails on its fixture > caps: flags more active agents than the surge cap, or more than 2 on one repo 2ms
+     → not_implemented
+   × daily self-test: each check fails on its fixture > stuck_reserving: flags a reserving row older than 15 minutes only 2ms
+     → not_implemented
+   × daily self-test: each check fails on its fixture > long_running_agents: flags an agent active for more than 6 hours 1ms
+     → not_implemented
+   × daily self-test: each check fails on its fixture > tick_fresh and tick_gaps: flag a stale last beat and a gap over 5 minutes 3ms
+     → not_implemented
+   × daily self-test: each check fails on its fixture > checker_credential: names a missing variable and never records a value 2ms
+     → not_implemented
+   × daily self-test: each check fails on its fixture > role_sheet: flags a sheet that does not parse 1ms
+     → not_implemented
+   × daily self-test: each check fails on its fixture > raises one Needs-you alert listing the failed checks 2ms
+     → not_implemented
+   × self-test reads > recognises the chat question 0ms
+     → not_implemented
+   × self-test reads > answers from the latest record without running anything 0ms
+     → not_implemented
+   × self-test reads > health for the watchdog: ok only with a fresh tick and a fresh passing self-test 2ms
+     → not_implemented
+ ❯ tests/unit/selftest-server.test.ts (7 tests | 7 failed) 74ms
+   × watchdog health endpoint (GET /api/tick-now) > refuses a missing or wrong secret, and the tick secret 7ms
+     → (0 , getTickHealth) is not a function
+   × watchdog health endpoint (GET /api/tick-now) > fails closed when the secret is not configured 1ms
+     → (0 , getTickHealth) is not a function
+   × watchdog health endpoint (GET /api/tick-now) > returns only health fields with the right secret 1ms
+     → (0 , getTickHealth) is not a function
+   × watchdog health endpoint (GET /api/tick-now) > answers 503 not_configured with the right secret but no database 1ms
+     → (0 , getTickHealth) is not a function
+   × owner self-test view (GET /api/board?view=selftest) > is owner-only 1ms
+     → (0 , getSelftestView) is not a function
+   × tick and chat hooks > the tick reports the self-test as not configured without a database and still answers 200 51ms
+     → expected { ok: true, reconcile: { …(5) } } to match object { ok: true, …(1) }
+(6 matching properties omitted from actual)
+   × tick and chat hooks > chat answers a self-test question without a model call 10ms
+     → expected 1 to be +0 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 25 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/selftest-server.test.ts > watchdog health endpoint (GET /api/tick-now) > refuses a missing or wrong secret, and the tick secret
+TypeError: (0 , getTickHealth) is not a function
+ ❯ tests/unit/selftest-server.test.ts:44:19
+     42| describe("watchdog health endpoint (GET /api/tick-now)", () => {
+     43|   it("refuses a missing or wrong secret, and the tick secret", async (…
+     44|     expect((await getTickHealth(null, healthyDb)).status).toBe(401);
+       |                   ^
+     45|     expect((await getTickHealth("wrong", healthyDb)).status).toBe(401);
+     46|     expect((await getTickHealth(TICK, healthyDb)).status).toBe(401);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/25]⎯
+
+ FAIL  tests/unit/selftest-server.test.ts > watchdog health endpoint (GET /api/tick-now) > fails closed when the secret is not configured
+TypeError: (0 , getTickHealth) is not a function
+ ❯ tests/unit/selftest-server.test.ts:55:21
+     53|     delete process.env.DEXTER_WATCHDOG_SECRET;
+     54|     try {
+     55|       expect((await getTickHealth("", healthyDb)).status).toBe(401);
+       |                     ^
+     56|       expect((await getTickHealth(SECRET, healthyDb)).status).toBe(401…
+     57|     } finally {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/25]⎯
+
+ FAIL  tests/unit/selftest-server.test.ts > watchdog health endpoint (GET /api/tick-now) > returns only health fields with the right secret
+TypeError: (0 , getTickHealth) is not a function
+ ❯ tests/unit/selftest-server.test.ts:63:26
+     61| 
+     62|   it("returns only health fields with the right secret", async () => {
+     63|     const result = await getTickHealth(SECRET, healthyDb);
+       |                          ^
+     64|     expect(result.status).toBe(200);
+     65|     expect(Object.keys(result.body ?? {}).sort()).toEqual(["ok", "reas…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/25]⎯
+
+ FAIL  tests/unit/selftest-server.test.ts > watchdog health endpoint (GET /api/tick-now) > answers 503 not_configured with the right secret but no database
+TypeError: (0 , getTickHealth) is not a function
+ ❯ tests/unit/selftest-server.test.ts:70:18
+     68| 
+     69|   it("answers 503 not_configured with the right secret but no database…
+     70|     expect(await getTickHealth(SECRET, undefined)).toEqual({ status: 5…
+       |                  ^
+     71|   });
+     72| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/25]⎯
+
+ FAIL  tests/unit/selftest-server.test.ts > owner self-test view (GET /api/board?view=selftest) > is owner-only
+TypeError: (0 , getSelftestView) is not a function
+ ❯ tests/unit/selftest-server.test.ts:76:19
+     74| describe("owner self-test view (GET /api/board?view=selftest)", () => {
+     75|   it("is owner-only", async () => {
+     76|     expect((await getSelftestView(null, healthyDb)).status).toBe(401);
+       |                   ^
+     77|     const cookie = `dexter_session=${issueSession("owner@example.com",…
+     78|     const view = await getSelftestView(cookie, healthyDb);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/25]⎯
+
+ FAIL  tests/unit/selftest-server.test.ts > tick and chat hooks > the tick reports the self-test as not configured without a database and still answers 200
+AssertionError: expected { ok: true, reconcile: { …(5) } } to match object { ok: true, …(1) }
+(6 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "ok": true,
+-   "selftest": {
+-     "status": "not_configured",
+-   },
+  }
+
+ ❯ tests/unit/selftest-server.test.ts:88:25
+     86|     const result = await postTick(TICK);
+     87|     expect(result.status).toBe(200);
+     88|     expect(result.body).toMatchObject({ ok: true, selftest: { status: …
+       |                         ^
+     89|   });
+     90| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/25]⎯
+
+ FAIL  tests/unit/selftest-server.test.ts > tick and chat hooks > chat answers a self-test question without a model call
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/unit/selftest-server.test.ts:93:31
+     91|   it("chat answers a self-test question without a model call", async (…
+     92|     const result = await postChat("self test");
+     93|     expect(result.modelCalls).toBe(0);
+       |                               ^
+     94|     expect(result.card).toBeNull();
+     95|     expect(result.text).toContain("not configured");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: schedule and idempotency > does nothing before 07:00 PT
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:117:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: schedule and idempotency > runs once per PT day and again the next day
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:124:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: schedule and idempotency > writes one record when two ticks race
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:134:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: schedule and idempotency > checks every invariant and passes on a healthy fleet
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:141:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: schedule and idempotency > has no side effects on agents and never calls a runtime
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:153:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: each check fails on its fixture > database: reports an error code and never the driver message
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:169:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: each check fails on its fixture > stop_state: flags more than one control row
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:179:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: each check fails on its fixture > stop_state: flags active tokens while STOP ALL is on, and suspended tokens while it is off
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:186:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: each check fails on its fixture > caps: flags more active agents than the surge cap, or more than 2 on one repo
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:207:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: each check fails on its fixture > stuck_reserving: flags a reserving row older than 15 minutes only
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:224:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: each check fails on its fixture > long_running_agents: flags an agent active for more than 6 hours
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:233:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: each check fails on its fixture > tick_fresh and tick_gaps: flag a stale last beat and a gap over 5 minutes
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:241:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: each check fails on its fixture > checker_credential: names a missing variable and never records a value
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:261:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: each check fails on its fixture > role_sheet: flags a sheet that does not parse
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:274:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > daily self-test: each check fails on its fixture > raises one Needs-you alert listing the failed checks
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:280:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > self-test reads > recognises the chat question
+Error: not_implemented
+ ❯ isSelftestQuestion hq/selftest.ts:34:9
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+     34|   throw new Error("not_implemented");
+       |         ^
+     35| }
+     36| export async function selftestChatAnswer(_db: SelftestDb | undefined, …
+ ❯ tests/unit/selftest.test.ts:289:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > self-test reads > answers from the latest record without running anything
+Error: not_implemented
+ ❯ selftestChatAnswer hq/selftest.ts:37:9
+     35| }
+     36| export async function selftestChatAnswer(_db: SelftestDb | undefined, …
+     37|   throw new Error("not_implemented");
+       |         ^
+     38| }
+     39| export async function selftestHealth(_db: SelftestDb, _now: Date): Pro…
+ ❯ tests/unit/selftest.test.ts:297:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/25]⎯
+
+ FAIL  tests/unit/selftest.test.ts > self-test reads > health for the watchdog: ok only with a fresh tick and a fresh passing self-test
+Error: not_implemented
+ ❯ runDailySelftest hq/selftest.ts:31:9
+     29|   sheetText?: string;
+     30| }): Promise<Record<string, unknown>> {
+     31|   throw new Error("not_implemented");
+       |         ^
+     32| }
+     33| export function isSelftestQuestion(_text: string): boolean {
+ ❯ run tests/unit/selftest.test.ts:99:10
+ ❯ tests/unit/selftest.test.ts:314:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/25]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  25 failed (25)
+   Start at  02:12:49
+   Duration  959ms (transform 421ms, setup 0ms, collect 691ms, tests 112ms, environment 0ms, prepare 161ms)
+
