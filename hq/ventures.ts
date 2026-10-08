@@ -3,6 +3,7 @@
 // `bots` row (kind lead) + one hashed `bot_tokens` row + an `add_venture` event.
 import { randomBytes, randomUUID } from "node:crypto";
 import { redact } from "../kernel/redact.ts";
+import { skillBudget } from "./token-police.ts";
 import { STUB_OWNER_ID, hashBotToken } from "./connector.ts";
 import {
   heartbeatStatus,
@@ -120,7 +121,7 @@ function ventureView(row: RosterRow, now: Date): VentureView {
 }
 
 type AddInput = { name: string; repo: string; leadName: string; brief: string | null; idempotencyKey: string | null };
-type Invalid = { field: string };
+type Invalid = { field: string; reason?: string; words?: number; maxWords?: number };
 
 function str(body: Record<string, unknown>, key: string): string | null {
   const value = body[key];
@@ -138,6 +139,9 @@ function parseAdd(body: Record<string, unknown>): AddInput | Invalid {
   if (rawBrief !== undefined && rawBrief !== null && typeof rawBrief !== "string") return { field: "brief" };
   const brief = typeof rawBrief === "string" ? rawBrief.trim() : "";
   if (brief.length > BRIEF_MAX) return { field: "brief" };
+  // Token police: the brief is the lead's profile, held to agent-brake's skill budget.
+  const budget = skillBudget(brief);
+  if (budget.over) return { field: "brief", reason: "skill_too_long", words: budget.words, maxWords: budget.maxWords };
   const rawKey = body.idempotencyKey;
   if (rawKey !== undefined && rawKey !== null && (typeof rawKey !== "string" || rawKey.length > KEY_MAX)) {
     return { field: "idempotencyKey" };
@@ -191,7 +195,10 @@ async function findVenture(store: ConnectorStore, botId: string, now: Date): Pro
 
 async function addVenture(deps: VenturesDeps, body: Record<string, unknown>, now: Date): Promise<Response> {
   const input = parseAdd(body);
-  if ("field" in input) return refused(400, "invalid_input", input.field);
+  if ("field" in input) {
+    if (input.reason) return json(400, { status: "refused", reason: input.reason, field: input.field, words: input.words, maxWords: input.maxWords });
+    return refused(400, "invalid_input", input.field);
+  }
   // Cheap refusals first, so STOP ALL and duplicates never cost a GitHub call.
   if (await deps.store.stopped()) return refused(409, "stopped");
   const decide = decideCreate(input, STUB_OWNER_ID);

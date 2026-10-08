@@ -25,7 +25,9 @@ export const WEEK_KEY = /^\d{4}-W\d{2}$/;
 const SYSTEM_ACTOR = "hq";
 /** Actors that are not bots: HQ itself and the owner (add_venture, rotate_token). */
 const NON_BOT_ACTORS = new Set([SYSTEM_ACTOR, "owner"]);
-const PASSIVE_ACTIONS = new Set(["heartbeat", "whoami"]);
+const PASSIVE_ACTIONS = new Set(["heartbeat", "whoami", "usage_receipt"]);
+/** HQ-written events that name the bot they belong to in `result.botId`. */
+const BOT_TAGGED_ACTIONS = new Set(["agent_finished", "usage_receipt", "blocked"]);
 const NO_REPORT = "No fleet report yet. HQ writes one on the first tick after Monday 07:00 PT.";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -47,11 +49,15 @@ export type FleetBotLine = Counts & {
   repos: string[];
   council: { seats: number; verdicts: Record<string, number> };
   deadEnds: { posted: number };
+  usage: BotUsage;
   lastHeartbeat: string | null;
   stale: boolean;
   neverSeen: boolean;
   idle: boolean;
 };
+
+/** Token police usage receipts (one per finished Cursor run). Input tokens include cache reads and writes. */
+export type BotUsage = { receipts: number; unavailable: number; inputTokens: number; outputTokens: number };
 
 export type FleetTotals = Omit<Counts, "refusals" | "capRefusals"> & {
   refusals: Record<string, number>;
@@ -60,6 +66,7 @@ export type FleetTotals = Omit<Counts, "refusals" | "capRefusals"> & {
   council: { seatsUsed: number; cap: number; verdicts: Record<string, number> };
   deadEnds: { posted: number; onBoard: number };
   waste: { cancelled: number; errored: number; launchFailed: number; refused: number; total: number };
+  usage: BotUsage & { chargedCents: number | null };
 };
 
 export type FleetReport = {
@@ -209,14 +216,30 @@ type Acc = Counts & {
   deadEndsPosted: number;
   active: boolean;
   requestStates: Set<string>;
+  usage: BotUsage;
+  chargedCents: number | null;
 };
 
 function emptyAcc(): Acc {
-  return { ...emptyCounts(), seatEvents: 0, seatAttempts: 0, verdicts: {}, deadEndsPosted: 0, active: false, requestStates: new Set() };
+  return {
+    ...emptyCounts(),
+    seatEvents: 0,
+    seatAttempts: 0,
+    verdicts: {},
+    deadEndsPosted: 0,
+    active: false,
+    requestStates: new Set(),
+    usage: { receipts: 0, unavailable: 0, inputTokens: 0, outputTokens: 0 },
+    chargedCents: null,
+  };
 }
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value ? value : null;
+}
+
+function tokens(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
 function bump(record: Record<string, number>, key: string): void {
@@ -277,10 +300,9 @@ export function buildFleetReport(input: {
 
   for (const event of events) {
     const status = text(event.result?.status);
-    const owner =
-      event.action === "agent_finished"
-        ? (botNames.get(text(event.result?.botId) ?? "") ?? text(event.result?.botId) ?? event.actor)
-        : event.actor;
+    const owner = BOT_TAGGED_ACTIONS.has(event.action)
+      ? (botNames.get(text(event.result?.botId) ?? "") ?? text(event.result?.botId) ?? event.actor)
+      : event.actor;
     if (NON_BOT_ACTORS.has(owner)) continue;
     const line = acc(owner);
     if (!PASSIVE_ACTIONS.has(event.action)) line.active = true;
@@ -309,6 +331,22 @@ export function buildFleetReport(input: {
     if (event.action === "request_checks") {
       if (status === "ready") line.checks.passed += 1;
       if (status === "failed") line.checks.failed += 1;
+    }
+    if (event.action === "blocked" && status === "blocked") {
+      const requestId = text(event.result?.requestId) ?? event.target;
+      line.requestStates.add(`blocked:${requestId}`);
+      totalRequestStates.add(`blocked:${requestId}`);
+    }
+    if (event.action === "usage_receipt") {
+      if (status === "recorded") {
+        line.usage.receipts += 1;
+        line.usage.inputTokens += tokens(event.result?.input_tokens);
+        line.usage.outputTokens += tokens(event.result?.output_tokens);
+        const charged = event.result?.charged_cents;
+        if (typeof charged === "number" && Number.isFinite(charged)) line.chargedCents = (line.chargedCents ?? 0) + charged;
+      } else {
+        line.usage.unavailable += 1;
+      }
     }
     if (event.action === "council_seat") line.seatEvents += 1;
     if (event.action === "request_council") {
@@ -348,6 +386,7 @@ export function buildFleetReport(input: {
       checks: item.checks,
       findings: item.findings,
       deadEnds: { posted: item.deadEndsPosted },
+      usage: item.usage,
       lastHeartbeat: heartbeat,
       stale: Boolean(bot && heartbeat && generatedMs - Date.parse(heartbeat) > STALE_AFTER_MS),
       neverSeen: Boolean(bot && !heartbeat),
@@ -372,8 +411,16 @@ export function buildFleetReport(input: {
     // dexter-shortcut: counts every dead_end post because ConnectorPost has no expiry yet; upgrade path: count only deadEndActive() rows once U4 reads expires_at.
     deadEnds: { posted: 0, onBoard: input.posts.filter((post) => post.type === "dead_end").length },
     waste: { cancelled: 0, errored: 0, launchFailed: 0, refused: 0, total: 0 },
+    usage: { receipts: 0, unavailable: 0, inputTokens: 0, outputTokens: 0, chargedCents: null },
   };
+  for (const charged of [...accs.values()].map((item) => item.chargedCents)) {
+    if (charged !== null) totals.usage.chargedCents = (totals.usage.chargedCents ?? 0) + charged;
+  }
   for (const line of lines) {
+    totals.usage.receipts += line.usage.receipts;
+    totals.usage.unavailable += line.usage.unavailable;
+    totals.usage.inputTokens += line.usage.inputTokens;
+    totals.usage.outputTokens += line.usage.outputTokens;
     totals.requests.opened += line.requests.opened;
     for (const key of Object.keys(totals.agents) as (keyof FleetTotals["agents"])[]) totals.agents[key] += line.agents[key];
     for (const [reason, count] of Object.entries(line.refusals)) {
@@ -411,8 +458,8 @@ export function buildFleetReport(input: {
     staleBots: lines.filter((line) => line.stale).map((line) => line.bot),
     neverSeenBots: lines.filter((line) => line.neverSeen).map((line) => line.bot),
     idleBots: lines.filter((line) => line.idle).map((line) => line.bot),
-    // dexter-shortcut: tick gaps, self-test results and Cursor usage are not in the report; upgrade path: add them from spike_heartbeats, the U6 self-test events and U1's result.usage.
-    notTracked: ["tick gaps", "self-test failures", "Cursor usage per agent"],
+    // dexter-shortcut: tick gaps and self-test results are not in the report; upgrade path: add them from spike_heartbeats and the U6 self-test events.
+    notTracked: ["tick gaps", "self-test failures"],
   };
 }
 
@@ -438,12 +485,20 @@ function botLine(line: FleetBotLine): string {
     `checks ${line.checks.passed} passed/${line.checks.failed} failed`,
     `findings ${line.findings.posted} posted/${line.findings.verified} verified`,
     `dead ends ${line.deadEnds.posted} posted`,
+    ...(line.usage.receipts + line.usage.unavailable > 0
+      ? [`usage ${line.usage.inputTokens} in/${line.usage.outputTokens} out tokens (${line.usage.receipts} receipts, ${line.usage.unavailable} unavailable)`]
+      : []),
   ];
   return `${name}: ${parts.join("; ")}.`;
 }
 
 function list(names: string[]): string {
   return names.length > 0 ? names.join(", ") : "none";
+}
+
+function usageLine(usage: FleetTotals["usage"]): string {
+  const charged = usage.chargedCents === null ? "" : ` Charged: ${usage.chargedCents} cents.`;
+  return `Cursor usage: ${usage.inputTokens} input tokens (with cache), ${usage.outputTokens} output tokens over ${usage.receipts} receipt${usage.receipts === 1 ? "" : "s"}, ${usage.unavailable} unavailable.${charged}`;
 }
 
 export function renderFleetReport(report: FleetReport): string {
@@ -458,6 +513,7 @@ export function renderFleetReport(report: FleetReport): string {
     `Council: ${t.council.seatsUsed} of ${t.council.cap} Council seats used.${verdicts}`,
     `Checks: ${t.checks.passed} passed, ${t.checks.failed} failed.`,
     `Findings: ${t.findings.posted} posted, ${t.findings.verified} verified. Dead ends: ${t.deadEnds.posted} posted, ${t.deadEnds.onBoard} on the board.`,
+    usageLine(t.usage),
     `Waste: ${t.waste.total} (${t.waste.cancelled} cancelled, ${t.waste.errored} errored, ${t.waste.launchFailed} failed to launch, ${t.waste.refused} refused).`,
     "Per bot:",
     ...(report.bots.length > 0 ? report.bots.map(botLine) : ["- no bots."]),

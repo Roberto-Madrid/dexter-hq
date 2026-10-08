@@ -8,6 +8,7 @@ import {
   loadConnectorSheetText,
 } from "../../hq/connector.ts";
 import { parseRoleSheet } from "../../kernel/role-sheet.ts";
+import type { CheckerGateway } from "../../hq/checker.ts";
 
 const OWNER = "11111111-1111-4111-8111-111111111111";
 const BOT = "22222222-2222-4222-8222-222222222222";
@@ -38,12 +39,49 @@ function storeWithLead() {
   });
 }
 
+const SHA = "dddddddddddddddddddddddddddddddddddddddd";
+
+// Token police: a deploy approval needs a request whose pinned Checker run passed on the PR head.
+const headOnly: CheckerGateway = {
+  async dispatch() {
+    throw new Error("unused");
+  },
+  async find() {
+    return null;
+  },
+  async outcome() {
+    throw new Error("unused");
+  },
+  async head() {
+    return SHA;
+  },
+};
+
+async function seedPassingRequest(store: ReturnType<typeof storeWithLead>) {
+  await store.saveRequest({
+    id: "req-deploy",
+    ownerId: OWNER,
+    goal: "Ship the preview.",
+    status: "ready_for_review",
+    card: { crew: "change", newScreen: false, requiresDesignApproval: false },
+    evidence: [],
+    assignedBotId: BOT,
+    repo: "owner/demo",
+    notices: [],
+    pullRequest: "7",
+    branch: null,
+    checkRun: { nonce: "n-1", githubRunId: "1", sha: SHA, repo: "owner/demo", hostRepo: "owner/workers", dispatchedAt: NOW, passed: true },
+  });
+}
+
 function depsFor(store: ReturnType<typeof storeWithLead>) {
   return createDefaultConnectorDeps({
     store,
     sheet: parseRoleSheet(loadConnectorSheetText()),
     cursor: null,
     cursorConfigured: false,
+    checker: headOnly,
+    checkerConfigured: true,
     ownerId: OWNER,
     now: () => NOW,
   });
@@ -54,7 +92,8 @@ describe("Needs you approval", () => {
     const store = storeWithLead();
     const deps = depsFor(store);
     const auth = await store.authenticate(hashBotToken(TOKEN));
-    const requested = await callConnectorTool(deps, auth, "request_approval", { action: "deploy", target: "preview" });
+    await seedPassingRequest(store);
+    const requested = await callConnectorTool(deps, auth, "request_approval", { action: "deploy", target: "preview", requestId: "req-deploy" });
     const approvalId = String(requested.structuredContent.approvalId);
     expect(requested.structuredContent.status).toBe("pending");
 

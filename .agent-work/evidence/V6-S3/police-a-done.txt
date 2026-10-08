@@ -1,0 +1,55 @@
+# police-a done-command after merging #31, 2026-10-08 02:32 PDT, head a99aab0 with origin/main c024c23
+# env -u SUPABASE_DB_URL -u DATABASE_URL -u SUPABASE_URL -u SUPABASE_SERVICE_ROLE_KEY -u CURSOR_API_KEY -u GH_HQ_TOKEN -u DEXTER_AGE_PRIVATE_KEY PGUSER=ubuntu
+> typecheck
+> lint
+> test
+ ✓ tests/unit/ceo-run.test.ts (4 tests) 217ms
+ ✓ tests/unit/token-police.test.ts (17 tests) 148ms
+ ✓ tests/unit/board-rules.test.ts (25 tests) 205ms
+ ✓ tests/unit/mcp.test.ts (7 tests) 173ms
+ ✓ tests/unit/pins.test.ts (22 tests) 145ms
+ ✓ tests/unit/quality-loop.test.ts (33 tests) 306ms
+ ✓ tests/unit/ventures.test.ts (25 tests) 109ms
+ ✓ tests/unit/checks.test.ts (2 tests) 72ms
+ ✓ tests/unit/fleet-report-server.test.ts (4 tests) 82ms
+ ✓ tests/unit/board-server.test.ts (6 tests) 96ms
+ ✓ tests/unit/followup.test.ts (18 tests) 77ms
+ ✓ tests/unit/caps.test.ts (10 tests) 54ms
+ ✓ tests/unit/connector-council.test.ts (3 tests) 42ms
+ ✓ tests/unit/g3.test.ts (12 tests) 68ms
+ ✓ tests/unit/kernel.test.ts (20 tests) 28ms
+ ✓ tests/unit/approval.test.ts (5 tests) 52ms
+ ✓ tests/unit/tower.test.ts (12 tests) 51ms
+ ✓ tests/unit/usage-receipts.test.ts (12 tests) 51ms
+ ✓ tests/unit/fleet-report.test.ts (15 tests) 47ms
+ ✓ tests/unit/stop.test.ts (13 tests) 36ms
+ ✓ tests/unit/reconcile.test.ts (8 tests) 20ms
+ ✓ tests/security/injection.test.ts (2 tests) 5ms
+ ✓ tests/unit/council-seat.test.ts (2 tests) 16ms
+ ✓ tests/unit/snapshot-db.test.ts (2 tests) 5ms
+ ✓ tests/unit/ceo-command.test.ts (4 tests) 7ms
+ Test Files  25 passed (25)
+      Tests  283 passed (283)
+> check:vendor
+> check:briefs
+> check:bundle
+kernel bundle fresh
+> build
+ ✓ Compiled successfully in 3.1s
+check:build: next build passed
+> scan:secrets
+secret scan clean
+> test:integration
+ ✓ tests/integration/claim.test.ts (4 tests) 184ms
+ ✓ tests/integration/pins.test.ts (5 tests) 270ms
+ ✓ tests/integration/fleet-report.test.ts (4 tests) 172ms
+ ✓ tests/integration/connector-caps.test.ts (10 tests) 452ms
+ ✓ tests/integration/board-posts.test.ts (1 test) 429ms
+ ✓ tests/integration/rls.test.ts (1 test) 115ms
+ ✓ tests/integration/token-police.test.ts (2 tests) 501ms
+ ✓ tests/integration/events.test.ts (1 test) 48ms
+ ✓ tests/integration/pool.test.ts (2 tests) 73ms
+ ✓ tests/integration/ventures.test.ts (6 tests) 753ms
+ Test Files  10 passed (10)
+      Tests  36 passed (36)
+exit 0

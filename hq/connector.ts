@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { createCursorCloud } from "../adapters/cursor-cloud.ts";
+import { createCursorCloud, terminalAgentStatus } from "../adapters/cursor-cloud.ts";
 import { SHIPPED_CREWS } from "./crews.ts";
 import { bundledRoleSheet } from "./bundled-assets.ts";
 import { PlanCardSchema, VerdictSchema } from "../kernel/schemas.ts";
@@ -43,6 +43,8 @@ import { decisionTrail } from "./decision-trail.ts";
 import { launchBlockedByDesignGate } from "./design-gate.ts";
 import { composeLaunchBrief } from "./personas.ts";
 import { closeIfTerminal, runHandleFor } from "./reconcile.ts";
+import { approvalGate, gateAfterFail, gateBlockedRefusal, recordGateBlocked } from "./token-police.ts";
+import { createCursorUsage, recordUsageReceipt, type CursorUsageFn } from "./usage-receipts.ts";
 
 export { CONNECTOR_TOOLS, createMemoryConnectorStore };
 export type { ConnectorAuth, ConnectorStore, ConnectorToolName };
@@ -75,6 +77,8 @@ export type ConnectorDeps = {
   ownerId?: string;
   councilConfigured?: boolean;
   runCouncilSeat?: CouncilSeatFn;
+  /** Token police usage receipts: Cursor's usage endpoint with HQ's key. Null when no key. */
+  usage?: CursorUsageFn | null;
 };
 
 /**
@@ -423,8 +427,11 @@ async function handleAgentTool(
   const handle = { id: agent.cursorHandle, runtime: "cursor-cloud" };
   try {
     if (name === "agent_status") {
-      const status = await deps.cursor.status({ id: runHandleFor(agent) ?? handle.id, runtime: handle.runtime });
-      await closeIfTerminal(deps.store, agent, status, (deps.now ?? (() => new Date().toISOString()))());
+      const runId = runHandleFor(agent) ?? handle.id;
+      const status = await deps.cursor.status({ id: runId, runtime: handle.runtime });
+      if (await closeIfTerminal(deps.store, agent, status, (deps.now ?? (() => new Date().toISOString()))())) {
+        await recordUsageReceipt(deps, agent, runId, terminalAgentStatus(status.state));
+      }
       const body = { status: status.state, usage: status.usage, agentId: handle.id };
       await record(deps, auth, name, handle.id, { status: status.state });
       return toolResult(body);
@@ -567,6 +574,13 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
     const body = { status: "refused", reason: "done_requires_evidence" };
     await record(deps, auth, "update_request", row.id, body);
     return toolResult(body, true);
+  }
+  if (status === "done") {
+    const blocked = await gateBlockedRefusal(deps, row.id);
+    if (blocked) {
+      await record(deps, auth, "update_request", row.id, blocked);
+      return toolResult(blocked, true);
+    }
   }
   if (status === "done" && !checkerPassedCurrentSha(row)) {
     const body = { status: "refused", reason: "done_requires_checks", requestId: row.id };
@@ -823,6 +837,12 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
     await record(deps, auth, "request_checks", requestId, body);
     return toolResult(body, true);
   }
+  // Token police: a request blocked after its third failed run gets no more Checker runs.
+  const blocked = await gateBlockedRefusal(deps, requestId);
+  if (blocked) {
+    await record(deps, auth, "request_checks", requestId, blocked);
+    return toolResult(blocked, true);
+  }
   try {
     const at = (deps.now ?? (() => new Date().toISOString()))();
     let checkRun = request.checkRun ?? null;
@@ -891,8 +911,12 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
       evidence,
       requestId,
       requestStatus: next.status,
+      ...(status === "failed" ? { gate: await gateAfterFail(deps, requestId, checkRun.nonce) } : {}),
     };
     await record(deps, auth, "request_checks", requestId, body);
+    if (status === "failed" && body.gate && body.gate.retriesLeft === 0) {
+      return toolResult(await recordGateBlocked(deps, auth, next, { sha, evidence }), true);
+    }
     return toolResult(body, status === "failed");
   } catch (error) {
     const reason = error instanceof Error ? error.message.slice(0, 80) : "checker_failed";
@@ -970,6 +994,11 @@ export async function callConnectorTool(
       await record(deps, auth, name, action, body);
       return toolResult(body, true);
     }
+    const gate = await approvalGate(deps, args);
+    if (!gate.ok) {
+      await record(deps, auth, name, target, gate.body);
+      return toolResult(gate.body, true);
+    }
     const id = randomUUID();
     await deps.store.saveApproval({
       id,
@@ -979,7 +1008,7 @@ export async function callConnectorTool(
       status: "pending",
       requestId: textArg(args, "requestId"),
     });
-    const body = { status: "pending", approvalId: id, requestId: textArg(args, "requestId") };
+    const body = { status: "pending", approvalId: id, requestId: textArg(args, "requestId"), ...(gate.police ? { police: gate.police } : {}) };
     await record(deps, auth, name, id, body);
     return toolResult(body);
   }
@@ -1041,6 +1070,7 @@ export function createDefaultConnectorDeps(overrides?: Partial<ConnectorDeps>): 
     ownerId: overrides?.ownerId,
     councilConfigured: overrides?.councilConfigured ?? pathBCouncilConfigured(),
     runCouncilSeat: overrides?.runCouncilSeat,
+    usage: overrides && "usage" in overrides ? (overrides.usage ?? null) : key ? createCursorUsage({ apiKey: key }) : null,
   };
 }
 
