@@ -1,10 +1,12 @@
-import type { TickResult } from "../kernel/contracts.ts";
-import { idempotencyKey } from "../kernel/idempotency.ts";
-import { preflight } from "../kernel/preflight.ts";
-import { capForPool, resolveRouting } from "../kernel/role-sheet.ts";
-import { reservePoolRun, reserveSlot } from "../kernel/police.ts";
-import { runtimeNameForPool, type HqDeps } from "./deps.ts";
-import type { HqStore, RunRow, TaskRow } from "./model.ts";
+// Superseded in V6 Stage 3 U1: the HQ chat and the tick no longer dispatch runs; the connector is the only launch path.
+// Kept per AGENTS.md (superseded code goes to legacy/). Nothing in hq/ or app/ imports it.
+import type { TickResult } from "../../kernel/contracts.ts";
+import { idempotencyKey } from "../../kernel/idempotency.ts";
+import { preflight } from "../../kernel/preflight.ts";
+import { capForPool, resolveRouting } from "../../kernel/role-sheet.ts";
+import { reservePoolRun, reserveSlot } from "../../kernel/police.ts";
+import { runtimeNameForPool, type HqDeps } from "../../hq/deps.ts";
+import type { HqStore, RunRow, TaskRow } from "../../hq/model.ts";
 
 export async function tick(store: HqStore, deps: HqDeps): Promise<TickResult> {
   const asOf = store.now();

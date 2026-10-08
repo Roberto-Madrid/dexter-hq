@@ -6,6 +6,19 @@ type FetchLike = typeof fetch;
 const RUN_IN_PROGRESS = new Set(["running", "creating", "queued", "starting"]);
 const AGENT_IN_PROGRESS = new Set(["active"]);
 
+// Cursor's terminal run states ("Get A Run": FINISHED, ERROR, CANCELLED, EXPIRED), as connector_agents statuses.
+const TERMINAL_RUN: Record<string, string> = {
+  FINISHED: "finished",
+  ERROR: "error",
+  CANCELLED: "cancelled",
+  EXPIRED: "expired",
+};
+
+/** The connector_agents status for a terminal run state, or null while the run is live or unknown. */
+export function terminalAgentStatus(state: string): string | null {
+  return TERMINAL_RUN[state.trim().toUpperCase()] ?? null;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
@@ -113,6 +126,8 @@ export function createCursorCloud(options: {
           prompt: { text: spec.brief ?? spec.taskId },
         }),
       });
+      // A refused create must throw, so the connector releases its reservation instead of saving a launch.
+      if (!response.ok) throw new Error(`start_failed_${response.status}`);
       const body = asRecord(await readJson(response));
       const agent = asRecord(body.agent);
       const runId = runIdFromBody(body) ?? textId(agent.latestRunId) ?? spec.idempotencyKey;

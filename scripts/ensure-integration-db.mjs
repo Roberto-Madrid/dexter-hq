@@ -40,6 +40,8 @@ if (exists.stdout.trim() !== "1") {
     "supabase/migrations/0003_claim.sql",
     "supabase/migrations/0004_slots.sql",
     "supabase/migrations/0005_role_sheet.sql",
+    "supabase/migrations/0007_hq.sql",
+    "supabase/migrations/0008_bots.sql",
   ];
   for (const file of files) {
     run(`${bin}/psql`, ["-h", "127.0.0.1", "-p", port, "-d", "dexter_g2", "-v", "ON_ERROR_STOP=1", "-f", file]);

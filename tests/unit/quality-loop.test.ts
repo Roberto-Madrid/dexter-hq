@@ -8,6 +8,7 @@ import {
   applyCheckEvidence,
   checkerRunName,
   checksMoveRequestReady,
+  HEAD_LOOKUP_TIMEOUT_MS,
   createGhChecker,
   evidenceFromOutcome,
   findDispatchedCheckerRun,
@@ -1245,5 +1246,78 @@ describe("done is tied to the request's own PR or branch head", () => {
       "https://example.test/repos/owner/demo/pulls/404",
     ]);
     expect(auths.every((value) => value === "Bearer unit-token")).toBe(true);
+  });
+
+  it("times out a hung GitHub head lookup, so done fails closed", async () => {
+    const signals: (AbortSignal | null | undefined)[] = [];
+    const checker = createGhChecker({
+      token: "unit-token",
+      hostRepo: "owner/workers",
+      apiBase: "https://example.test",
+      headTimeoutMs: 20,
+      fetchImpl: ((_url: string, init?: RequestInit) => {
+        signals.push(init?.signal);
+        const signal = init?.signal;
+        if (!signal) return Promise.reject(new Error("no_signal"));
+        return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason)));
+      }) as typeof fetch,
+    });
+    await expect(checker.head?.({ repo: "owner/demo", pullRequest: "27", branch: null })).rejects.toThrow();
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(HEAD_LOOKUP_TIMEOUT_MS).toBe(10_000);
+  });
+
+  it("does not overwrite a check that lands while the head lookup is in flight", async () => {
+    const store = storeForLead();
+    let during: (() => Promise<void>) | null = null;
+    const checker: CheckerGateway = {
+      ...passingChecker(),
+      async head() {
+        if (during) await during();
+        return SHA;
+      },
+    };
+    const deps = depsFor(store, { checker, checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const requestId = await openBound(deps, auth);
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    during = async () => {
+      const fresh = await store.getRequest(requestId);
+      if (!fresh?.checkRun) throw new Error("no check");
+      await store.saveRequest({ ...fresh, checkRun: { ...fresh.checkRun, sha: HEAD_SHA, nonce: "newer", passed: false } });
+    };
+    const done = await callConnectorTool(deps, auth, "update_request", { requestId, status: "done", evidence: ["preview"] });
+    expect(done.isError).toBe(true);
+    expect(done.structuredContent).toMatchObject({ status: "refused", reason: "request_changed", requestId });
+    const after = await store.getRequest(requestId);
+    expect(after?.checkRun).toMatchObject({ sha: HEAD_SHA, nonce: "newer", passed: false });
+    expect(after?.status).not.toBe("done");
+  });
+
+  it("keeps a concurrent evidence change when done goes through", async () => {
+    const store = storeForLead();
+    let during: (() => Promise<void>) | null = null;
+    const checker: CheckerGateway = {
+      ...passingChecker(),
+      async head() {
+        if (during) await during();
+        return SHA;
+      },
+    };
+    const deps = depsFor(store, { checker, checkerConfigured: true });
+    const auth = await store.authenticate(hashBotToken(TOKEN));
+    const requestId = await openBound(deps, auth);
+    await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+    during = async () => {
+      const fresh = await store.getRequest(requestId);
+      if (!fresh) throw new Error("no request");
+      await store.saveRequest({ ...fresh, notices: [...fresh.notices, "concurrent-notice"] });
+    };
+    const done = await callConnectorTool(deps, auth, "update_request", { requestId, status: "done", evidence: ["preview"] });
+    expect(done.structuredContent).toMatchObject({ status: "updated", requestStatus: "done" });
+    const after = await store.getRequest(requestId);
+    expect(after?.notices).toContain("concurrent-notice");
+    expect(after?.status).toBe("done");
   });
 });

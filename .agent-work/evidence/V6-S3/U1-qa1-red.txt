@@ -1,0 +1,411 @@
+
+ RUN  v3.2.4 /workspace/hq-stage3-u1
+
+ ❯ tests/integration/connector-caps.test.ts (10 tests | 7 failed) 267ms
+   ✓ connector caps under concurrency (Postgres) > lets exactly 2 of 3 simultaneous launches on one repo through 31ms
+   ✓ connector caps under concurrency (Postgres) > holds the global cap across repos 20ms
+   × connector caps under concurrency (Postgres) > holds the per-request cap, counting finished launches 25ms
+     → from is not iterable
+   × connector caps under concurrency (Postgres) > reserves one row when the same key arrives twice, and re-reserves only a failed launch 19ms
+     → from is not iterable
+   × connector caps under concurrency (Postgres) > moves an agent to terminal once; a second move changes nothing 23ms
+     → from is not iterable
+   ✓ connector caps under concurrency (Postgres) > holds the Council seat cap under concurrency 13ms
+   × connector caps under concurrency (Postgres) > lets only one of a follow-up and a launch take the last global slot 16ms
+     → store.reserveFollowup is not a function
+   × connector caps under concurrency (Postgres) > lets exactly one of two finished agents on a full-but-one repo reopen 52ms
+     → store.reserveFollowup is not a function
+   × connector caps under concurrency (Postgres) > claims one follow-up when two arrive for the same agent, and refuses a cancelled agent 17ms
+     → store.reserveFollowup is not a function
+   × connector caps under concurrency (Postgres) > does not close an agent whose run changed since it was read 30ms
+     → from is not iterable
+ ❯ tests/unit/followup.test.ts (18 tests | 15 failed) 96ms
+   × U1 follow-ups respect the caps > refuses a follow-up on a finished agent when the global cap is full 17ms
+     → expected false to be true // Object.is equality
+   × U1 follow-ups respect the caps > refuses a follow-up on a finished agent when its repo is full 7ms
+     → expected { status: 'followed_up', …(1) } to match object { status: 'refused', …(2) }
+(1 matching property omitted from actual)
+   ✓ U1 follow-ups respect the caps > reopens a finished agent when there is room, and it counts against the caps again 1ms
+   × U1 follow-ups respect the caps > refuses a follow-up on a cancelled agent and leaves it cancelled 3ms
+     → expected { status: 'followed_up', …(1) } to match object { status: 'refused', …(1) }
+(1 matching property omitted from actual)
+   ✓ U1 follow-ups respect the caps > refuses every follow-up while STOP is on 2ms
+   ✓ U1 follow-ups respect the caps > puts a finished agent back when Cursor refuses the follow-up 2ms
+   × U1 follow-ups respect the caps > lets only one of a follow-up and a launch take the last slot 27ms
+     → expected [ true, true ] to have a length of 1 but got 2
+   × U1 follow-ups respect the caps > runs one follow-up when two arrive for the same agent at once 12ms
+     → expected [ 'bc-1:run-1', 'bc-1:run-1' ] to have a length of 1 but got 2
+   × U1 tick and agent_status do not close a run that a follow-up replaced > the tick keeps the agent open when a follow-up lands while it reads the old run 2ms
+     → expected 1 to be +0 // Object.is equality
+   × U1 tick and agent_status do not close a run that a follow-up replaced > agent_status keeps the agent open when a follow-up lands while it reads the old run 3ms
+     → expected 'finished' to be 'running' // Object.is equality
+   × U1 tick and agent_status do not close a run that a follow-up replaced > releases a follow-up reservation left by a crash back to the agent's old status 1ms
+     → expected 'launch_failed' to be 'finished' // Object.is equality
+   × U1 tick and agent_status do not close a run that a follow-up replaced > does not release a follow-up reservation that is still fresh 1ms
+     → expected 1 to be +0 // Object.is equality
+   × U1 Cursor start checks the HTTP status > throws on 400, so the launch reservation is released 10ms
+     → promise resolved "{ …(2) }" instead of rejecting
+   × U1 Cursor start checks the HTTP status > throws on 403, so the launch reservation is released 2ms
+     → promise resolved "{ …(2) }" instead of rejecting
+   × U1 Cursor start checks the HTTP status > throws on 429, so the launch reservation is released 1ms
+     → promise resolved "{ …(2) }" instead of rejecting
+   × U1 Cursor start checks the HTTP status > throws on 500, so the launch reservation is released 1ms
+     → promise resolved "{ …(2) }" instead of rejecting
+   × U1 Cursor start checks the HTTP status > throws on 503, so the launch reservation is released 1ms
+     → promise resolved "{ …(2) }" instead of rejecting
+   × U1 Cursor start checks the HTTP status > a launch through a failing Cursor start leaves the row launch_failed, not launched 2ms
+     → expected { status: 'launched', …(6) } to match object { status: 'error', …(1) }
+(6 matching properties omitted from actual)
+ ❯ tests/unit/caps.test.ts (10 tests | 1 failed) 64ms
+   ✓ U1 one dispatch path > a chat plan with a wired runtime starts nothing 8ms
+   ✓ U1 caps > uses the owner defaults 0ms
+   ✓ U1 caps > refuses a 3rd launch on repo A while repo B is allowed 8ms
+   ✓ U1 caps > lets exactly 2 of 3 simultaneous launches on one repo through 8ms
+   ✓ U1 caps > lets exactly 3 of 4 simultaneous launches on four repos through 7ms
+   × U1 caps > starts once when the same idempotency key arrives twice at the same time 20ms
+     → expected 'launched' to be 'idempotent' // Object.is equality
+   ✓ U1 caps > frees the slot when Cursor refuses the start, and the same key can retry 3ms
+   ✓ U1 caps > caps one request at 5 launches 5ms
+   ✓ U1 caps > agent_status saves a finished run and frees the repo slot 2ms
+   ✓ U1 caps > caps Council seat runs at 40 per 7 days 2ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 23 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > holds the per-request cap, counting finished launches
+TypeError: from is not iterable
+ ❯ hq/connector-pg.ts:343:20
+    341|            set status = $3, result = case when $4::boolean then $5::js…
+    342|            where id::text = $1 and status = any($2::text[])`,
+    343|           [id, [...from], status, result !== undefined, result ?? null…
+       |                    ^
+    344|         );
+    345|         return (updated.rowCount ?? 0) > 0;
+ ❯ withClient hq/connector-pg.ts:48:18
+ ❯ tests/integration/connector-caps.test.ts:74:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/23]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > reserves one row when the same key arrives twice, and re-reserves only a failed launch
+TypeError: from is not iterable
+ ❯ hq/connector-pg.ts:343:20
+    341|            set status = $3, result = case when $4::boolean then $5::js…
+    342|            where id::text = $1 and status = any($2::text[])`,
+    343|           [id, [...from], status, result !== undefined, result ?? null…
+       |                    ^
+    344|         );
+    345|         return (updated.rowCount ?? 0) > 0;
+ ❯ withClient hq/connector-pg.ts:48:18
+ ❯ tests/integration/connector-caps.test.ts:93:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/23]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > moves an agent to terminal once; a second move changes nothing
+TypeError: from is not iterable
+ ❯ hq/connector-pg.ts:343:20
+    341|            set status = $3, result = case when $4::boolean then $5::js…
+    342|            where id::text = $1 and status = any($2::text[])`,
+    343|           [id, [...from], status, result !== undefined, result ?? null…
+       |                    ^
+    344|         );
+    345|         return (updated.rowCount ?? 0) > 0;
+ ❯ withClient hq/connector-pg.ts:48:18
+ ❯ tests/integration/connector-caps.test.ts:105:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/23]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > lets only one of a follow-up and a launch take the last global slot
+TypeError: store.reserveFollowup is not a function
+ ❯ tests/integration/connector-caps.test.ts:137:13
+    135|     const caps = { global: (await activeCount()) + 1, perRepo: 2, perR…
+    136|     const [follow, launch] = await Promise.all([
+    137|       store.reserveFollowup({ id: finished.id, caps, at: new Date().to…
+       |             ^
+    138|       store.reserveLaunch({ agent: row(`last-${randomUUID()}`, `it/${r…
+    139|     ]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/23]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > lets exactly one of two finished agents on a full-but-one repo reopen
+TypeError: store.reserveFollowup is not a function
+ ❯ tests/integration/connector-caps.test.ts:152:46
+    150|     const caps = { global: 1000, perRepo: 2, perRequest: 5 };
+    151|     const at = new Date().toISOString();
+    152|     const results = await Promise.all([store.reserveFollowup({ id: a.i…
+       |                                              ^
+    153|     expect(results.filter((item) => item.ok)).toHaveLength(1);
+    154|     expect(results.filter((item) => !item.ok && item.reason === "per_r…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/23]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > claims one follow-up when two arrive for the same agent, and refuses a cancelled agent
+TypeError: store.reserveFollowup is not a function
+ ❯ tests/integration/connector-caps.test.ts:162:46
+    160|     const caps = { global: 1000, perRepo: 2, perRequest: 5 };
+    161|     const at = new Date().toISOString();
+    162|     const results = await Promise.all([store.reserveFollowup({ id: liv…
+       |                                              ^
+    163|     expect(results.filter((item) => item.ok)).toHaveLength(1);
+    164|     expect(results.filter((item) => !item.ok && item.reason === "follo…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/23]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > does not close an agent whose run changed since it was read
+TypeError: from is not iterable
+ ❯ hq/connector-pg.ts:343:20
+    341|            set status = $3, result = case when $4::boolean then $5::js…
+    342|            where id::text = $1 and status = any($2::text[])`,
+    343|           [id, [...from], status, result !== undefined, result ?? null…
+       |                    ^
+    344|         );
+    345|         return (updated.rowCount ?? 0) > 0;
+ ❯ withClient hq/connector-pg.ts:48:18
+ ❯ tests/integration/connector-caps.test.ts:174:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/23]⎯
+
+ FAIL  tests/unit/caps.test.ts > U1 caps > starts once when the same idempotency key arrives twice at the same time
+AssertionError: expected 'launched' to be 'idempotent' // Object.is equality
+
+Expected: "idempotent"
+Received: "launched"
+
+ ❯ tests/unit/caps.test.ts:124:44
+    122|     ]);
+    123|     const again = await launch(deps, "same", "owner/a", "req-0-1");
+    124|     expect(again.structuredContent.status).toBe("idempotent");
+       |                                            ^
+    125|     expect(again.structuredContent.agentStatus).toBe("launched");
+    126|     expect(again.structuredContent.agentId).toBe(both.find((item) => i…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 follow-ups respect the caps > refuses a follow-up on a finished agent when the global cap is full
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/followup.test.ts:33:28
+     31|     expect(await activeCount(ctx.store)).toBe(3);
+     32|     const result = await followup(ctx, ids[0] ?? "");
+     33|     expect(result.isError).toBe(true);
+       |                            ^
+     34|     expect(result.structuredContent).toMatchObject({ status: "refused"…
+     35|     expect(ctx.cursor.followups).toHaveLength(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 follow-ups respect the caps > refuses a follow-up on a finished agent when its repo is full
+AssertionError: expected { status: 'followed_up', …(1) } to match object { status: 'refused', …(2) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "cap": 2,
+-   "reason": "per_repo_cap",
+-   "status": "refused",
++   "status": "followed_up",
+  }
+
+ ❯ tests/unit/followup.test.ts:47:38
+     45|     expect((await launch(ctx.deps, "r3", "owner/a")).structuredContent…
+     46|     const result = await followup(ctx, first);
+     47|     expect(result.structuredContent).toMatchObject({ status: "refused"…
+       |                                      ^
+     48|     expect(ctx.cursor.followups).toHaveLength(0);
+     49|     expect((await ctx.store.getAgent(first))?.status).toBe("finished");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 follow-ups respect the caps > refuses a follow-up on a cancelled agent and leaves it cancelled
+AssertionError: expected { status: 'followed_up', …(1) } to match object { status: 'refused', …(1) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": "agent_not_active",
+-   "status": "refused",
++   "status": "followed_up",
+  }
+
+ ❯ tests/unit/followup.test.ts:70:38
+     68|     await callConnectorTool(ctx.deps, auth, "cancel_agent", { agentId:…
+     69|     const result = await followup(ctx, first);
+     70|     expect(result.structuredContent).toMatchObject({ status: "refused"…
+       |                                      ^
+     71|     expect(ctx.cursor.followups).toHaveLength(0);
+     72|     expect((await ctx.store.getAgent(first))?.status).toBe("cancelled"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 follow-ups respect the caps > lets only one of a follow-up and a launch take the last slot
+AssertionError: expected [ true, true ] to have a length of 1 but got 2
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/unit/followup.test.ts:104:33
+    102|     const [follow, next] = await Promise.all([followup(ctx, first), la…
+    103|     const won = [follow.structuredContent.status === "followed_up", ne…
+    104|     expect(won.filter(Boolean)).toHaveLength(1);
+       |                                 ^
+    105|     expect(await activeCount(ctx.store)).toBe(3);
+    106|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 follow-ups respect the caps > runs one follow-up when two arrive for the same agent at once
+AssertionError: expected [ 'bc-1:run-1', 'bc-1:run-1' ] to have a length of 1 but got 2
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/unit/followup.test.ts:112:34
+    110|     const first = String((await launch(ctx.deps, "d1", "owner/a")).str…
+    111|     const both = await Promise.all([followup(ctx, first), followup(ctx…
+    112|     expect(ctx.cursor.followups).toHaveLength(1);
+       |                                  ^
+    113|     expect(both.map((item) => item.structuredContent.reason ?? item.st…
+    114|       "followed_up",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 tick and agent_status do not close a run that a follow-up replaced > the tick keeps the agent open when a follow-up lands while it reads the old run
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/unit/followup.test.ts:135:27
+    133|     };
+    134|     const result = await reconcileConnector(ctx.deps);
+    135|     expect(result.closed).toBe(0);
+       |                           ^
+    136|     expect((await ctx.store.getAgent(first))?.status).toBe("running");
+    137|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 tick and agent_status do not close a run that a follow-up replaced > agent_status keeps the agent open when a follow-up lands while it reads the old run
+AssertionError: expected 'finished' to be 'running' // Object.is equality
+
+Expected: "running"
+Received: "finished"
+
+ ❯ tests/unit/followup.test.ts:153:55
+    151|     };
+    152|     await callConnectorTool(ctx.deps, auth, "agent_status", { agentId:…
+    153|     expect((await ctx.store.getAgent(first))?.status).toBe("running");
+       |                                                       ^
+    154|   });
+    155| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 tick and agent_status do not close a run that a follow-up replaced > releases a follow-up reservation left by a crash back to the agent's old status
+AssertionError: expected 'launch_failed' to be 'finished' // Object.is equality
+
+Expected: "finished"
+Received: "launch_failed"
+
+ ❯ tests/unit/followup.test.ts:175:25
+    173|     expect(result.released).toBe(1);
+    174|     const row = await ctx.store.getAgent("55555555-5555-4555-8555-5555…
+    175|     expect(row?.status).toBe("finished");
+       |                         ^
+    176|     expect(row?.result?.followupFrom).toBeUndefined();
+    177|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 tick and agent_status do not close a run that a follow-up replaced > does not release a follow-up reservation that is still fresh
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/unit/followup.test.ts:195:59
+    193|       createdAt: "2026-10-07T08:00:00.000Z",
+    194|     });
+    195|     expect((await reconcileConnector(ctx.deps)).released).toBe(0);
+       |                                                           ^
+    196|     expect((await ctx.store.getAgent("66666666-6666-4666-8666-66666666…
+    197|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 Cursor start checks the HTTP status > throws on 400, so the launch reservation is released
+ FAIL  tests/unit/followup.test.ts > U1 Cursor start checks the HTTP status > throws on 403, so the launch reservation is released
+ FAIL  tests/unit/followup.test.ts > U1 Cursor start checks the HTTP status > throws on 429, so the launch reservation is released
+ FAIL  tests/unit/followup.test.ts > U1 Cursor start checks the HTTP status > throws on 500, so the launch reservation is released
+ FAIL  tests/unit/followup.test.ts > U1 Cursor start checks the HTTP status > throws on 503, so the launch reservation is released
+AssertionError: promise resolved "{ …(2) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "id": "bc-589cee72-4ddd-428f-b2e9-00bd7b44af05:k",
++   "runtime": "cursor-cloud",
+  }
+
+ ❯ tests/unit/followup.test.ts:208:82
+    206|         fetchImpl: (async () => new Response(JSON.stringify({ error: "…
+    207|       });
+    208|       await expect(cursor.start({ idempotencyKey: "k", taskId: "k", br…
+       |                                                                                  ^
+    209|     });
+    210|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/23]⎯
+
+ FAIL  tests/unit/followup.test.ts > U1 Cursor start checks the HTTP status > a launch through a failing Cursor start leaves the row launch_failed, not launched
+AssertionError: expected { status: 'launched', …(6) } to match object { status: 'error', …(1) }
+(6 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": "launch_failed",
+-   "status": "error",
++   "status": "launched",
+  }
+
+ ❯ tests/unit/followup.test.ts:221:38
+    219|     ctx.deps.cursor = real;
+    220|     const result = await launch(ctx.deps, "http-500", "owner/a");
+    221|     expect(result.structuredContent).toMatchObject({ status: "error", …
+       |                                      ^
+    222|     expect((await ctx.store.listAgents()).map((row) => row.status)).to…
+    223|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/23]⎯
+
+
+ Test Files  3 failed (3)
+      Tests  23 failed | 15 passed (38)
+   Start at  01:50:19
+   Duration  916ms (transform 422ms, setup 0ms, collect 1.17s, tests 427ms, environment 1ms, prepare 245ms)
+

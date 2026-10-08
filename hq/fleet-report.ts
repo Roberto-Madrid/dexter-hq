@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { COUNCIL_WEEKLY_SEAT_CAP } from "./connector.ts";
 import type { ConnectorBot, ConnectorEvent, ConnectorPost, ConnectorStore } from "./connector-store.ts";
 
 /**
@@ -10,8 +11,8 @@ import type { ConnectorBot, ConnectorEvent, ConnectorPost, ConnectorStore } from
 export const FLEET_TIME_ZONE = "America/Tijuana";
 /** The report for a finished week is due from this hour (PT) on the following Monday. */
 export const FLEET_DUE_HOUR = 7;
-/** V6 §5: start at 40 Council seat runs a week. Mirrors the connector's seat cap. */
-export const COUNCIL_WEEKLY_CAP = 40;
+/** V6 §5: the weekly Council seat cap the connector enforces (40). */
+export const COUNCIL_WEEKLY_CAP = COUNCIL_WEEKLY_SEAT_CAP;
 export const CAP_REASONS: ReadonlySet<string> = new Set([
   "agent_cap",
   "surge_cap",

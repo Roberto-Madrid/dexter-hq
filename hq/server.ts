@@ -14,7 +14,8 @@ import { createMemoryConnectorStore } from "./connector-store.ts";
 import { readFleetView, runFleetReportTick, type FleetDb, type FleetTickResult, type FleetView } from "./fleet-report.ts";
 import { createPgFleetReports } from "./fleet-report-pg.ts";
 import { resumeAll, stopAll } from "./stop.ts";
-import { tick } from "./tick.ts";
+import { createDefaultConnectorDeps } from "./connector.ts";
+import { reconcileConnector } from "./reconcile.ts";
 import { snapshot, type BoardSnapshot } from "./board.ts";
 import { SHIPPED_CREWS } from "./crews.ts";
 import type { HqDeps } from "./deps.ts";
@@ -386,12 +387,13 @@ export async function postTick(
   header: string | null,
   options: { fleetReports?: FleetDb; now?: Date } = {},
 ): Promise<{ status: number; body?: unknown }> {
-  const live = current();
+  current();
   const expected = process.env.DEXTER_TICK_SECRET ?? "";
   if (!expected || !header || !tokenMatch(header, expected)) return { status: 401 };
-  const result = await withStore((store) => tick(store, live.deps));
+  // The tick no longer dispatches. It closes finished connector agents so their cap slots free up.
+  const reconcile = await reconcileConnector(createDefaultConnectorDeps({ store: connectorFromEnv() }));
   const fleet = await fleetTick(options.fleetReports ?? fleetFromEnv(), options.now ?? new Date());
-  return { status: 200, body: { ...result, fleet } };
+  return { status: 200, body: { ok: true, reconcile, fleet } };
 }
 
 function fleetFromEnv(): FleetDb | undefined {
