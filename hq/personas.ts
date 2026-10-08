@@ -8,7 +8,7 @@ const ROLE_PERSONA: Record<string, string> = {
   data: "builder",
   contracts: "builder",
   researcher: "researcher",
-  career: "researcher",
+  career: "career",
   qa: "qa",
   qa_visual: "qa",
   designer: "designer",
