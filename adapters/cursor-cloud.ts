@@ -81,6 +81,7 @@ export function createCursorCloud(options: {
 }): Runtime & {
   listInProgress(): Promise<{ id: string; runtime: string }[]>;
   followup(handle: RunHandle, text: string): Promise<RunHandle>;
+  listModels(): Promise<string[]>;
 } {
   const fetchImpl = options.fetchImpl ?? fetch;
   const base = options.base ?? "https://api.cursor.com";
@@ -124,6 +125,10 @@ export function createCursorCloud(options: {
           agentId,
           name: spec.idempotencyKey,
           prompt: { text: spec.brief ?? spec.taskId },
+          ...(spec.modelId ? { model: { id: spec.modelId } } : {}),
+          ...(spec.repo
+            ? { repos: [{ url: `https://github.com/${spec.repo}`, ...(spec.startingRef ? { startingRef: spec.startingRef } : {}) }] }
+            : {}),
         }),
       });
       // A refused create must throw, so the connector releases its reservation instead of saving a launch.
@@ -133,6 +138,14 @@ export function createCursorCloud(options: {
       const runId = runIdFromBody(body) ?? textId(agent.latestRunId) ?? spec.idempotencyKey;
       const remoteAgent = textId(agent.id) ?? agentId;
       return { id: `${remoteAgent}:${runId}`, runtime: "cursor-cloud" };
+    },
+    /** `GET /v1/models`: the ids `model.id` accepts. Throws when Cursor refuses, so callers keep their pins. */
+    async listModels(): Promise<string[]> {
+      const response = await fetchImpl(`${base}/v1/models`, { headers: authHeaders });
+      if (!response.ok) throw new Error(`models_failed_${response.status}`);
+      const body = asRecord(await readJson(response));
+      const items = Array.isArray(body.items) ? body.items : [];
+      return items.map((item) => textId(asRecord(item).id)).filter((id): id is string => Boolean(id));
     },
     async status(handle: RunHandle): Promise<RunStatus> {
       const { agentId, runId } = parseHandle(handle.id);

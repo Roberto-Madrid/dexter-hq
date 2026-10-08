@@ -10,6 +10,7 @@ import {
   type CursorGateway,
 } from "../../hq/connector.ts";
 import type { ConnectorAuth } from "../../hq/connector-store.ts";
+import { CATALOG_IDS, pinRows } from "./pin-fixtures.ts";
 
 export const sheet = parseRoleSheet(readFileSync("gateway/role-sheet.yaml", "utf8"));
 export const OWNER = "11111111-1111-4111-8111-111111111111";
@@ -29,17 +30,36 @@ const auth: ConnectorAuth = {
   suspended: false,
 };
 
-export type FakeCursor = CursorGateway & { starts: RunSpec[]; states: Map<string, string>; followups: string[] };
+export type FakeCursor = CursorGateway & {
+  starts: RunSpec[];
+  states: Map<string, string>;
+  followups: string[];
+  /** What `GET /v1/models` answers next; set to an Error to make it fail. */
+  models: string[] | Error;
+  modelCalls: number;
+};
 
-export function fakeCursor(options?: { delayMs?: number; failStart?: boolean; failFollowup?: boolean }): FakeCursor {
+export function fakeCursor(options?: {
+  delayMs?: number;
+  failStart?: boolean;
+  failFollowup?: boolean;
+  models?: string[] | Error;
+}): FakeCursor {
   const starts: RunSpec[] = [];
   const states = new Map<string, string>();
   const followups: string[] = [];
   let count = 0;
-  return {
+  const cursor: FakeCursor = {
     starts,
     states,
     followups,
+    models: options?.models ?? [...CATALOG_IDS],
+    modelCalls: 0,
+    async listModels() {
+      cursor.modelCalls += 1;
+      if (cursor.models instanceof Error) throw cursor.models;
+      return [...cursor.models];
+    },
     async start(spec) {
       starts.push(spec);
       count += 1;
@@ -68,6 +88,7 @@ export function fakeCursor(options?: { delayMs?: number; failStart?: boolean; fa
       return { id, runtime: "cursor-cloud" };
     },
   };
+  return cursor;
 }
 
 export async function capsDeps(options?: {
@@ -75,8 +96,15 @@ export async function capsDeps(options?: {
   stopped?: boolean;
   runCouncilSeat?: ConnectorDeps["runCouncilSeat"];
   now?: () => string;
+  /** Seed the baseline pins (default) or start with none. */
+  pins?: boolean;
+  bots?: ConnectorAuth[];
 }) {
-  const store = createMemoryConnectorStore({ stopped: options?.stopped, bots: [auth] });
+  const store = createMemoryConnectorStore({
+    stopped: options?.stopped,
+    bots: [auth, ...(options?.bots ?? [])],
+    modelResolutions: options?.pins === false ? [] : pinRows(OWNER),
+  });
   for (const [index, repo] of REPOS.entries()) {
     for (let n = 0; n < 8; n += 1) {
       await store.saveRequest({

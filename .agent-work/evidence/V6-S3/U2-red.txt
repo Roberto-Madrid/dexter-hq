@@ -1,0 +1,81 @@
+SUPABASE_DB_URL=<unset> CURSOR_API_KEY=<unset> DATABASE_URL=<unset>
+base=f4fddd98efc0a44bcdbe86df05e0bc951a6789f6
+   × cursor-cloud start() carries repo and model > sends repos[{url,startingRef}] and model.id 14ms
+   × cursor-cloud start() carries repo and model > omits startingRef without a branch, and repos for a no-repo launch 2ms
+   × cursor-cloud start() carries repo and model > lists model ids from GET /v1/models and throws when Cursor refuses 1ms
+   × launch_agent resolves repo and the pinned model > builder gets the grok pin and the request's repo 10ms
+   × launch_agent resolves repo and the pinned model > quick_edit gets the composer pin 2ms
+   × launch_agent resolves repo and the pinned model > refuses model_held when the family has no pin, and reserves nothing 2ms
+   × launch_agent resolves repo and the pinned model > keeps launching on the old pin while a newer version is held 1ms
+   × launch_agent resolves repo and the pinned model > takes the repo from the request and the request's bound branch as startingRef 2ms
+   × launch_agent resolves repo and the pinned model > refuses repo_mismatch when the call names a different repo than the request 2ms
+   × launch_agent resolves repo and the pinned model > fails closed for repo work without a repo, even for a bot with no repos 1ms
+   × launch_agent resolves repo and the pinned model > lets a scout launch without a repo, still on a pinned model 1ms
+   × daily version check > adopts the first pins as the baseline, ignoring fast/max/preview 1ms
+   × daily version check > writes nothing on a second run the same day and does not call Cursor again 1ms
+   × daily version check > only one of two simultaneous runs records 0ms
+   × daily version check > same version the next day is a no-op for the pins 0ms
+   × daily version check > holds a new version: held row + one pending approval, current pin unchanged, no repeat card 0ms
+   × daily version check > keeps the pins and posts one alert when Cursor is unreachable, retrying at most hourly 0ms
+   × daily version check > does nothing without a Cursor key 0ms
+   × daily version check > runs from the tick next to reconcile 1ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 19 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/unit/pins.test.ts > cursor-cloud start() carries repo and model > sends repos[{url,startingRef}] and model.id
+AssertionError: expected undefined to deeply equal [ { …(2) } ]
+ FAIL  tests/unit/pins.test.ts > cursor-cloud start() carries repo and model > omits startingRef without a branch, and repos for a no-repo launch
+AssertionError: expected undefined to deeply equal [ Array(1) ]
+ FAIL  tests/unit/pins.test.ts > cursor-cloud start() carries repo and model > lists model ids from GET /v1/models and throws when Cursor refuses
+TypeError: (0 , createCursorCloud)(...).listModels is not a function
+ FAIL  tests/unit/pins.test.ts > launch_agent resolves repo and the pinned model > builder gets the grok pin and the request's repo
+AssertionError: expected { idempotencyKey: 'pin-builder', …(2) } to match object { Object (repo, modelId) }
+ FAIL  tests/unit/pins.test.ts > launch_agent resolves repo and the pinned model > quick_edit gets the composer pin
+AssertionError: expected { idempotencyKey: 'pin-quick', …(2) } to match object { repo: 'owner/a', …(1) }
+ FAIL  tests/unit/pins.test.ts > launch_agent resolves repo and the pinned model > refuses model_held when the family has no pin, and reserves nothing
+AssertionError: expected false to be true // Object.is equality
+ FAIL  tests/unit/pins.test.ts > launch_agent resolves repo and the pinned model > keeps launching on the old pin while a newer version is held
+Error: not_implemented
+ FAIL  tests/unit/pins.test.ts > launch_agent resolves repo and the pinned model > takes the repo from the request and the request's bound branch as startingRef
+AssertionError: expected 'refused' to be 'launched' // Object.is equality
+ FAIL  tests/unit/pins.test.ts > launch_agent resolves repo and the pinned model > refuses repo_mismatch when the call names a different repo than the request
+AssertionError: expected { status: 'launched', …(6) } to match object { status: 'refused', …(1) }
+ FAIL  tests/unit/pins.test.ts > launch_agent resolves repo and the pinned model > fails closed for repo work without a repo, even for a bot with no repos
+AssertionError: expected { status: 'refused', …(2) } to match object { status: 'refused', …(1) }
+ FAIL  tests/unit/pins.test.ts > launch_agent resolves repo and the pinned model > lets a scout launch without a repo, still on a pinned model
+AssertionError: expected 'refused' to be 'launched' // Object.is equality
+ FAIL  tests/unit/pins.test.ts > daily version check > adopts the first pins as the baseline, ignoring fast/max/preview
+Error: not_implemented
+ FAIL  tests/unit/pins.test.ts > daily version check > writes nothing on a second run the same day and does not call Cursor again
+Error: not_implemented
+ FAIL  tests/unit/pins.test.ts > daily version check > only one of two simultaneous runs records
+Error: not_implemented
+ FAIL  tests/unit/pins.test.ts > daily version check > same version the next day is a no-op for the pins
+Error: not_implemented
+ FAIL  tests/unit/pins.test.ts > daily version check > holds a new version: held row + one pending approval, current pin unchanged, no repeat card
+Error: not_implemented
+ FAIL  tests/unit/pins.test.ts > daily version check > keeps the pins and posts one alert when Cursor is unreachable, retrying at most hourly
+Error: not_implemented
+ FAIL  tests/unit/pins.test.ts > daily version check > does nothing without a Cursor key
+Error: not_implemented
+ FAIL  tests/unit/pins.test.ts > daily version check > runs from the tick next to reconcile
+Error: not_implemented
+ Test Files  1 failed (1)
+      Tests  19 failed (19)
+local integration database ready
+   × model pins in model_resolutions (Postgres) > reads the latest non-held row per family as the pin 6ms
+   × model pins in model_resolutions (Postgres) > does not raise a second card for the same held version 1ms
+   × model pins in model_resolutions (Postgres) > records once per day under concurrency 1ms
+   × model pins in model_resolutions (Postgres) > runs the daily check end to end and skips the second run 1ms
+   × model pins in model_resolutions (Postgres) > records a Cursor failure as an event and one alert post 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/integration/pins.test.ts > model pins in model_resolutions (Postgres) > reads the latest non-held row per family as the pin
+TypeError: store.currentPins is not a function
+ FAIL  tests/integration/pins.test.ts > model pins in model_resolutions (Postgres) > does not raise a second card for the same held version
+TypeError: store.recordPinResolutions is not a function
+ FAIL  tests/integration/pins.test.ts > model pins in model_resolutions (Postgres) > records once per day under concurrency
+TypeError: store.recordPinResolutions is not a function
+ FAIL  tests/integration/pins.test.ts > model pins in model_resolutions (Postgres) > runs the daily check end to end and skips the second run
+Error: not_implemented
+ FAIL  tests/integration/pins.test.ts > model pins in model_resolutions (Postgres) > records a Cursor failure as an event and one alert post
+TypeError: store.lastPinFailureAt is not a function
+ Test Files  1 failed (1)
+      Tests  5 failed (5)

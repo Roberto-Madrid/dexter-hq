@@ -1,0 +1,10 @@
+# PINS_LOCK commented out in recordPinResolutions; the concurrency test fails (restored afterwards)
+   × model pins in model_resolutions (Postgres) > records once per day under concurrency 23ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 4 passed (5)
+   × model pins in model_resolutions (Postgres) > records once per day under concurrency 40ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 4 passed (5)
+   × model pins in model_resolutions (Postgres) > records once per day under concurrency 25ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 4 passed (5)
