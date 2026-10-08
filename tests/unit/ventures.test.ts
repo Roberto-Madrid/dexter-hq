@@ -193,6 +193,17 @@ describe("ventures: owner-only", () => {
   });
 });
 
+describe("whoami repos (E1)", () => {
+  it("returns the new lead's repo allowlist, and an empty list for the CEO", async () => {
+    const store = seedStore();
+    const token = String((await call(deps(store), "POST", TICKETS)).json.token);
+    const lead = await callConnectorTool(connectorDeps(store), await store.authenticate(hashBotToken(token)), "whoami", {});
+    expect(lead.structuredContent).toMatchObject({ kind: "lead", repos: ["Roberto-Madrid/dexter-tickets"] });
+    const ceo = await callConnectorTool(connectorDeps(store), await store.authenticate(hashBotToken(CEO_TOKEN)), "whoami", {});
+    expect(ceo.structuredContent).toMatchObject({ kind: "ceo", repos: [] });
+  });
+});
+
 describe("ventures: create", () => {
   it("creates a lead with the venture repo and lead scopes, and returns the token once", async () => {
     const store = seedStore();
