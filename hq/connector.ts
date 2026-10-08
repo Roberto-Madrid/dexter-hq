@@ -14,6 +14,7 @@ import {
   createMemoryConnectorStore,
   type ConnectorAgent,
   type ConnectorAuth,
+  type ConnectorRequest,
   type ConnectorStore,
   type ConnectorToolName,
 } from "./connector-store.ts";
@@ -21,11 +22,14 @@ import { parseCouncilVerdict, runCriticSeat } from "./council-seat.ts";
 import {
   PINNED_CHECKER_WORKFLOW,
   applyCheckEvidence,
+  bindingFromArgs,
+  bindingMatches,
   checkerPassedCurrentSha,
   checksConfigured,
   checksMoveRequestReady,
   createGhChecker,
   evidenceFromOutcome,
+  requestIsBound,
   sanitizeBotEvidence,
   type CheckerGateway,
 } from "./checker.ts";
@@ -378,6 +382,12 @@ async function handleOpenRequest(deps: ConnectorDeps, auth: ConnectorAuth, args:
     await record(deps, auth, "open_request", "refused", body);
     return toolResult(body, true);
   }
+  const bound = bindingFromArgs(args);
+  if (!bound.ok) {
+    const body = { status: "refused", reason: "invalid_binding" };
+    await record(deps, auth, "open_request", "refused", body);
+    return toolResult(body, true);
+  }
   const validated = validatePlanCard(parsed.data as PlanCard, SHIPPED_CREWS);
   const id = randomUUID();
   const status = validated.card.requiresApproval || validated.card.requiresDesignApproval ? "needs_you" : "queued";
@@ -391,6 +401,8 @@ async function handleOpenRequest(deps: ConnectorDeps, auth: ConnectorAuth, args:
     assignedBotId: auth.id,
     repo: textArg(args, "repo"),
     notices: validated.notices,
+    pullRequest: bound.binding.pullRequest,
+    branch: bound.binding.branch,
   });
   let designApprovalId: string | null = null;
   if (validated.card.requiresDesignApproval) {
@@ -452,12 +464,44 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
     await record(deps, auth, "update_request", row.id, body);
     return toolResult(body, true);
   }
+  if (status === "done") {
+    const refusal = await doneHeadRefusal(deps, row);
+    if (refusal) {
+      const body = { status: "refused", ...refusal, requestId: row.id };
+      await record(deps, auth, "update_request", row.id, body);
+      return toolResult(body, true);
+    }
+  }
+  // Reopening a done request drops its pass, so returning to done needs a fresh check.
+  if (row.status === "done" && status && status !== "done") row.checkRun = null;
   row.status = status ?? row.status;
   row.evidence = evidence;
   await deps.store.saveRequest(row);
   const body = { status: "updated", requestId: row.id, requestStatus: row.status };
   await record(deps, auth, "update_request", row.id, body);
   return toolResult(body);
+}
+
+/** Fail closed: done needs a bound PR/branch whose GitHub head is the sha the Checker passed. */
+async function doneHeadRefusal(
+  deps: ConnectorDeps,
+  row: ConnectorRequest,
+): Promise<{ reason: string; head?: string; checkedSha?: string } | null> {
+  const run = row.checkRun;
+  if (!requestIsBound(row) || !row.repo) return { reason: "done_requires_binding" };
+  if (!run || run.repo !== row.repo) return { reason: "done_requires_checks" };
+  if (!deps.checker?.head) return { reason: "head_lookup_unavailable" };
+  let head: string | null;
+  try {
+    head = await deps.checker.head({ repo: row.repo, pullRequest: row.pullRequest ?? null, branch: row.branch ?? null });
+  } catch {
+    head = null;
+  }
+  if (!head) return { reason: "head_lookup_failed" };
+  if (head.toLowerCase() !== run.sha.toLowerCase()) {
+    return { reason: "done_requires_checks_on_head", head, checkedSha: run.sha };
+  }
+  return null;
 }
 
 function councilPacket(args: Record<string, unknown>): string | null {
@@ -599,8 +643,7 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
   const repo = textArg(args, "repo");
   const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
   const sha = textArg(args, "sha");
-  const branch = textArg(args, "branch");
-  const pullRequest = textArg(args, "pullRequest") ?? textArg(args, "pull_request");
+  const supplied = bindingFromArgs(args);
   if (!requestId) {
     const body = { status: "refused", reason: "request_required", ready: false };
     await record(deps, auth, "request_checks", "missing", body);
@@ -623,6 +666,16 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
     await record(deps, auth, "request_checks", requestId, body);
     return toolResult(body, true);
   }
+  if (!supplied.ok || !bindingMatches(request, supplied.binding)) {
+    const body = { status: "refused", reason: supplied.ok ? "binding_mismatch" : "invalid_binding", ready: false, requestId };
+    await record(deps, auth, "request_checks", requestId, body);
+    return toolResult(body, true);
+  }
+  // Bind once: the first check on an unbound request records its PR/branch; later checks reuse it.
+  const binding = requestIsBound(request)
+    ? { pullRequest: request.pullRequest ?? null, branch: request.branch ?? null }
+    : supplied.binding;
+  const { branch, pullRequest } = binding;
   const configured = deps.checkerConfigured ?? Boolean(deps.checker);
   if (!configured || !deps.checker) {
     const body = {
@@ -687,6 +740,9 @@ async function handleRequestChecks(deps: ConnectorDeps, auth: ConnectorAuth, arg
     });
     const next = applyCheckEvidence(request, evidence, ready, { sha, repo });
     next.checkRun = checkRun;
+    next.pullRequest = pullRequest;
+    next.branch = branch;
+    if (requestIsBound(next) && !next.repo) next.repo = repo;
     await deps.store.saveRequest(next);
     const status = ready ? "ready" : outcome.state === "completed" ? "failed" : "in_progress";
     const body = {
@@ -881,7 +937,7 @@ export function connectorToolDescriptors(names: readonly string[]) {
         : name === "request_council"
           ? "Run one Critic seat through path B. Returns a schema-valid verdict, or not-configured when the login is absent."
           : name === "request_checks"
-            ? "Dispatch pinned checker.yml from the trusted workers main ref against a commit SHA. Returns in_progress until GitHub has a conclusion; ready requires a completed success. Callers cannot supply a GitHub run id."
+            ? "Dispatch pinned checker.yml from the trusted workers main ref against a commit SHA. Returns in_progress until GitHub has a conclusion; ready requires a completed success. Callers cannot supply a GitHub run id. The first pullRequest or branch given binds the request; update_request done then requires a pass on that PR/branch's current GitHub head."
             : `Dexter connector tool ${name}.`,
     inputSchema: { type: "object", additionalProperties: true },
   }));

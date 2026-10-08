@@ -449,7 +449,7 @@ async function persistRequest(client: pg.Client, row: ConnectorRequest): Promise
       String(row.card?.tier ?? "T1"),
       String(row.card?.definitionOfDone ?? row.goal),
       row.status,
-      { evidence: row.evidence, assignedBotId: row.assignedBotId, repo: row.repo, card: row.card, notices: row.notices, checkRun: row.checkRun ?? null },
+      { evidence: row.evidence, assignedBotId: row.assignedBotId, repo: row.repo, card: row.card, notices: row.notices, checkRun: row.checkRun ?? null, pullRequest: row.pullRequest ?? null, branch: row.branch ?? null },
     ],
   );
 }
@@ -476,6 +476,8 @@ async function readRequest(client: pg.Client, id: string): Promise<ConnectorRequ
     repo: caps.repo ? String(caps.repo) : null,
     notices: asStringArray(caps.notices),
     checkRun: parseCheckRun(caps.checkRun),
+    pullRequest: typeof caps.pullRequest === "string" ? caps.pullRequest : null,
+    branch: typeof caps.branch === "string" ? caps.branch : null,
   };
 }
 
