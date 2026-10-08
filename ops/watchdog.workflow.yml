@@ -1,0 +1,21 @@
+# OWNER ACTION: move this file to `.github/workflows/watchdog.yml` (the box token lacks the `workflow` scope).
+# Secrets: DEXTER_WATCHDOG_SECRET (same value as Vercel env). Variables: DEXTER_HQ_URL (e.g. https://hq.example.com).
+name: hq-watchdog
+on:
+  schedule:
+    - cron: "0 16 * * *" # ~09:00 PT; after the daily self-test window
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping HQ health
+        env:
+          DEXTER_WATCHDOG_SECRET: ${{ secrets.DEXTER_WATCHDOG_SECRET }}
+          DEXTER_HQ_URL: ${{ vars.DEXTER_HQ_URL }}
+        run: |
+          set -euo pipefail
+          test -n "${DEXTER_WATCHDOG_SECRET:-}" || { echo "missing DEXTER_WATCHDOG_SECRET"; exit 1; }
+          test -n "${DEXTER_HQ_URL:-}" || { echo "missing DEXTER_HQ_URL"; exit 1; }
+          curl -fsS -H "x-dexter-watchdog: ${DEXTER_WATCHDOG_SECRET}" \
+            "${DEXTER_HQ_URL%/}/api/tick-now" | jq -e '.ok == true'

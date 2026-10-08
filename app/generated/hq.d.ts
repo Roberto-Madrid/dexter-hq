@@ -85,3 +85,19 @@ export function getFleetView(
 export function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }>;
 export function venturesHttp(request: Request): Promise<Response>;
 export function getBoardNotes(cookie: string | null, search: string | URLSearchParams): Promise<{ status: number; body: unknown }>;
+export type SelftestCheck = { name: string; ok: boolean; detail: string };
+export type SelftestRecord = { day: string; at: string; ok: boolean; failed: string[]; checks: SelftestCheck[] };
+export function getTickHealth(header: string | null): Promise<{
+  status: number;
+  body?: {
+    ok: boolean;
+    tickAgeSeconds?: number | null;
+    selfTestDay?: string | null;
+    selfTestOk?: boolean | null;
+    selfTestAgeHours?: number | null;
+    reasons: string[];
+  };
+}>;
+export function getSelftestView(
+  cookie: string | null,
+): Promise<{ status: number; body: { latest: SelftestRecord | null; stale: boolean } | { error: string } }>;
