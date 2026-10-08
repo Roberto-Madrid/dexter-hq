@@ -1,4 +1,5 @@
 name: checker
+# HQ (hq/checker.ts) matches runs by this exact run-name and dispatches only these three inputs.
 run-name: dexter-checker ${{ inputs.target_repo }} ${{ inputs.target_sha }} ${{ inputs.nonce }}
 on:
   workflow_dispatch:
@@ -16,37 +17,143 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # CHECKER_READ_TOKEN (repository secret, read-only contents on the venture repos) lets the Checker read private
+      # targets; without it only this repo and public repos can be checked out. It is used by this step alone and is
+      # not persisted, so no later step (which runs the target's own code) can read it.
       - uses: actions/checkout@v5
         with:
           repository: ${{ inputs.target_repo }}
           ref: ${{ inputs.target_sha }}
+          token: ${{ secrets.CHECKER_READ_TOKEN || github.token }}
           persist-credentials: false
           path: subject
+      # Each check reports pass, or n/a when the target has nothing for it to run. A failing command fails its step.
+      # The Verdict step fails the run unless build, lint, and playwright all passed: HQ reads a successful run as
+      # "build, lint, playwright passed", so a check that did not run never counts as a pass.
+      - name: Detect
+        id: detect
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          if [ -f package.json ]; then
+            echo "mode=npm" >> "$GITHUB_OUTPUT"
+            node -e 'const s=require("./package.json").scripts||{};for(const k of ["build","lint","test"])console.log(`has_${k}=${typeof s[k]==="string"&&s[k].trim()!==""}`)' >> "$GITHUB_OUTPUT"
+          elif [ -f build.js ] || [ -f lint.js ] || ls playwright.config.* >/dev/null 2>&1; then
+            echo "mode=plain" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=none" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build
+        id: build
         working-directory: subject
+        env:
+          MODE: ${{ steps.detect.outputs.mode }}
+          HAS_SCRIPT: ${{ steps.detect.outputs.has_build }}
         run: |
           set -euo pipefail
-          if [ -f package.json ]; then
-            npm ci || npm install
-            npm run build --if-present
-          else
+          result=n/a
+          if [ "$MODE" = npm ]; then
+            if [ -f package-lock.json ]; then npm ci; else npm install; fi
+            if [ "$HAS_SCRIPT" = true ]; then npm run build; result=pass; fi
+          elif [ "$MODE" = plain ] && [ -f build.js ]; then
             node build.js
+            result=pass
           fi
+          echo "result=$result" >> "$GITHUB_OUTPUT"
       - name: Lint
+        id: lint
         working-directory: subject
+        env:
+          MODE: ${{ steps.detect.outputs.mode }}
+          HAS_SCRIPT: ${{ steps.detect.outputs.has_lint }}
         run: |
           set -euo pipefail
-          if [ -f package.json ]; then
-            npm run lint --if-present
-          else
+          result=n/a
+          if [ "$MODE" = npm ] && [ "$HAS_SCRIPT" = true ]; then
+            npm run lint
+            result=pass
+          elif [ "$MODE" = plain ] && [ -f lint.js ]; then
             node lint.js
+            result=pass
           fi
-      - name: Test
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+      - name: Playwright
+        id: playwright
         working-directory: subject
+        env:
+          MODE: ${{ steps.detect.outputs.mode }}
+          HAS_SCRIPT: ${{ steps.detect.outputs.has_test }}
         run: |
           set -euo pipefail
-          if [ -f package.json ]; then
+          result=n/a
+          if [ "$MODE" = npm ] && [ "$HAS_SCRIPT" = true ]; then
+            # Browsers are not in npm's cache: install them when the target depends on Playwright.
+            if node -e 'require.resolve("@playwright/test/package.json")' >/dev/null 2>&1; then
+              npx playwright install --with-deps chromium
+            fi
             npm test
-          else
-            npx --yes @playwright/test@1.55.0 test
+            result=pass
+          elif [ "$MODE" = plain ] && ls playwright.config.* >/dev/null 2>&1; then
+            npm init -y >/dev/null
+            npm install --silent @playwright/test@1.55.0
+            npx playwright install --with-deps chromium
+            npx playwright test
+            result=pass
+          fi
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dexter-checker-${{ inputs.nonce }}
+          path: |
+            subject/shots/**/*.png
+            subject/test-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Verdict
+        if: always()
+        env:
+          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          MODE: ${{ steps.detect.outputs.mode }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          BUILD_RESULT: ${{ steps.build.outputs.result }}
+          LINT_OUTCOME: ${{ steps.lint.outcome }}
+          LINT_RESULT: ${{ steps.lint.outputs.result }}
+          PLAYWRIGHT_OUTCOME: ${{ steps.playwright.outcome }}
+          PLAYWRIGHT_RESULT: ${{ steps.playwright.outputs.result }}
+        run: |
+          set -euo pipefail
+          verdict() {
+            case "$1" in
+              success) if [ "$2" = pass ]; then echo pass; else echo "n/a"; fi ;;
+              failure) echo fail ;;
+              *) echo "not run" ;;
+            esac
+          }
+          build=$(verdict "$BUILD_OUTCOME" "$BUILD_RESULT")
+          lint=$(verdict "$LINT_OUTCOME" "$LINT_RESULT")
+          playwright=$(verdict "$PLAYWRIGHT_OUTCOME" "$PLAYWRIGHT_RESULT")
+          {
+            echo "### Dexter Checker"
+            echo
+            echo "Target: \`$TARGET_REPO\` at \`$TARGET_SHA\` (recipe: ${MODE:-unknown})"
+            echo
+            echo "| check | result |"
+            echo "| --- | --- |"
+            echo "| build | $build |"
+            echo "| lint | $lint |"
+            echo "| playwright | $playwright |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "build=$build lint=$lint playwright=$playwright"
+          if [ "$MODE" = none ]; then
+            echo "::error title=Checker not applicable::No root package.json, build.js, lint.js, or playwright.config.* in the target; nothing was checked."
+          fi
+          missing=""
+          for name in build lint playwright; do
+            if [ "${!name}" != pass ]; then missing="$missing $name=${!name}"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Checker did not pass::Every check must run and pass:$missing"
+            exit 1
           fi
