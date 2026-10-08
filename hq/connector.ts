@@ -4,6 +4,15 @@ import { createCursorCloud, terminalAgentStatus } from "../adapters/cursor-cloud
 import { SHIPPED_CREWS } from "./crews.ts";
 import { createGhHandoffSource, type HandoffRepoSource } from "./handoff.ts";
 import { isHandoffRequest, planHandoffLaunch, type HandoffLaunchPlan } from "./handoff-launch.ts";
+import {
+  createGhWeb3Publisher,
+  requestPublish,
+  web3ApprovalRefusal,
+  web3CouncilModeRefusal,
+  web3DoneRefusal,
+  web3LaunchRefusal,
+  type Web3Publisher,
+} from "./web3-publish.ts";
 import { bundledRoleSheet } from "./bundled-assets.ts";
 import { PlanCardSchema, VerdictSchema } from "../kernel/schemas.ts";
 import { validatePlanCard } from "../kernel/plan-card.ts";
@@ -114,6 +123,8 @@ export type ConnectorDeps = {
   usage?: CursorUsageFn | null;
   /** Reads a venture repo for a handoff launch (GitHub with GH_HQ_TOKEN). Null fails handoff launches closed. */
   handoffSource?: HandoffRepoSource | null;
+  /** Dispatches the workers web3 publish job (GH_HQ_TOKEN + GH_WORKERS_REPO). Null: request_publish is not-configured. */
+  web3Publisher?: Web3Publisher | null;
 };
 
 /**
@@ -329,6 +340,12 @@ async function handleLaunch(
   }
   // A handoff request's launches carry the maintenance bundle: built and checked here, before any slot is reserved.
   const request = requestId ? await deps.store.getRequest(requestId) : null;
+  // The web3 owner gate: the Contracts lane waits for the owner's approved web3_mechanism card.
+  const web3Gate = await web3LaunchRefusal(deps.store, request, role, approvalId);
+  if (web3Gate) {
+    await record(deps, auth, "launch_agent", idempotencyKey, web3Gate);
+    return toolResult(web3Gate, true);
+  }
   let handoff: HandoffLaunchPlan | null = null;
   if (request && repo && isHandoffRequest(request)) {
     const planned = await planHandoffLaunch({
@@ -660,6 +677,13 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
     return toolResult(body, true);
   }
   if (status === "done") {
+    const council = await web3DoneRefusal(deps.store, row);
+    if (council) {
+      await record(deps, auth, "update_request", row.id, council);
+      return toolResult(council, true);
+    }
+  }
+  if (status === "done") {
     const blocked = await gateBlockedRefusal(deps, row.id);
     if (blocked) {
       await record(deps, auth, "update_request", row.id, blocked);
@@ -818,6 +842,11 @@ async function handleCouncil(deps: ConnectorDeps, auth: ConnectorAuth, args: Rec
     const body = { status: "refused", reason: "invalid_council_mode", allowed: [...COUNCIL_MODES] };
     await record(deps, auth, "request_council", target, body);
     return toolResult(body, true);
+  }
+  const crewRefusal = web3CouncilModeRefusal(request, mode);
+  if (crewRefusal) {
+    await record(deps, auth, "request_council", target, crewRefusal);
+    return toolResult(crewRefusal, true);
   }
   if (mode === "off") {
     const body = { status: "refused", reason: "council_off" };
@@ -1234,6 +1263,11 @@ export async function callConnectorTool(
   }
   if (name === "request_checks") return handleRequestChecks(deps, auth, args);
   if (name === "request_council") return handleCouncil(deps, auth, args);
+  if (name === "request_publish") {
+    const out = await requestPublish(deps, auth, args);
+    await record(deps, auth, name, out.target, out.body);
+    return toolResult(out.body, out.isError);
+  }
   if (name === "request_approval") {
     const action = textArg(args, "action") ?? "unknown";
     const target = textArg(args, "target") ?? action;
@@ -1242,6 +1276,11 @@ export async function callConnectorTool(
       const body = { status: "refused", reason: "hq_only_action", action };
       await record(deps, auth, name, action, body);
       return toolResult(body, true);
+    }
+    const web3Card = await web3ApprovalRefusal(deps.store, { action, target, requestId: textArg(args, "requestId") });
+    if (web3Card) {
+      await record(deps, auth, name, target, web3Card);
+      return toolResult(web3Card, true);
     }
     const gate = await approvalGate(deps, args);
     if (!gate.ok) {
@@ -1339,10 +1378,18 @@ export function createDefaultConnectorDeps(overrides?: Partial<ConnectorDeps>): 
         : ghToken
           ? createGhHandoffSource({ token: ghToken })
           : null,
+    web3Publisher:
+      overrides && "web3Publisher" in overrides
+        ? (overrides.web3Publisher ?? null)
+        : ghToken && hostRepo
+          ? createGhWeb3Publisher({ token: ghToken, hostRepo })
+          : null,
   };
 }
 
 const BOARD_TOOL_DESCRIPTIONS: Record<string, string> = {
+  request_publish:
+    "Web3 crew only: dispatch the workers publish job that deploys one commit to one allowlisted testnet. Args: requestId, sha (40 hex), chainId, approvalId. Refused for any mainnet or unknown chain id, without the owner's approved web3_publish card whose target is exactly <repo>@<sha>#<chainId> (request it with request_approval), and without a complete adversarial Council pass (the Devil seat has no backend yet, so this refuses today). One dispatch per card. Only the publish job can read the deployer key; no agent ever sees it.",
   launch_agent:
     "Launch one cloud agent for a role (callers never name a model). Args: role, brief, idempotencyKey, optional requestId, repo, approvalId. On a handoff request HQ builds the maintenance bundle from the repo at the bound branch, stores it as an artifact behind a mission handoff note (page it with get_context artifactId), and appends a short pointer to the brief; a secret file among the sources, a secret that survives redaction, or a brief over the token police word cap refuses the launch. Dexter does not drive the agent after launch.",
   post:

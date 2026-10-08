@@ -27,6 +27,7 @@ export const LEAD_SCOPES = [
   "cancel_agent",
   "request_checks",
   "request_council",
+  "request_publish",
   "request_approval",
   "approval_status",
   "post",
