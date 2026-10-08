@@ -170,6 +170,7 @@ async function whoamiBody(deps: ConnectorDeps, auth: ConnectorAuth | null): Prom
     id: auth.id,
     name: auth.name,
     kind: auth.kind,
+    repos: auth.repos,
     scopes: auth.scopes,
     stopped,
     capsLeft: capsLeft(agents, null),
