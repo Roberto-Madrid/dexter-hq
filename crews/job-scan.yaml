@@ -1,0 +1,19 @@
+name: job-scan
+tier: T1
+council: off
+personas: [career]
+# collector -> filters -> fast fit score -> Career brief -> Inbox. The career persona is the collector: it posts each
+# lead to the board in the "Job lead:" format. Filters, the fit score, and the ranked brief are deterministic HQ code
+# (kernel/job-scan.ts), run weekly from the tick (hq/job-scan.ts) and posted to the board. Nothing here applies,
+# messages, or signs up; an application is an outward action and needs an approval card.
+tasks:
+  - persona: career
+    role: career
+    artifact: note
+# What fits. Edit these to match the owner; the next weekly scan uses them.
+prefs:
+  include: [ai, ml, llm, agents, machine learning, automation]
+  exclude: [unpaid, internship, commission only]
+  remote_only: true
+  min_score: 20
+  top: 10

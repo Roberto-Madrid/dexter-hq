@@ -466,13 +466,13 @@ describe("U7 injected runner and grader", () => {
 });
 
 describe("U7 the tick", () => {
-  it("the tick runs the upgrade step last (reconcile -> fleet -> pins -> selftest -> upgrade) and answers 200", async () => {
+  it("the tick runs the upgrade step last (reconcile -> fleet -> pins -> selftest -> jobScan -> upgrade) and answers 200", async () => {
     const previous = process.env.DEXTER_TICK_SECRET;
     process.env.DEXTER_TICK_SECRET = "unit-upgrade-tick-secret";
     try {
       const result = await postTick("unit-upgrade-tick-secret");
       expect(result.status).toBe(200);
-      expect(Object.keys(result.body as Record<string, unknown>)).toEqual(["ok", "reconcile", "fleet", "pins", "selftest", "upgrade"]);
+      expect(Object.keys(result.body as Record<string, unknown>)).toEqual(["ok", "reconcile", "fleet", "pins", "selftest", "jobScan", "upgrade"]);
       expect((result.body as Record<string, unknown>).upgrade).toEqual({ checks: [] });
     } finally {
       if (previous === undefined) delete process.env.DEXTER_TICK_SECRET;

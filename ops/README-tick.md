@@ -2,7 +2,7 @@
 
 pg_cron job `spike-tick` (`supabase/cron.sql`) posts the vault `tick_token` to the `tick` Edge Function every minute.
 The function records a heartbeat (`public.spike_heartbeats`) and forwards the token to `POST /api/tick-now`, which runs
-reconcile -> fleet -> pins -> selftest -> upgrade. Nothing else calls the tick (no Vercel cron, no Actions schedule).
+reconcile -> fleet -> pins -> selftest -> job scan -> upgrade. Nothing else calls the tick (no Vercel cron, no Actions schedule).
 
 Owner setup (once, and again whenever `supabase/functions/tick/**` changes):
 

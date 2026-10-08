@@ -14,6 +14,8 @@ import { createMemoryConnectorStore, type ConnectorStore } from "./connector-sto
 import { ownerBoardView } from "./board-notes.ts";
 import { readFleetView, runFleetReportTick, type FleetDb, type FleetTickResult, type FleetView } from "./fleet-report.ts";
 import { createPgFleetReports } from "./fleet-report-pg.ts";
+import { readJobScanView, runJobScanTick, type JobScanDb, type JobScanTickResult, type JobScanView } from "./job-scan.ts";
+import { createPgJobScans } from "./job-scan-pg.ts";
 import { createGhRepoCheck, handleVenturesHttp } from "./ventures.ts";
 import {
   isSelftestQuestion,
@@ -488,23 +490,25 @@ export async function postResume(): Promise<Awaited<ReturnType<typeof resumeAll>
 
 export async function postTick(
   header: string | null,
-  options: { fleetReports?: FleetDb; now?: Date } = {},
+  options: { fleetReports?: FleetDb; jobScans?: JobScanDb; now?: Date } = {},
 ): Promise<{ status: number; body?: unknown }> {
   current();
   const expected = process.env.DEXTER_TICK_SECRET ?? "";
   if (!expected || !header || !tokenMatch(header, expected)) return { status: 401 };
   // The tick no longer dispatches. In order, each failing soft: close finished connector agents so their cap
   // slots free up, write the weekly fleet report when due, run the once-a-day model version check, the daily
-  // self-test, then advance upgrade checks the owner started (their runs go through the connector's capped launch path).
+  // self-test, the weekly job scan, then advance upgrade checks the owner started (their runs go through the connector's capped launch path).
   const deps = createDefaultConnectorDeps({ store: connectorFromEnv() });
   const { reconcile, fleet, pins } = await connectorTick(deps, loadConnectorSheetText(), {
     fleet: () => fleetTick(options.fleetReports ?? fleetFromEnv(), options.now ?? new Date()),
   });
   // Daily self-test (U6): read-only checks, once per PT day after 07:00; soft-fails like the rest.
   const selftest = await selftestTick(options.now ?? new Date());
+  // Weekly job scan (Stage 4 C1): one ranked brief post per PT week; never applies or contacts anyone. Soft-fails.
+  const jobScan = await jobScanTick(options.jobScans ?? jobScansFromEnv(), options.now ?? new Date());
   // Upgrade checks (U7): soft-fails like the rest; a throw becomes { status: "error" }.
   const upgrade = await upgradeTickStep(() => advanceUpgradeChecks({ deps, env: process.env }));
-  return { status: 200, body: { ok: true, reconcile, fleet, pins, selftest, upgrade } };
+  return { status: 200, body: { ok: true, reconcile, fleet, pins, selftest, jobScan, upgrade } };
 }
 
 function fleetFromEnv(): FleetDb | undefined {
@@ -522,6 +526,33 @@ async function fleetTick(db: FleetDb | undefined, now: Date): Promise<FleetTickR
     console.error(raw.replace(/postgres(?:ql)?:\/\/\S+/gi, "[db]").slice(0, 180));
     return { status: "error" };
   }
+}
+
+function jobScansFromEnv(): JobScanDb | undefined {
+  const url = process.env.SUPABASE_DB_URL?.trim();
+  return url ? createPgJobScans(url) : undefined;
+}
+
+/** Weekly job scan on the per-minute tick. A failure is logged and never fails the tick. */
+async function jobScanTick(db: JobScanDb | undefined, now: Date): Promise<JobScanTickResult | { status: "not_configured" | "error" }> {
+  if (!db) return { status: "not_configured" };
+  try {
+    return await runJobScanTick({ db, now });
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : "job_scan_failed";
+    console.error(raw.replace(/postgres(?:ql)?:\/\/\S+/gi, "[db]").slice(0, 180));
+    return { status: "error" };
+  }
+}
+
+/** Owner-only read for `GET /api/board?view=jobs`. Reads the stored brief; never generates one. */
+export async function getJobScanView(
+  cookie: string | null,
+  week: string | null,
+  db: JobScanDb | undefined = jobScansFromEnv(),
+): Promise<{ status: number; body: JobScanView | { error: string } }> {
+  if (!emailFromCookie(cookie)) return { status: 401, body: { error: "unauthorized" } };
+  return { status: 200, body: await readJobScanView(db, week) };
 }
 
 /** Owner-only read for `GET /api/board?view=fleet`. Reads the stored report; never generates one. */
