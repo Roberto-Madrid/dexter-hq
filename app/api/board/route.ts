@@ -1,4 +1,4 @@
-import { emailFromCookie, getBoard, getBoardNotes, getFleetView, getSelftestView, venturesHttp } from "../../generated/hq.js";
+import { emailFromCookie, getArtifactView, getBoard, getBoardNotes, getFleetView, getSelftestView, getUsageView, venturesHttp } from "../../generated/hq.js";
 
 export const runtime = "nodejs";
 
@@ -23,6 +23,16 @@ export async function GET(request: Request) {
     // Owner JSON read of the agent board (no screen yet): type, scope, repo, status, limit filters.
     const notes = await getBoardNotes(cookie, params);
     return Response.json(notes.body, { status: notes.status, headers: { "cache-control": "no-store" } });
+  }
+  if (params.get("view") === "usage") {
+    // Token police usage receipts (no screen): repo, requestId, status (all|recorded|unavailable), limit filters.
+    const usage = await getUsageView(cookie, params);
+    return Response.json(usage.body, { status: usage.status, headers: { "cache-control": "no-store" } });
+  }
+  if (params.get("view") === "artifact") {
+    // Full tool output behind a board note's 200-char preview.
+    const artifact = await getArtifactView(cookie, params.get("id"));
+    return Response.json(artifact.body, { status: artifact.status, headers: { "cache-control": "no-store" } });
   }
   return Response.json(await getBoard());
 }

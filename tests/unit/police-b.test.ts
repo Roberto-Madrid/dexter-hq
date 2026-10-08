@@ -16,6 +16,7 @@ import type { HqDeps } from "../../hq/deps.ts";
 import { MemoryStore } from "../../hq/memory.ts";
 import { REUSE_MIN_AGENTS, REUSE_MIN_SUCCESSES, SKILL_SUGGESTION_KIND } from "../../hq/reuse-scan.ts";
 import { createScriptedCeo } from "../../hq/scripted-ceo.ts";
+import { isSelftestQuestion } from "../../hq/selftest.ts";
 import { getArtifactView, getBoardNotes, getUsageView, login } from "../../hq/server.ts";
 import { BLOCKED_NEXT_STEP, recordGateBlocked } from "../../hq/token-police.ts";
 import { TOOL_OUTPUT_ACTION, TOOL_OUTPUT_INLINE_CHARS, TOOL_OUTPUT_MAX_CHARS } from "../../hq/tool-artifacts.ts";
@@ -456,6 +457,14 @@ describe("usage receipt card (owner read path, no screen)", () => {
   it("answers 'usage' in HQ chat from the receipts with no model call; cost asks stay cost", async () => {
     for (const text of ["usage", "Usage", "usage receipts", "show usage", "token usage", "what's the usage?"]) {
       expect(classifyQuestion(text), text).toBe("usage");
+    }
+    // No collision with the U6 self-test phrases, which postChat answers before handleChat.
+    for (const text of ["usage", "usage receipts", "show usage", "token usage", "what's the usage?", "receipts"]) {
+      expect(isSelftestQuestion(text), text).toBe(false);
+    }
+    for (const text of ["self-test", "selftest", "health check", "show today's self-test", "what is the self test"]) {
+      expect(isSelftestQuestion(text), text).toBe(true);
+      expect(classifyQuestion(text), text).not.toBe("usage");
     }
     expect(classifyQuestion("cost")).toBe("cost");
     expect(classifyQuestion("how much have we spent")).toBe("cost");

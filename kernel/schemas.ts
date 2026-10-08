@@ -84,7 +84,7 @@ export const RunSchema = z.object({
 export const PostSchema = z.object({
   id: uuid,
   ownerId: uuid,
-  type: z.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff", "shortcut"]),
+  type: z.enum(["finding", "question", "offer", "answer", "dead_end", "alert", "handoff", "shortcut", "verdict"]),
   author: z.string().min(1),
   signature: z.string().min(1),
   taskId: uuid.nullable(),

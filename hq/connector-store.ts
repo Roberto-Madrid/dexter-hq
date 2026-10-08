@@ -209,6 +209,18 @@ export type ConnectorPost = {
   conditions?: string | null;
   expiresAt?: string | null;
   createdAt?: string | null;
+  /** `verdict` notes: what the note judges. */
+  verdict?: "pass" | "fail" | null;
+  /** `verdict` notes: the bot whose work is judged (request assignee or agent owner); it may not verify the verdict. */
+  subjectBotId?: string | null;
+  /** HQ-written notes (type alert): `blocked`, `skill_suggestion`, `fleet_report`. */
+  kind?: string | null;
+  /** Reuse scan key: a lowercase slug naming the approach (agent-brake `operation`). */
+  approach?: string | null;
+  /** Tool output: inline when short, else the first 200 chars with the full text in a `tool_output` artifact. */
+  output?: string | null;
+  outputChars?: number | null;
+  artifactId?: string | null;
 };
 
 /** Live = a heartbeat within this many seconds; Wait = seen since the token was issued but silent longer. */
@@ -354,6 +366,8 @@ export interface ConnectorStore {
   heartbeat(botId: string, task: string | null, at: string): Promise<void>;
   appendEvent(event: Omit<ConnectorEvent, "id"> & { id?: string }): Promise<ConnectorEvent>;
   listEvents(): Promise<ConnectorEvent[]>;
+  /** Newest first: events with this action (and target, when given), at most `limit` (default 200). */
+  listEventsByAction(action: string, options?: { target?: string; limit?: number }): Promise<ConnectorEvent[]>;
   listBots(): Promise<ConnectorBot[]>;
   listAgents(): Promise<ConnectorAgent[]>;
   getAgent(id: string): Promise<ConnectorAgent | null>;
@@ -485,6 +499,15 @@ export function createMemoryConnectorStore(seed?: {
     },
     async listEvents() {
       return [...events];
+    },
+    async listEventsByAction(action, options) {
+      const limit = options?.limit ?? 200;
+      return events
+        .filter((row) => row.action === action && (options?.target === undefined || row.target === options.target))
+        .map((row, index) => ({ row, index }))
+        .sort((a, b) => b.row.at.localeCompare(a.row.at) || b.index - a.index)
+        .slice(0, limit)
+        .map((item) => ({ ...item.row }));
     },
     async listBots() {
       return [...bots.values()].map((bot) => ({ ...bot }));

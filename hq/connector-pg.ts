@@ -304,6 +304,34 @@ export function createPgConnectorStore(url: string): ConnectorStore {
         }));
       });
     },
+    async listEventsByAction(action, options) {
+      return withClient(url, async (client) => {
+        // dexter-shortcut: no (action, target) index on events; the log is small. upgrade path: an index on (action, target, at) once events pass ~100k rows.
+        const found = await client.query<{
+          id: string;
+          owner_id: string;
+          actor: string;
+          action: string;
+          target: string;
+          result: unknown;
+          at: Date | string;
+        }>(
+          `select id, owner_id, actor, action, target, result, at from public.events
+           where action = $1 and ($2::text is null or target = $2)
+           order by at desc limit $3`,
+          [action, options?.target ?? null, Math.max(1, Math.min(options?.limit ?? 200, 5000))],
+        );
+        return found.rows.map((row) => ({
+          id: row.id,
+          ownerId: row.owner_id,
+          actor: row.actor,
+          action: row.action,
+          target: row.target,
+          result: asRecord(row.result),
+          at: new Date(row.at).toISOString(),
+        }));
+      });
+    },
     async listBots() {
       return withClient(url, async (client) => {
         const found = await client.query(
@@ -761,7 +789,23 @@ type PostRow = {
 
 const POST_SELECT = "select id, owner_id, type, author, evidence, verified_by, status, expires_at, created_at from public.posts";
 
-const POST_EVIDENCE_KEYS = ["scope", "authorId", "requestId", "agentId", "runId", "sha", "link", "conditions"] as const;
+const POST_EVIDENCE_KEYS = [
+  "scope",
+  "authorId",
+  "requestId",
+  "agentId",
+  "runId",
+  "sha",
+  "link",
+  "conditions",
+  "verdict",
+  "subjectBotId",
+  "kind",
+  "approach",
+  "output",
+  "outputChars",
+  "artifactId",
+] as const;
 
 /** Body, repo, scope and provenance live in `posts.evidence`; no schema change. */
 function postEvidence(row: ConnectorPost): Record<string, unknown> {
@@ -805,6 +849,13 @@ function postFromRow(row: PostRow): ConnectorPost {
     conditions: optionalText(evidence.conditions),
     expiresAt: isoOrNull(row.expires_at),
     createdAt: isoOrNull(row.created_at),
+    verdict: evidence.verdict === "pass" || evidence.verdict === "fail" ? evidence.verdict : null,
+    subjectBotId: optionalText(evidence.subjectBotId),
+    kind: optionalText(evidence.kind),
+    approach: optionalText(evidence.approach),
+    output: optionalText(evidence.output),
+    outputChars: typeof evidence.outputChars === "number" && Number.isFinite(evidence.outputChars) ? evidence.outputChars : null,
+    artifactId: optionalText(evidence.artifactId),
   };
 }
 

@@ -9,10 +9,11 @@ export const POST_TYPES: readonly PostType[] = [
   "alert",
   "handoff",
   "shortcut",
+  "verdict",
 ];
 
-/** Post types that start claimed and can be verified: facts and token-saving tips. */
-export const VERIFIABLE_POST_TYPES: readonly PostType[] = ["finding", "shortcut"];
+/** Post types that start claimed and can be verified: facts, token-saving tips, and pass/fail verdicts on a run or sha. */
+export const VERIFIABLE_POST_TYPES: readonly PostType[] = ["finding", "shortcut", "verdict"];
 
 export function verifyFinding(
   post: { type: PostType; status: FindingStatus | null; author: string },
