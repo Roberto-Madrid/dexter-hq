@@ -6,6 +6,8 @@ import {
   PINNED_CHECKER_PATH,
   PINNED_CHECKER_WORKFLOW,
   applyCheckEvidence,
+  bindingFromArgs,
+  checkerPassedCurrentSha,
   checkerRunName,
   checksMoveRequestReady,
   HEAD_LOOKUP_TIMEOUT_MS,
@@ -210,6 +212,9 @@ function headChecker(head: string | Error | null, calls: Record<string, unknown>
       if (head instanceof Error) throw head;
       return head;
     },
+    async bindingState() {
+      return { exists: true, open: true, head: typeof head === "string" ? head : null };
+    },
   };
 }
 
@@ -218,11 +223,12 @@ const HEAD_SHA = "cccccccccccccccccccccccccccccccccccccccc";
 describe("Stage 2 quality loop", () => {
   it("runs pinned checks and moves the request to ready_for_review with evidence", async () => {
     const store = storeForLead();
-    const deps = depsFor(store, { checker: passingChecker(), checkerConfigured: true });
+    const deps = depsFor(store, { checker: headChecker(SHA), checkerConfigured: true });
     const auth = await store.authenticate(hashBotToken(TOKEN));
     const opened = await callConnectorTool(deps, auth, "open_request", {
       goal: "Ship the checker",
       repo: "owner/demo",
+      pullRequest: "27",
       card: card(),
     });
     const requestId = String(opened.structuredContent.requestId);
@@ -668,7 +674,7 @@ describe("Stage 2 quality loop", () => {
         outcome,
       }),
       false,
-      { sha: SHA, repo: "owner/demo" },
+      { sha: SHA, repo: "owner/demo", head: SHA },
     );
     expect(next.status).toBe("verifying");
   });
@@ -810,6 +816,9 @@ describe("Stage 2 quality loop", () => {
         }
         return { state: "in_progress", conclusion: null, githubRunId: input.githubRunId, evidence: [] };
       },
+      async head() {
+        return SHA;
+      },
     };
     const store = storeForLead();
     const deps = depsFor(store, { checker, checkerConfigured: true });
@@ -817,6 +826,7 @@ describe("Stage 2 quality loop", () => {
     const opened = await callConnectorTool(deps, auth, "open_request", {
       goal: "New sha",
       repo: "owner/demo",
+      pullRequest: "31",
       card: card(),
     });
     const requestId = String(opened.structuredContent.requestId);
@@ -1003,7 +1013,11 @@ describe("done is tied to the request's own PR or branch head", () => {
       head: HEAD_SHA,
       checkedSha: SHA,
     });
-    expect(calls).toEqual([{ repo: "owner/demo", pullRequest: "27", branch: null }]);
+    // request_checks looks up the head (the pass is off-head, so the request stays verifying), then done does.
+    expect(calls).toEqual([
+      { repo: "owner/demo", pullRequest: "27", branch: null },
+      { repo: "owner/demo", pullRequest: "27", branch: null },
+    ]);
     expect((await store.getRequest(requestId))?.status).not.toBe("done");
   });
 
@@ -1041,7 +1055,10 @@ describe("done is tied to the request's own PR or branch head", () => {
       evidence: ["preview"],
     });
     expect(done.structuredContent).toMatchObject({ status: "updated", requestStatus: "done" });
-    expect(calls).toEqual([{ repo: "owner/demo", pullRequest: null, branch: "feature/done-head" }]);
+    expect(calls).toEqual([
+      { repo: "owner/demo", pullRequest: null, branch: "feature/done-head" },
+      { repo: "owner/demo", pullRequest: null, branch: "feature/done-head" },
+    ]);
   });
 
   it("refuses to rebind a request to a different PR or branch", async () => {
@@ -1321,5 +1338,384 @@ describe("done is tied to the request's own PR or branch head", () => {
     const after = await store.getRequest(requestId);
     expect(after?.notices).toContain("concurrent-notice");
     expect(after?.status).toBe("done");
+  });
+});
+
+describe("PR #27 done-binding nits", () => {
+  const MOVED = "dddddddddddddddddddddddddddddddddddddddd";
+
+  type BindingState = { exists: boolean; open: boolean; head: string | null };
+
+  function movableChecker(
+    initial: string,
+    state: BindingState | Error | null = null,
+    bindingCalls: Record<string, unknown>[] = [],
+  ): CheckerGateway & { move(sha: string): void; dispatches: number } {
+    let head = initial;
+    const base = passingChecker();
+    const checker = {
+      ...base,
+      dispatches: 0,
+      move(sha: string) {
+        head = sha;
+      },
+      async dispatch(input: Parameters<CheckerGateway["dispatch"]>[0]) {
+        checker.dispatches += 1;
+        return base.dispatch(input);
+      },
+      async head() {
+        return head;
+      },
+      async bindingState(input: { repo: string; pullRequest: string | null; branch: string | null }) {
+        bindingCalls.push({ ...input });
+        if (state instanceof Error) throw state;
+        return state ?? { exists: true, open: true, head };
+      },
+    };
+    return checker;
+  }
+
+  async function openWith(
+    deps: ReturnType<typeof depsFor>,
+    auth: Awaited<ReturnType<ReturnType<typeof storeForLead>["authenticate"]>>,
+    binding: Record<string, unknown>,
+  ) {
+    const opened = await callConnectorTool(deps, auth, "open_request", {
+      goal: "Nit pack",
+      repo: "owner/demo",
+      card: card(),
+      ...binding,
+    });
+    return opened;
+  }
+
+  describe("1. a request binds to a PR or a branch, never both", () => {
+    it("bindingFromArgs refuses both", () => {
+      expect(bindingFromArgs({ pullRequest: "5", branch: "feature/x" })).toEqual({ ok: false, reason: "binding_pr_and_branch" });
+      expect(bindingFromArgs({ pull_request: "#5", branch: "feature/x" })).toMatchObject({ ok: false });
+      expect(bindingFromArgs({ pullRequest: "5" })).toEqual({ ok: true, binding: { pullRequest: "5", branch: null } });
+      expect(bindingFromArgs({ branch: "feature/x" })).toEqual({ ok: true, binding: { pullRequest: null, branch: "feature/x" } });
+    });
+
+    it("open_request and request_checks refuse a PR plus a branch", async () => {
+      const store = storeForLead();
+      const deps = depsFor(store, { checker: movableChecker(SHA), checkerConfigured: true });
+      const auth = await store.authenticate(hashBotToken(TOKEN));
+      const both = await openWith(deps, auth, { pullRequest: "27", branch: "feature/x" });
+      expect(both.structuredContent).toMatchObject({ status: "refused", reason: "binding_pr_and_branch" });
+      const opened = await openWith(deps, auth, {});
+      const requestId = String(opened.structuredContent.requestId);
+      const checks = await callConnectorTool(deps, auth, "request_checks", {
+        requestId,
+        repo: "owner/demo",
+        sha: SHA,
+        pullRequest: "27",
+        branch: "feature/x",
+      });
+      expect(checks.structuredContent).toMatchObject({ status: "refused", reason: "binding_pr_and_branch" });
+      const row = await store.getRequest(requestId);
+      expect(row?.pullRequest ?? null).toBeNull();
+      expect(row?.branch ?? null).toBeNull();
+    });
+
+    it("the store refuses to save a request bound to both", async () => {
+      const store = storeForLead();
+      await expect(
+        store.saveRequest({
+          id: "both-1",
+          ownerId: OWNER,
+          goal: "both",
+          status: "queued",
+          card: null,
+          evidence: [],
+          assignedBotId: BOT,
+          repo: "owner/demo",
+          notices: [],
+          pullRequest: "27",
+          branch: "feature/x",
+        }),
+      ).rejects.toThrow("binding_pr_and_branch");
+      expect(await store.getRequest("both-1")).toBeNull();
+    });
+
+    it("head() refuses an ambiguous binding instead of preferring one", async () => {
+      const urls: string[] = [];
+      const checker = createGhChecker({
+        token: "unit-token",
+        hostRepo: "owner/workers",
+        apiBase: "https://example.test",
+        fetchImpl: (async (url: string) => {
+          urls.push(String(url));
+          return new Response(JSON.stringify({ head: { sha: SHA } }), { status: 200 });
+        }) as typeof fetch,
+      });
+      await expect(checker.head?.({ repo: "owner/demo", pullRequest: "27", branch: "feature/x" })).rejects.toThrow(
+        "binding_ambiguous",
+      );
+      expect(urls).toEqual([]);
+    });
+
+    it("done fails closed on a legacy row that carries both", async () => {
+      const store = storeForLead();
+      const checker = movableChecker(SHA);
+      const deps = depsFor(store, { checker, checkerConfigured: true });
+      const auth = await store.authenticate(hashBotToken(TOKEN));
+      const opened = await openWith(deps, auth, { pullRequest: "27" });
+      const requestId = String(opened.structuredContent.requestId);
+      await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+      const getRequest = store.getRequest.bind(store);
+      store.getRequest = async (id: string) => {
+        const row = await getRequest(id);
+        return row ? { ...row, branch: "feature/x" } : row;
+      };
+      const done = await callConnectorTool(deps, auth, "update_request", { requestId, status: "done", evidence: ["preview"] });
+      expect(done.structuredContent).toMatchObject({ status: "refused", reason: "binding_ambiguous" });
+    });
+  });
+
+  describe("2. branch names follow git check-ref-format", () => {
+    it("rejects dot segments, hidden segments, empty segments, trailing slash or .lock", () => {
+      for (const branch of [
+        ".",
+        "..",
+        "a/./b",
+        "a/../b",
+        "../../etc",
+        ".hidden",
+        "foo/.bar",
+        "a//b",
+        "a/",
+        "/a",
+        "a.lock",
+        "feature/b.lock",
+        "a.lock/b",
+        "a.",
+        "-flag",
+        "HEAD",
+        "a b",
+        "a~1",
+        "a^",
+        "a:b",
+        "a@{1}",
+        "x".repeat(201),
+      ]) {
+        expect(bindingFromArgs({ branch }), branch).toMatchObject({ ok: false });
+      }
+    });
+
+    it("accepts ordinary branch names", () => {
+      for (const branch of ["main", "feature/x", "release-1.2", "a.b/c_d", "dexter/v5-G3", "a.locked", "lock.a", "x".repeat(200)]) {
+        expect(bindingFromArgs({ branch }), branch).toMatchObject({ ok: true });
+      }
+    });
+  });
+
+  describe("3. a done request whose bound head moves loses its passing evidence", () => {
+    async function doneAt(checker: ReturnType<typeof movableChecker>) {
+      const store = storeForLead();
+      const deps = depsFor(store, { checker, checkerConfigured: true });
+      const auth = await store.authenticate(hashBotToken(TOKEN));
+      const opened = await openWith(deps, auth, { pullRequest: "27" });
+      const requestId = String(opened.structuredContent.requestId);
+      await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+      const done = await callConnectorTool(deps, auth, "update_request", { requestId, status: "done", evidence: ["preview"] });
+      expect(done.structuredContent).toMatchObject({ status: "updated", requestStatus: "done" });
+      expect((await store.getRequest(requestId))?.checkRun?.passed).toBe(true);
+      return { store, deps, auth, requestId };
+    }
+
+    it("update_request on a done request invalidates the stored pass when the head moved", async () => {
+      const checker = movableChecker(SHA);
+      const { store, deps, auth, requestId } = await doneAt(checker);
+      checker.move(MOVED);
+      const again = await callConnectorTool(deps, auth, "update_request", { requestId, status: "done", evidence: ["preview"] });
+      expect(again.structuredContent).toMatchObject({
+        status: "refused",
+        reason: "done_requires_checks_on_head",
+        head: MOVED,
+        checkedSha: SHA,
+        checkRunInvalidated: true,
+      });
+      const row = await store.getRequest(requestId);
+      expect(row?.checkRun?.sha).toBe(SHA);
+      expect(row?.checkRun?.passed).toBe(false);
+      expect(checkerPassedCurrentSha(row!)).toBe(false);
+    });
+
+    it("request_checks on a done request does not keep a pass for a sha that is no longer the head", async () => {
+      const checker = movableChecker(SHA);
+      const { store, deps, auth, requestId } = await doneAt(checker);
+      checker.move(MOVED);
+      const recheck = await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+      expect(recheck.structuredContent.ready).toBe(true);
+      const row = await store.getRequest(requestId);
+      expect(row?.checkRun?.sha).toBe(SHA);
+      expect(row?.checkRun?.passed).toBe(false);
+      expect(checkerPassedCurrentSha(row!)).toBe(false);
+    });
+  });
+
+  describe("4. ready_for_review needs a pass on the current bound head", () => {
+    const base = {
+      id: "r1",
+      ownerId: OWNER,
+      goal: "g",
+      status: "verifying" as const,
+      card: null,
+      evidence: [],
+      assignedBotId: BOT,
+      repo: "owner/demo",
+      notices: [],
+      pullRequest: "27",
+      branch: null,
+    };
+
+    it("applyCheckEvidence only sets ready_for_review when the passing sha is the bound head", () => {
+      expect(applyCheckEvidence({ ...base }, [], true, { sha: SHA, repo: "owner/demo", head: SHA }).status).toBe("ready_for_review");
+      expect(applyCheckEvidence({ ...base }, [], true, { sha: SHA, repo: "owner/demo", head: SHA.toUpperCase() }).status).toBe(
+        "ready_for_review",
+      );
+      expect(applyCheckEvidence({ ...base }, [], true, { sha: SHA, repo: "owner/demo", head: MOVED }).status).toBe("verifying");
+      expect(applyCheckEvidence({ ...base }, [], true, { sha: SHA, repo: "owner/demo", head: null }).status).toBe("verifying");
+      expect(
+        applyCheckEvidence({ ...base, status: "ready_for_review" }, [], true, { sha: SHA, repo: "owner/demo", head: MOVED }).status,
+      ).toBe("verifying");
+    });
+
+    it("request_checks reports the pass but keeps the request verifying when the sha is not the bound head", async () => {
+      const store = storeForLead();
+      const deps = depsFor(store, { checker: movableChecker(MOVED), checkerConfigured: true });
+      const auth = await store.authenticate(hashBotToken(TOKEN));
+      const opened = await openWith(deps, auth, { pullRequest: "27" });
+      const requestId = String(opened.structuredContent.requestId);
+      const checks = await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+      expect(checks.structuredContent).toMatchObject({ status: "ready", ready: true, onBoundHead: false, requestStatus: "verifying" });
+      expect((await store.getRequest(requestId))?.status).toBe("verifying");
+    });
+
+    it("an unbound request never reaches ready_for_review", async () => {
+      const store = storeForLead();
+      const deps = depsFor(store, { checker: movableChecker(SHA), checkerConfigured: true });
+      const auth = await store.authenticate(hashBotToken(TOKEN));
+      const opened = await openWith(deps, auth, {});
+      const requestId = String(opened.structuredContent.requestId);
+      const checks = await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+      expect(checks.structuredContent).toMatchObject({ ready: true, onBoundHead: false });
+      expect((await store.getRequest(requestId))?.status).not.toBe("ready_for_review");
+    });
+
+    it("a head lookup failure keeps the request out of ready_for_review", async () => {
+      const store = storeForLead();
+      const checker: CheckerGateway = {
+        ...movableChecker(SHA),
+        async head() {
+          throw new Error("head_lookup_500");
+        },
+      };
+      const deps = depsFor(store, { checker, checkerConfigured: true });
+      const auth = await store.authenticate(hashBotToken(TOKEN));
+      const opened = await openWith(deps, auth, { pullRequest: "27" });
+      const requestId = String(opened.structuredContent.requestId);
+      await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA });
+      expect((await store.getRequest(requestId))?.status).toBe("verifying");
+    });
+  });
+
+  describe("5. a bot-chosen binding must be an open PR or a branch in the request's repo", () => {
+    async function unbound(checker: CheckerGateway) {
+      const store = storeForLead();
+      const deps = depsFor(store, { checker, checkerConfigured: true });
+      const auth = await store.authenticate(hashBotToken(TOKEN));
+      const opened = await openWith(deps, auth, {});
+      return { store, deps, auth, requestId: String(opened.structuredContent.requestId) };
+    }
+
+    it("binds an open PR in the request's repo after verifying it", async () => {
+      const calls: Record<string, unknown>[] = [];
+      const checker = movableChecker(SHA, null, calls);
+      const { store, deps, auth, requestId } = await unbound(checker);
+      const checks = await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA, pullRequest: "27" });
+      expect(checks.structuredContent).toMatchObject({ status: "ready", requestStatus: "ready_for_review" });
+      expect(calls).toEqual([{ repo: "owner/demo", pullRequest: "27", branch: null }]);
+      expect((await store.getRequest(requestId))?.pullRequest).toBe("27");
+    });
+
+    it("refuses a PR or branch that is not in the request's repo", async () => {
+      for (const binding of [{ pullRequest: "404" }, { branch: "elsewhere" }]) {
+        const checker = movableChecker(SHA, { exists: false, open: false, head: null });
+        const { store, deps, auth, requestId } = await unbound(checker);
+        const checks = await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA, ...binding });
+        expect(checks.structuredContent).toMatchObject({ status: "refused", reason: "binding_not_in_repo" });
+        const row = await store.getRequest(requestId);
+        expect(row?.pullRequest ?? null).toBeNull();
+        expect(row?.branch ?? null).toBeNull();
+        expect(row?.checkRun ?? null).toBeNull();
+        expect(checker.dispatches).toBe(0);
+      }
+    });
+
+    it("refuses a closed PR", async () => {
+      const checker = movableChecker(SHA, { exists: true, open: false, head: SHA });
+      const { store, deps, auth, requestId } = await unbound(checker);
+      const checks = await callConnectorTool(deps, auth, "request_checks", { requestId, repo: "owner/demo", sha: SHA, pullRequest: "26" });
+      expect(checks.structuredContent).toMatchObject({ status: "refused", reason: "binding_pr_not_open" });
+      expect((await store.getRequest(requestId))?.pullRequest ?? null).toBeNull();
+    });
+
+    it("fails closed when the binding cannot be verified", async () => {
+      const failing = movableChecker(SHA, new Error("timeout"));
+      const first = await unbound(failing);
+      const lookup = await callConnectorTool(first.deps, first.auth, "request_checks", {
+        requestId: first.requestId,
+        repo: "owner/demo",
+        sha: SHA,
+        branch: "feature/x",
+      });
+      expect(lookup.structuredContent).toMatchObject({ status: "refused", reason: "binding_lookup_failed" });
+      const noLookup: CheckerGateway = { ...movableChecker(SHA), bindingState: undefined };
+      const second = await unbound(noLookup);
+      const missing = await callConnectorTool(second.deps, second.auth, "request_checks", {
+        requestId: second.requestId,
+        repo: "owner/demo",
+        sha: SHA,
+        branch: "feature/x",
+      });
+      expect(missing.structuredContent).toMatchObject({ status: "refused", reason: "binding_unverifiable" });
+    });
+
+    it("the GitHub gateway checks PR state, the PR's base repo, and branch existence", async () => {
+      const urls: string[] = [];
+      const checker = createGhChecker({
+        token: "unit-token",
+        hostRepo: "owner/workers",
+        apiBase: "https://example.test",
+        fetchImpl: (async (url: string) => {
+          urls.push(String(url));
+          const u = String(url);
+          if (u.endsWith("/pulls/27")) {
+            return new Response(JSON.stringify({ state: "open", head: { sha: SHA }, base: { repo: { full_name: "Owner/Demo" } } }), { status: 200 });
+          }
+          if (u.endsWith("/pulls/26")) {
+            return new Response(JSON.stringify({ state: "closed", head: { sha: SHA }, base: { repo: { full_name: "owner/demo" } } }), { status: 200 });
+          }
+          if (u.endsWith("/pulls/25")) {
+            return new Response(JSON.stringify({ state: "open", head: { sha: SHA }, base: { repo: { full_name: "other/repo" } } }), { status: 200 });
+          }
+          if (u.endsWith("/git/ref/heads/feature/x")) {
+            return new Response(JSON.stringify({ ref: "refs/heads/feature/x", object: { sha: HEAD_SHA } }), { status: 200 });
+          }
+          if (u.endsWith("/pulls/500")) return new Response("{}", { status: 500 });
+          return new Response("{}", { status: 404 });
+        }) as typeof fetch,
+      });
+      expect(await checker.bindingState?.({ repo: "owner/demo", pullRequest: "27", branch: null })).toEqual({ exists: true, open: true, head: SHA });
+      expect(await checker.bindingState?.({ repo: "owner/demo", pullRequest: "26", branch: null })).toEqual({ exists: true, open: false, head: SHA });
+      expect(await checker.bindingState?.({ repo: "owner/demo", pullRequest: "25", branch: null })).toMatchObject({ exists: false });
+      expect(await checker.bindingState?.({ repo: "owner/demo", pullRequest: "404", branch: null })).toMatchObject({ exists: false });
+      expect(await checker.bindingState?.({ repo: "owner/demo", pullRequest: null, branch: "feature/x" })).toEqual({ exists: true, open: true, head: HEAD_SHA });
+      expect(await checker.bindingState?.({ repo: "owner/demo", pullRequest: null, branch: "gone" })).toMatchObject({ exists: false });
+      await expect(checker.bindingState?.({ repo: "owner/demo", pullRequest: "500", branch: null })).rejects.toThrow("binding_lookup_500");
+      await expect(checker.bindingState?.({ repo: "owner/demo", pullRequest: "27", branch: "feature/x" })).rejects.toThrow("binding_ambiguous");
+    });
   });
 });
