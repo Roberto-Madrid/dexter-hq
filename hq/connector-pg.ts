@@ -9,6 +9,7 @@ import {
   type ConnectorAgent,
   type ConnectorApproval,
   type ConnectorBot,
+  type ConnectorPost,
   type ConnectorRequest,
   type ConnectorStore,
 } from "./connector-store.ts";
@@ -480,69 +481,102 @@ export function createPgConnectorStore(url: string): ConnectorStore {
     async savePost(row) {
       await withClient(url, async (client) => {
         await client.query(
-          `insert into public.posts (id, owner_id, type, author, evidence, verified_by, status)
-           values ($1,$2,$3,$4,$5::jsonb,$6,$7)
-           on conflict (id) do update set evidence = excluded.evidence, verified_by = excluded.verified_by, status = excluded.status`,
+          `insert into public.posts (id, owner_id, type, author, evidence, verified_by, status, expires_at, created_at)
+           values ($1,$2,$3,$4,$5::jsonb,$6,$7,$8::timestamptz, coalesce($9::timestamptz, now()))
+           on conflict (id) do update set
+             evidence = excluded.evidence,
+             verified_by = excluded.verified_by,
+             status = excluded.status,
+             expires_at = excluded.expires_at`,
           [
             row.id,
             row.ownerId,
             row.type,
             row.author,
-            { body: row.body, repo: row.repo },
-            row.verified ? "owner" : null,
-            row.verified ? "verified" : "claimed",
+            postEvidence(row),
+            row.verifiedBy !== undefined ? row.verifiedBy : row.verified ? "owner" : null,
+            row.status !== undefined ? row.status : row.verified ? "verified" : "claimed",
+            row.expiresAt ?? null,
+            row.createdAt ?? null,
           ],
         );
       });
     },
     async getPost(id) {
       return withClient(url, async (client) => {
-        const found = await client.query<{
-          id: string;
-          owner_id: string;
-          type: string;
-          author: string;
-          evidence: unknown;
-          verified_by: string | null;
-        }>("select id, owner_id, type, author, evidence, verified_by from public.posts where id = $1", [id]);
+        const found = await client.query<PostRow>(`${POST_SELECT} where id = $1`, [id]);
         const row = found.rows[0];
-        if (!row) return null;
-        const evidence = asRecord(row.evidence) ?? {};
-        return {
-          id: row.id,
-          ownerId: row.owner_id,
-          type: row.type,
-          author: row.author,
-          body: String(evidence.body ?? ""),
-          repo: evidence.repo ? String(evidence.repo) : null,
-          verified: Boolean(row.verified_by),
-        };
+        return row ? postFromRow(row) : null;
       });
     },
     async listPosts() {
       return withClient(url, async (client) => {
-        const found = await client.query<{
-          id: string;
-          owner_id: string;
-          type: string;
-          author: string;
-          evidence: unknown;
-          verified_by: string | null;
-        }>("select id, owner_id, type, author, evidence, verified_by from public.posts");
-        return found.rows.map((row) => {
-          const evidence = asRecord(row.evidence) ?? {};
-          return {
-            id: row.id,
-            ownerId: row.owner_id,
-            type: row.type,
-            author: row.author,
-            body: String(evidence.body ?? ""),
-            repo: evidence.repo ? String(evidence.repo) : null,
-            verified: Boolean(row.verified_by),
-          };
-        });
+        // dexter-shortcut: reads every post and filters scope/expiry in memory (live: 0 posts); upgrade path: push owner, scope and expiry filters into SQL with an index once the board passes a few thousand rows.
+        const found = await client.query<PostRow>(`${POST_SELECT} order by created_at asc`);
+        return found.rows.map(postFromRow);
       });
     },
+  };
+}
+
+type PostRow = {
+  id: string;
+  owner_id: string;
+  type: string;
+  author: string;
+  evidence: unknown;
+  verified_by: string | null;
+  status: string | null;
+  expires_at: Date | string | null;
+  created_at: Date | string | null;
+};
+
+const POST_SELECT = "select id, owner_id, type, author, evidence, verified_by, status, expires_at, created_at from public.posts";
+
+const POST_EVIDENCE_KEYS = ["scope", "authorId", "requestId", "agentId", "runId", "sha", "link", "conditions"] as const;
+
+/** Body, repo, scope and provenance live in `posts.evidence`; no schema change. */
+function postEvidence(row: ConnectorPost): Record<string, unknown> {
+  const out: Record<string, unknown> = { body: row.body, repo: row.repo };
+  for (const key of POST_EVIDENCE_KEYS) {
+    const value = row[key];
+    if (value !== undefined && value !== null) out[key] = value;
+  }
+  return out;
+}
+
+function optionalText(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
+}
+
+function isoOrNull(value: Date | string | null): string | null {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function postFromRow(row: PostRow): ConnectorPost {
+  const evidence = asRecord(row.evidence) ?? {};
+  const scope = evidence.scope === "shared" || evidence.scope === "project" || evidence.scope === "mission" ? evidence.scope : null;
+  const status = row.status ?? (row.verified_by ? "verified" : null);
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    type: row.type,
+    author: row.author,
+    body: String(evidence.body ?? ""),
+    repo: evidence.repo ? String(evidence.repo) : null,
+    verified: status === "verified",
+    authorId: optionalText(evidence.authorId),
+    status,
+    verifiedBy: row.verified_by,
+    scope,
+    requestId: optionalText(evidence.requestId),
+    agentId: optionalText(evidence.agentId),
+    runId: optionalText(evidence.runId),
+    sha: optionalText(evidence.sha),
+    link: optionalText(evidence.link),
+    conditions: optionalText(evidence.conditions),
+    expiresAt: isoOrNull(row.expires_at),
+    createdAt: isoOrNull(row.created_at),
   };
 }
 

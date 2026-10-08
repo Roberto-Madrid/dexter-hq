@@ -8,13 +8,17 @@ export const POST_TYPES: readonly PostType[] = [
   "dead_end",
   "alert",
   "handoff",
+  "shortcut",
 ];
+
+/** Post types that start claimed and can be verified: facts and token-saving tips. */
+export const VERIFIABLE_POST_TYPES: readonly PostType[] = ["finding", "shortcut"];
 
 export function verifyFinding(
   post: { type: PostType; status: FindingStatus | null; author: string },
   actor: { author: string; deterministic: boolean },
 ): { ok: true; status: "verified" } | { ok: false; reason: string } {
-  if (post.type !== "finding") return { ok: false, reason: "not_a_finding" };
+  if (!VERIFIABLE_POST_TYPES.includes(post.type)) return { ok: false, reason: "not_a_finding" };
   if (post.status !== "claimed") return { ok: false, reason: "not_claimed" };
   if (!actor.deterministic && actor.author === post.author) {
     return { ok: false, reason: "same_author" };

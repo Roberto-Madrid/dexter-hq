@@ -21,6 +21,9 @@ const lead = bot("it-alpha-lead", "lead", [REPO]);
 const dev = bot("it-alpha-dev", "other", [REPO]);
 const otherLead = bot("it-beta-lead", "lead", [OTHER_REPO]);
 
+type Note = { id: string };
+type Body = { [key: string]: unknown; findings: Note[]; deadEnds: Note[] };
+
 let pool: pg.Pool;
 
 beforeAll(() => {
@@ -38,7 +41,7 @@ describe("posts round trip through Postgres", () => {
     const store = createPgConnectorStore(databaseUrl());
     const deps = createDefaultConnectorDeps({ store, cursor: null, cursorConfigured: false, checker: null, ownerId: OWNER, now: () => clock });
     const call = async (auth: ConnectorAuth, name: string, args: Record<string, unknown>) =>
-      (await callConnectorTool(deps, auth, name, args)).structuredContent as Record<string, any>;
+      (await callConnectorTool(deps, auth, name, args)).structuredContent as Body;
 
     const finding = await call(lead, "post", {
       type: "finding",
@@ -76,8 +79,8 @@ describe("posts round trip through Postgres", () => {
     expect(new Date(deadRow.rows[0].expires_at).toISOString()).toBe(new Date(Date.parse(NOW) + DAY).toISOString());
 
     const live = await call(dev, "get_context", { repo: REPO });
-    expect(live.findings.map((item: { id: string }) => item.id)).toEqual([finding.postId]);
-    expect(live.deadEnds.map((item: { id: string }) => item.id)).toEqual([dead.postId]);
+    expect(live.findings.map((item) => item.id)).toEqual([finding.postId]);
+    expect(live.deadEnds.map((item) => item.id)).toEqual([dead.postId]);
     expect((await call(otherLead, "get_context", { repo: REPO })).reason).toBe("repo_out_of_scope");
     const otherView = await call(otherLead, "get_context", {});
     expect(JSON.stringify(otherView)).not.toContain(String(finding.postId));
@@ -85,6 +88,6 @@ describe("posts round trip through Postgres", () => {
     clock = new Date(Date.parse(NOW) + 2 * DAY).toISOString();
     const later = await call(dev, "get_context", { repo: REPO });
     expect(later.deadEnds).toEqual([]);
-    expect(later.findings.map((item: { id: string }) => item.id)).toEqual([finding.postId]);
+    expect(later.findings.map((item) => item.id)).toEqual([finding.postId]);
   });
 });

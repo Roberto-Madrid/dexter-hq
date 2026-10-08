@@ -35,6 +35,7 @@ import {
   sanitizeBotEvidence,
   type CheckerGateway,
 } from "./checker.ts";
+import { contextNotes, postNote, verifyNote } from "./board-notes.ts";
 import { decisionTrail } from "./decision-trail.ts";
 import { launchBlockedByDesignGate } from "./design-gate.ts";
 import { composeLaunchBrief } from "./personas.ts";
@@ -908,52 +909,24 @@ export async function callConnectorTool(
     await record(deps, auth, name, id ?? "missing", body);
     return toolResult(body, !row);
   }
-  if (name === "post") {
-    const id = randomUUID();
-    const type = textArg(args, "type") ?? "finding";
-    await deps.store.savePost({
-      id,
-      ownerId: auth.ownerId,
-      type,
-      author: auth.name,
-      body: textArg(args, "body") ?? "",
-      repo: textArg(args, "repo"),
-      verified: false,
-    });
-    const body = { status: "posted", postId: id, verified: false };
-    await record(deps, auth, name, id, body);
-    return toolResult(body);
-  }
-  if (name === "verify_post") {
-    const id = textArg(args, "postId") ?? textArg(args, "post_id");
-    const row = id ? await deps.store.getPost(id) : null;
-    if (!row) {
-      const body = { status: "refused", reason: "unknown_post" };
-      await record(deps, auth, name, id ?? "missing", body);
-      return toolResult(body, true);
-    }
-    row.verified = true;
-    await deps.store.savePost(row);
-    const body = { status: "verified", postId: row.id };
-    await record(deps, auth, name, row.id, body);
-    return toolResult(body);
+  if (name === "post" || name === "verify_post") {
+    const at = (deps.now ?? (() => new Date().toISOString()))();
+    const out = name === "post" ? await postNote(deps.store, auth, args, at) : await verifyNote(deps.store, auth, args);
+    await record(deps, auth, name, out.target, out.event);
+    return toolResult(out.body, out.isError);
   }
   if (name === "get_context") {
-    const repo = textArg(args, "repo");
+    const at = (deps.now ?? (() => new Date().toISOString()))();
+    const notes = await contextNotes(deps.store, auth, args, at);
+    if (notes.isError) {
+      await record(deps, auth, name, notes.target, notes.event);
+      return toolResult(notes.body, true);
+    }
     const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
-    const posts = await deps.store.listPosts();
-    const items = posts.filter((item) => !repo || item.repo === repo);
     const events = await deps.store.listEvents();
     const why = requestId ? decisionTrail(events, requestId) : [];
-    const body = {
-      status: "ok",
-      findings: items.filter((item) => item.type === "finding" && item.verified),
-      unverified: items.filter((item) => item.type === "finding" && !item.verified).map((item) => item.id),
-      deadEnds: items.filter((item) => item.type === "dead_end"),
-      why,
-      requestId,
-    };
-    await record(deps, auth, name, requestId ?? repo ?? "all", { count: items.length, why: why.length });
+    const body = { ...notes.body, why, requestId };
+    await record(deps, auth, name, notes.target, { ...notes.event, why: why.length });
     return toolResult(body);
   }
   const body = { status: "error", reason: "unknown_tool" };
@@ -988,6 +961,15 @@ export function createDefaultConnectorDeps(overrides?: Partial<ConnectorDeps>): 
   };
 }
 
+const BOARD_TOOL_DESCRIPTIONS: Record<string, string> = {
+  post:
+    "Save one board note. Args: type (finding | dead_end | shortcut | handoff), body (<=2000 chars, secrets are redacted), optional repo, scope (shared | project | mission; a lead defaults to project on its own repo, shared must be explicit), requestId (required for mission), agentId, runId, sha, link, idempotencyKey. dead_end needs conditions and gets expiresAt or expiresInDays (default 30, max 180). Findings and shortcuts start claimed.",
+  verify_post:
+    "Verify a claimed finding or shortcut. Args: postId, optional checkRequestId (the note's own request with a passed Checker run on the note's repo). The author cannot verify its own note unless the Checker passed.",
+  get_context:
+    "Notes you may read, ranked verified first, then this request, then this repo, then newest; capped and clipped. Args: optional repo (must be yours), requestId, type, limit (<=30). Returns findings (verified), claimed (unverified: never change a plan on them), deadEnds (live only), handoffs, unverified ids, omitted count, and the request's why trail.",
+};
+
 export function connectorToolDescriptors(names: readonly string[]) {
   return names.map((name) => ({
     name,
@@ -998,7 +980,7 @@ export function connectorToolDescriptors(names: readonly string[]) {
           ? "Run one Critic seat through path B. Returns a schema-valid verdict, or not-configured when the login is absent."
           : name === "request_checks"
             ? "Dispatch pinned checker.yml from the trusted workers main ref against a commit SHA. Returns in_progress until GitHub has a conclusion; ready requires a completed success. Callers cannot supply a GitHub run id. The first pullRequest or branch given binds the request; update_request done then requires a pass on that PR/branch's current GitHub head."
-            : `Dexter connector tool ${name}.`,
+            : (BOARD_TOOL_DESCRIPTIONS[name] ?? `Dexter connector tool ${name}.`),
     inputSchema: { type: "object", additionalProperties: true },
   }));
 }

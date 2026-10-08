@@ -79,3 +79,4 @@ export function postApproval(raw: string): Promise<{
 }>;
 export function postTick(header: string | null): Promise<{ status: number; body?: unknown }>;
 export function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }>;
+export function getBoardNotes(cookie: string | null, search: string | URLSearchParams): Promise<{ status: number; body: unknown }>;

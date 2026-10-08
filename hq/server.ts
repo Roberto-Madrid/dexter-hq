@@ -10,7 +10,8 @@ import { handleChat } from "./chat.ts";
 import { acceptCallback } from "./callback.ts";
 import { decideApproval, type DecideApprovalResult } from "./approval.ts";
 import { createPgConnectorStore } from "./connector-pg.ts";
-import { createMemoryConnectorStore } from "./connector-store.ts";
+import { createMemoryConnectorStore, type ConnectorStore } from "./connector-store.ts";
+import { ownerBoardView } from "./board-notes.ts";
 import { resumeAll, stopAll } from "./stop.ts";
 import { createDefaultConnectorDeps } from "./connector.ts";
 import { reconcileConnector } from "./reconcile.ts";
@@ -326,7 +327,8 @@ export async function postChat(
   const live = current();
   pathBBilling = false;
   trace = { stages: {}, model: null, effort: null, loginHashChanged: false };
-  const result = await withStore((store) => handleChat(store, live.deps, text, undefined, onDelta));
+  const deps = { ...live.deps, connector: live.deps.connector ?? connectorFromEnv() };
+  const result = await withStore((store) => handleChat(store, deps, text, undefined, onDelta));
   const billing = pathBBilling && result.kind === "plan" ? ("chatgpt-plan" as const) : undefined;
   pathBBilling = false;
   return billing ? { ...result, billing, trace } : { ...result, trace };
@@ -335,6 +337,24 @@ export async function postChat(
 export async function getBoard(): Promise<BoardSnapshot> {
   const live = current();
   return withStore((store) => snapshot(store, live.deps.slotCap));
+}
+
+/** GET /api/board?view=notes: owner session only; filters type, scope, repo, status (live|claimed|verified|expired|all), limit. */
+export async function getBoardNotes(
+  cookie: string | null,
+  search: string | URLSearchParams,
+  store?: ConnectorStore,
+  nowIso = new Date().toISOString(),
+): Promise<{ status: number; body: unknown }> {
+  if (!emailFromCookie(cookie)) return { status: 401, body: { status: "refused", reason: "unauthorized" } };
+  const source = store ?? connectorFromEnv() ?? createMemoryConnectorStore();
+  let posts;
+  try {
+    posts = await source.listPosts();
+  } catch {
+    return { status: 503, body: { status: "error", reason: "board_unavailable" } };
+  }
+  return ownerBoardView(posts, new URLSearchParams(search), nowIso);
 }
 
 function connectorFromEnv() {

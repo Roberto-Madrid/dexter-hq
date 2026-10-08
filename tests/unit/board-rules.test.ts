@@ -20,6 +20,15 @@ const ALPHA = "acme/alpha";
 const BETA = "acme/beta";
 const ALL = [...CONNECTOR_TOOLS];
 
+type Note = Record<string, string>;
+type Body = {
+  [key: string]: unknown;
+  findings: Note[];
+  claimed: Note[];
+  deadEnds: Note[];
+  handoffs: Note[];
+};
+
 function bot(id: string, name: string, kind: string, repos: string[], ownerId = OWNER): ConnectorAuth {
   return { id, ownerId, name, kind, repos, tools: ALL, currentTask: null, heartbeatAt: null, scopes: ALL, suspended: false };
 }
@@ -52,7 +61,7 @@ function setup(now = NOW) {
     },
     async call(auth: ConnectorAuth, name: string, args: Record<string, unknown>) {
       const result = await callConnectorTool(deps, auth, name, args);
-      return { body: result.structuredContent as Record<string, any>, isError: result.isError };
+      return { body: result.structuredContent as Body, isError: result.isError };
     },
   };
 }
@@ -78,7 +87,7 @@ function ids(list: unknown): string[] {
   return ((list as { id: string }[]) ?? []).map((item) => item.id);
 }
 
-function allNotes(body: Record<string, any>): { id: string }[] {
+function allNotes(body: Body): Note[] {
   return [...(body.findings ?? []), ...(body.claimed ?? []), ...(body.deadEnds ?? []), ...(body.handoffs ?? [])];
 }
 

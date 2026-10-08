@@ -1,0 +1,47 @@
+
+> build
+> node scripts/fetch-codex.mjs && node scripts/bundle-hq.mjs && next build
+
+{"codexBytes":289101384,"ageBytes":4986442,"functionLimitBytes":262144000}
+   ▲ Next.js 15.5.27
+
+   Creating an optimized production build ...
+   Using tsconfig file: tsconfig.app.json
+   Using tsconfig file: tsconfig.app.json
+   Using tsconfig file: tsconfig.app.json
+ ✓ Compiled successfully in 6.7s
+   Linting and checking validity of types ...
+
+ ⚠ The Next.js plugin was not detected in your ESLint configuration. See https://nextjs.org/docs/app/api-reference/config/eslint#migrating-existing-config
+   Collecting page data ...
+   Generating static pages (0/13) ...
+   Generating static pages (3/13) 
+   Generating static pages (6/13) 
+   Generating static pages (9/13) 
+ ✓ Generating static pages (13/13)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ƒ /                                    6.89 kB         110 kB
+├ ○ /_not-found                            995 B         104 kB
+├ ƒ /api/approval                          153 B         103 kB
+├ ƒ /api/board                             153 B         103 kB
+├ ƒ /api/callback                          153 B         103 kB
+├ ƒ /api/chat                              153 B         103 kB
+├ ƒ /api/login                             153 B         103 kB
+├ ƒ /api/mcp                               153 B         103 kB
+├ ƒ /api/resume                            153 B         103 kB
+├ ƒ /api/stop                              153 B         103 kB
+├ ƒ /api/tick-now                          153 B         103 kB
+├ ƒ /login                                 153 B         103 kB
+└ ○ /manifest.webmanifest                  153 B         103 kB
++ First Load JS shared by all             103 kB
+  ├ chunks/255-ce8c7c75002f810b.js       46.5 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.2 kB
+  └ other shared chunks (total)           1.9 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

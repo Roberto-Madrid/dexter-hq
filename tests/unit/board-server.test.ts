@@ -22,6 +22,7 @@ function bot(id: string, name: string, kind: string, repos: string[]): Connector
 
 const leadA = bot("aaaaaaaa-0000-4000-8000-000000000001", "alpha-lead", "lead", ["acme/alpha"]);
 const leadB = bot("bbbbbbbb-0000-4000-8000-000000000001", "beta-lead", "lead", ["acme/beta"]);
+const ceo = bot("cccccccc-0000-4000-8000-000000000001", "dexter", "ceo", []);
 
 beforeAll(() => {
   // Never touch a real database from unit tests.
@@ -33,7 +34,7 @@ beforeAll(() => {
 });
 
 async function seeded(): Promise<{ store: ConnectorStore; ids: Record<string, string> }> {
-  const store = createMemoryConnectorStore({ bots: [leadA, leadB] });
+  const store = createMemoryConnectorStore({ bots: [leadA, leadB, ceo] });
   let clock = NOW;
   const deps = createDefaultConnectorDeps({ store, cursor: null, cursorConfigured: false, checker: null, now: () => clock });
   const post = async (auth: ConnectorAuth, args: Record<string, unknown>) =>
@@ -45,7 +46,7 @@ async function seeded(): Promise<{ store: ConnectorStore; ids: Record<string, st
   const beta = await post(leadB, { type: "shortcut", body: "beta shortcut" });
   const shared = await post(leadB, { type: "finding", body: "shared finding", scope: "shared" });
   const dead = await post(leadA, { type: "dead_end", body: "live dead end", conditions: "until v3" });
-  await callConnectorTool(deps, leadB, "verify_post", { postId: alpha });
+  await callConnectorTool(deps, ceo, "verify_post", { postId: alpha });
   return { store, ids: { expired, alpha, beta, shared, dead } };
 }
 
@@ -72,7 +73,7 @@ describe("GET /api/board?view=notes is owner-only JSON", () => {
     expect(view.status).toBe(200);
     expect(noteIds(view.body).sort()).toEqual([ids.alpha, ids.beta, ids.shared, ids.dead].sort());
     const alpha = (view.body as { notes: Record<string, unknown>[] }).notes.find((note) => note.id === ids.alpha);
-    expect(alpha).toMatchObject({ type: "finding", status: "verified", verifiedBy: "beta-lead", by: "alpha-lead", repo: "acme/alpha", scope: "project" });
+    expect(alpha).toMatchObject({ type: "finding", status: "verified", verifiedBy: "dexter", by: "alpha-lead", repo: "acme/alpha", scope: "project" });
   });
 
   it("filters by type, scope, repo and status", async () => {
