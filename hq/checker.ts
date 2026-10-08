@@ -33,12 +33,19 @@ export type CheckerOutcome = {
 
 export type RequestBinding = { pullRequest: string | null; branch: string | null };
 
+/** One changed path from GitHub's compare API. Never the patch. */
+export type CompareFile = { filename: string; status: string; additions: number; deletions: number };
+/** `truncated` is true when GitHub hit its 300-file list limit, so the real count is at least that. */
+export type CompareResult = { files: CompareFile[]; aheadBy: number | null; truncated: boolean };
+
 export type CheckerGateway = {
   dispatch(input: CheckerDispatchInput): Promise<CheckerDispatchResult>;
   find(input: { repo: string; sha: string; nonce: string }): Promise<string | null>;
   outcome(input: { githubRunId: string; repo: string; sha: string; nonce: string }): Promise<CheckerOutcome>;
   /** Current head commit of the request's PR (preferred) or branch on GitHub. Throws or returns null when unknown. */
   head?(input: { repo: string } & RequestBinding): Promise<string | null>;
+  /** Changed paths between `base` and `head` (GitHub compare, three dots). Throws when unknown, so callers fail closed. */
+  compare?(input: { repo: string; base: string; head: string }): Promise<CompareResult>;
 };
 
 const BRANCH_NAME = /^(?!\/)(?!.*\.\.)(?!.*\/\/)(?!.*\/$)[A-Za-z0-9._/-]{1,200}$/;
@@ -77,6 +84,14 @@ type FetchLike = typeof fetch;
 
 /** A hung GitHub head lookup must not hold update_request open; a timeout throws, and done fails closed. */
 export const HEAD_LOOKUP_TIMEOUT_MS = 10_000;
+/** Same budget for the token police diff lookup; a timeout throws and the approval is refused. */
+export const COMPARE_TIMEOUT_MS = 10_000;
+/** GitHub's compare API lists at most this many changed files. */
+const COMPARE_FILE_LIMIT = 300;
+
+function count(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -206,6 +221,7 @@ export function createGhChecker(options: {
   apiBase?: string;
   findAttempts?: number;
   headTimeoutMs?: number;
+  compareTimeoutMs?: number;
 }): CheckerGateway {
   const fetchImpl = options.fetchImpl ?? fetch;
   const apiBase = options.apiBase ?? "https://api.github.com";
@@ -255,6 +271,22 @@ export function createGhChecker(options: {
       const body = asRecord(await response.json());
       const sha = input.pullRequest ? asRecord(body.head).sha : asRecord(body.object).sha;
       return typeof sha === "string" && /^[0-9a-f]{40}$/i.test(sha) ? sha.toLowerCase() : null;
+    },
+    async compare(input) {
+      // per_page=1 trims the commit list; the file list (up to 300) always comes on the first page.
+      const response = await fetchImpl(`${apiBase}/repos/${input.repo}/compare/${input.base}...${input.head}?per_page=1`, {
+        headers,
+        signal: AbortSignal.timeout(options.compareTimeoutMs ?? COMPARE_TIMEOUT_MS),
+      });
+      if (response.status >= 300) throw new Error(`compare_${response.status}`);
+      const body = asRecord(await response.json());
+      if (!Array.isArray(body.files)) throw new Error("compare_unreadable");
+      const files = body.files.map(asRecord).flatMap((file) =>
+        typeof file.filename === "string" && file.filename
+          ? [{ filename: file.filename, status: String(file.status ?? "modified"), additions: count(file.additions), deletions: count(file.deletions) }]
+          : [],
+      );
+      return { files, aheadBy: typeof body.ahead_by === "number" ? body.ahead_by : null, truncated: files.length >= COMPARE_FILE_LIMIT };
     },
     async dispatch(input) {
       const existing = await find(input);

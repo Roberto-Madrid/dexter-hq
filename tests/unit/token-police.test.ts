@@ -98,11 +98,12 @@ function gateChecker(options: {
       return head;
     },
   };
-  if (options.compare !== "none") {
+  const compare = options.compare;
+  if (compare !== "none") {
     gate.compare = async (input) => {
       compares.push({ ...input });
-      if (options.compare instanceof Error) throw options.compare;
-      return options.compare ?? { files: [], aheadBy: 1, truncated: false };
+      if (compare instanceof Error) throw compare;
+      return compare ?? { files: [], aheadBy: 1, truncated: false };
     };
   }
   return gate;

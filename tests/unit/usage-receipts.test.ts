@@ -211,6 +211,7 @@ describe("usage in the fleet report", () => {
         receipt("1", { status: "recorded", input_tokens: 1000, output_tokens: 100, charged_cents: 12 }),
         receipt("2", { status: "recorded", input_tokens: 500, output_tokens: 50, charged_cents: null }),
         receipt("3", { status: "unavailable", reason: "usage_http_403" }),
+        { ...receipt("4", { status: "blocked", reason: "gate_failed", requestId: "r-9" }), action: "blocked", target: "r-9" },
       ],
       bots,
       posts: [],
@@ -219,6 +220,9 @@ describe("usage in the fleet report", () => {
     expect(report.totals.usage).toEqual({ receipts: 2, unavailable: 1, inputTokens: 1500, outputTokens: 150, chargedCents: 12 });
     expect(report.bots[0]?.usage).toEqual({ receipts: 2, unavailable: 1, inputTokens: 1500, outputTokens: 150 });
     expect(report.notTracked).not.toContain("Cursor usage per agent");
+    // A token police BLOCKED event counts as a blocked request for the bot it names.
+    expect(report.totals.requests.blocked).toBe(1);
+    expect(report.bots[0]?.requests.blocked).toBe(1);
     const text = renderFleetReport(report);
     expect(text).toContain("Cursor usage: 1500 input tokens (with cache), 150 output tokens over 2 receipts, 1 unavailable. Charged: 12 cents.");
   });
