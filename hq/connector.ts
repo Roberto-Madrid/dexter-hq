@@ -669,7 +669,7 @@ function councilUnavailableReason(message: string): "not-configured" | "not-read
   ) {
     return "not-configured";
   }
-  if (message === "openai_api_key_set") return "not-ready";
+  if (message === "openai_api_key_set" || message.startsWith("codex_not_ready")) return "not-ready";
   return "error";
 }
 

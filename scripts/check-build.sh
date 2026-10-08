@@ -7,3 +7,4 @@ echo "check:build: running next build"
 env -u SUPABASE_DB_URL -u SUPABASE_URL -u SUPABASE_SERVICE_ROLE_KEY -u DATABASE_URL -u CURSOR_API_KEY -u GH_HQ_TOKEN -u DEXTER_AGE_PRIVATE_KEY \
   npm run build
 echo "check:build: next build passed"
+node scripts/check-traces.mjs .next

@@ -6,7 +6,9 @@ import {
   councilVerdictSchema,
   criticPrompt,
   parseCouncilVerdict,
+  runCriticSeat,
 } from "../../hq/council-seat.ts";
+import { CodexNotReadyError } from "../../hq/codex-bin.ts";
 import { VerdictSchema } from "../../kernel/schemas.ts";
 
 describe("council seat path B", () => {
@@ -30,6 +32,7 @@ describe("council seat path B", () => {
         prompt,
         schemaPath: "/tmp/verdict.json",
         outputPath: "/tmp/out.json",
+        codexBin: "/tmp/dexter-codex/codex-test",
       }),
     );
     expect(model).toBe("gpt-6.1-sol");
@@ -43,5 +46,32 @@ describe("council seat path B", () => {
     expect(env.OPENAI_API_KEY).toBeUndefined();
     expect(prompt).toContain("Critic");
     expect(prompt).toContain("Diff: x");
+  });
+
+  it("runs the runtime-resolved codex binary, never a bundled vendor path", () => {
+    const call = councilSeatCall({
+      model: "m",
+      prompt: "p",
+      schemaPath: "/tmp/v.json",
+      outputPath: "/tmp/o.json",
+      codexBin: "/tmp/dexter-codex/codex-test",
+    });
+    expect(call.codexBin).toBe("/tmp/dexter-codex/codex-test");
+  });
+
+  it("fails closed with codex_not_ready before touching the login when codex cannot be resolved", async () => {
+    let resolved = 0;
+    await expect(
+      runCriticSeat({
+        sheetText: "ceo:\n  version: gpt-6.1-sol\n",
+        packet: "Diff: x",
+        dbUrl: "postgresql://unit@127.0.0.1:1/never",
+        resolveCodex: async () => {
+          resolved += 1;
+          throw new CodexNotReadyError("download_failed http_404");
+        },
+      }),
+    ).rejects.toThrow("codex_not_ready: download_failed http_404");
+    expect(resolved).toBe(1);
   });
 });

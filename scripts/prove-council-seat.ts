@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     if (!process.env[name]) missingLogin.push(name);
   }
   const missingRuntime: string[] = [];
-  if (!existsSync("vendor/codex/codex")) missingRuntime.push("vendor/codex/codex");
+  // The codex binary is fetched and hash-verified at runtime by hq/codex-bin.ts, so it is not a precondition here.
   if (!existsSync("gateway/role-sheet.yaml")) missingRuntime.push("gateway/role-sheet.yaml");
 
   if (missingLogin.length > 0) {
