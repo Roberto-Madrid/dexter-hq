@@ -1,13 +1,34 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { pgConfig } from "./snapshot-db.ts";
-import type {
-  ConnectorAgent,
-  ConnectorApproval,
-  ConnectorBot,
-  ConnectorRequest,
-  ConnectorStore,
+import {
+  ACTIVE_AGENT_STATUSES,
+  followupClaim,
+  followupRefusal,
+  launchCapRefusal,
+  type ConnectorAgent,
+  type ConnectorApproval,
+  type ConnectorBot,
+  type ConnectorRequest,
+  type ConnectorStore,
 } from "./connector-store.ts";
+
+const AGENT_COLUMNS = "id, owner_id, bot_id, cursor_handle, repo, role, family, status, idempotency_key, result, created_at";
+// One lock for every launch: the global cap spans all repos, so a per-repo key would not be enough.
+const LAUNCH_LOCK = "select pg_advisory_xact_lock(hashtext('dexter.connector.launch'))";
+const COUNCIL_LOCK = "select pg_advisory_xact_lock(hashtext('dexter.connector.council_seat'))";
+
+async function inTransaction<T>(client: pg.Client, fn: () => Promise<T>): Promise<T> {
+  await client.query("begin");
+  try {
+    const value = await fn();
+    await client.query("commit");
+    return value;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  }
+}
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -85,6 +106,7 @@ function agentFromRow(row: {
   status: string;
   idempotency_key: string;
   result: unknown;
+  created_at?: Date | string | null;
 }): ConnectorAgent {
   return {
     id: row.id,
@@ -97,6 +119,7 @@ function agentFromRow(row: {
     status: row.status,
     idempotencyKey: row.idempotency_key,
     result: asRecord(row.result),
+    ...(row.created_at ? { createdAt: new Date(row.created_at).toISOString() } : {}),
   };
 }
 
@@ -230,7 +253,7 @@ export function createPgConnectorStore(url: string): ConnectorStore {
     async listAgents() {
       return withClient(url, async (client) => {
         const found = await client.query(
-          `select id, owner_id, bot_id, cursor_handle, repo, role, family, status, idempotency_key, result
+          `select ${AGENT_COLUMNS}
            from public.connector_agents`,
         );
         return found.rows.map(agentFromRow);
@@ -239,7 +262,7 @@ export function createPgConnectorStore(url: string): ConnectorStore {
     async getAgent(id) {
       return withClient(url, async (client) => {
         const found = await client.query(
-          `select id, owner_id, bot_id, cursor_handle, repo, role, family, status, idempotency_key, result
+          `select ${AGENT_COLUMNS}
            from public.connector_agents where id::text = $1 or cursor_handle = $1`,
           [id],
         );
@@ -250,7 +273,7 @@ export function createPgConnectorStore(url: string): ConnectorStore {
     async findLaunch(botId, idempotencyKey) {
       return withClient(url, async (client) => {
         const found = await client.query(
-          `select id, owner_id, bot_id, cursor_handle, repo, role, family, status, idempotency_key, result
+          `select ${AGENT_COLUMNS}
            from public.connector_agents where bot_id = $1 and idempotency_key = $2`,
           [botId, idempotencyKey],
         );
@@ -282,6 +305,93 @@ export function createPgConnectorStore(url: string): ConnectorStore {
           ],
         );
       });
+    },
+    async reserveLaunch({ agent, requestId, caps }) {
+      return withClient(url, async (client) =>
+        inTransaction(client, async () => {
+          await client.query(LAUNCH_LOCK);
+          const found = await client.query(
+            `select ${AGENT_COLUMNS} from public.connector_agents
+             where status = any($3::text[]) or result->>'requestId' = $1 or (bot_id = $2 and idempotency_key = $4)`,
+            [requestId, agent.botId, [...ACTIVE_AGENT_STATUSES], agent.idempotencyKey],
+          );
+          const rows = found.rows.map(agentFromRow);
+          const existing = rows.find((row) => row.botId === agent.botId && row.idempotencyKey === agent.idempotencyKey);
+          if (existing && existing.status !== "launch_failed") return { ok: false as const, reason: "duplicate" as const, existing };
+          const refusal = launchCapRefusal(rows, { repo: agent.repo, requestId, caps });
+          if (refusal) return { ok: false as const, ...refusal };
+          const inserted = await client.query(
+            `insert into public.connector_agents
+               (id, owner_id, bot_id, cursor_handle, repo, role, family, status, idempotency_key, result)
+             values ($1,$2,$3,null,$4,$5,$6,'reserving',$7,$8::jsonb)
+             on conflict (bot_id, idempotency_key) do update set
+               status = 'reserving', cursor_handle = null, result = excluded.result, created_at = now()
+             where public.connector_agents.status = 'launch_failed'
+             returning ${AGENT_COLUMNS}`,
+            [agent.id, agent.ownerId, agent.botId, agent.repo, agent.role, agent.family, agent.idempotencyKey, { ...agent.result, requestId }],
+          );
+          const row = inserted.rows[0];
+          if (!row) return { ok: false as const, reason: "duplicate" as const, existing: existing ?? null };
+          return { ok: true as const, agent: agentFromRow(row) };
+        }),
+      );
+    },
+    async setAgentStatus({ id, from, status, result, run }) {
+      return withClient(url, async (client) => {
+        // The run check mirrors runHandleFor: the latest follow-up run, else the launch run.
+        const updated = await client.query(
+          `update public.connector_agents
+           set status = $3, result = case when $4::boolean then $5::jsonb else result end
+           where id::text = $1 and status = any($2::text[])
+             and (not $6::boolean or coalesce(nullif(result->>'latestRunHandle', ''), cursor_handle) is not distinct from $7::text)`,
+          [id, [...from], status, result !== undefined, result ?? null, run !== undefined, run ?? null],
+        );
+        return (updated.rowCount ?? 0) > 0;
+      });
+    },
+    async reserveFollowup({ id, caps, at }) {
+      return withClient(url, async (client) =>
+        inTransaction(client, async () => {
+          // Same lock as launches, so a follow-up and a launch cannot both take the last slot.
+          await client.query(LAUNCH_LOCK);
+          const found = await client.query(
+            `select ${AGENT_COLUMNS} from public.connector_agents where status = any($1::text[]) or id::text = $2`,
+            [[...ACTIVE_AGENT_STATUSES], id],
+          );
+          const rows = found.rows.map(agentFromRow);
+          const agent = rows.find((row) => row.id === id);
+          if (!agent) return { ok: false as const, reason: "unknown_agent" as const };
+          const refusal = followupRefusal(rows, agent, caps);
+          if (refusal) return refusal;
+          const claim = followupClaim(agent, at);
+          await client.query("update public.connector_agents set status = $2, result = $3::jsonb where id = $1", [
+            id,
+            claim.status,
+            claim.result,
+          ]);
+          return { ok: true as const, previous: agent };
+        }),
+      );
+    },
+    async reserveCouncilSeat({ event, since, cap }) {
+      return withClient(url, async (client) =>
+        inTransaction(client, async () => {
+          await client.query(COUNCIL_LOCK);
+          const found = await client.query<{ n: string }>(
+            "select count(*)::text as n from public.events where action = 'council_seat' and at >= $1::timestamptz",
+            [since],
+          );
+          const used = Number(found.rows[0]?.n ?? 0);
+          if (used >= cap) return { ok: false, used };
+          await client.query("select public.append_event($1,$2,'council_seat',$3,$4::jsonb,null,null)", [
+            event.ownerId,
+            event.actor,
+            event.target,
+            event.result,
+          ]);
+          return { ok: true, used: used + 1 };
+        }),
+      );
     },
     async saveRequest(row) {
       await withClient(url, async (client) => persistRequest(client, row));

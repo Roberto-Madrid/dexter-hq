@@ -1,12 +1,12 @@
 import type { ChatResult } from "../kernel/contracts.ts";
 import { validatePlanCard } from "../kernel/plan-card.ts";
+import { preflight } from "../kernel/preflight.ts";
 import { answerCost, answerList, answerStatus, snapshot } from "./board.ts";
 import { classifyQuestion } from "./classify.ts";
 import { isQuickEdit, loadCrews, type CrewFile } from "./crews.ts";
 import type { HqDeps } from "./deps.ts";
 import { newId } from "./memory.ts";
 import type { HqStore, RequestRow, TaskRow } from "./model.ts";
-import { tick } from "./tick.ts";
 
 function tasksFor(request: RequestRow, text: string, crew: CrewFile | undefined, now: string): TaskRow[] {
   const specs = crew?.tasks ?? [];
@@ -93,6 +93,9 @@ export async function handleChat(
     };
   }
   const validated = validatePlanCard(decision.card, deps.shippedCrews);
+  // A plan stays a card. Runs start only through the connector (caps, event log); the chat never dispatches.
+  // The preflight hold the old dispatch applied stays here, so a secret-shaped ask still lands on Needs you.
+  const findings = preflight(text, deps.knownHosts);
   const now = store.now();
   const request: RequestRow = {
     id: newId(),
@@ -101,8 +104,8 @@ export async function handleChat(
     tier: validated.card.tier,
     planVersion: 1,
     definitionOfDone: validated.card.definitionOfDone,
-    status: "queued",
-    notices: [...validated.notices],
+    status: findings.length > 0 ? "needs_you" : "queued",
+    notices: [...validated.notices, ...findings.map((finding) => `${finding.kind}:${finding.rule}`)],
     card: validated.card,
     createdAt: now,
     updatedAt: now,
@@ -110,7 +113,6 @@ export async function handleChat(
   await store.saveRequest(request);
   const tasks = tasksFor(request, text, crews.get(validated.card.crew), now);
   if (tasks.length > 0) await store.saveTasks(tasks);
-  if (tasks.length > 0) await tick(store, deps);
   await store.addMessage("dexter", decision.text, request.id);
   return {
     kind: "plan",

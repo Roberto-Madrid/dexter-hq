@@ -1,0 +1,92 @@
+
+ RUN  v3.2.4 /workspace/hq-stage3-u1
+
+ ❯ tests/unit/quality-loop.test.ts (33 tests | 3 failed) 215ms
+   ✓ Stage 2 quality loop > runs pinned checks and moves the request to ready_for_review with evidence 31ms
+   ✓ Stage 2 quality loop > returns in_progress until GitHub has a conclusion 11ms
+   ✓ Stage 2 quality loop > returns not-configured when GH_HQ_TOKEN is missing 8ms
+   ✓ Stage 2 quality loop > looks up the exact GitHub run id for checker.yml and the commit, not a name substring 5ms
+   ✓ Stage 2 quality loop > refuses request_checks for another bot's request and for an out-of-scope repo 7ms
+   ✓ Stage 2 quality loop > refuses launch_agent until design approval, then allows it 14ms
+   ✓ Stage 2 quality loop > refuses builder launches without a real requestId 5ms
+   ✓ Stage 2 quality loop > refuses a design approval from another request, and pending or denied approvals 5ms
+   ✓ Stage 2 quality loop > injects the matching persona into the launched brief 6ms
+   ✓ Stage 2 quality loop > exposes a why trail on get_context and the tower request card 15ms
+   ✓ Stage 2 quality loop > keeps failed checks from marking the request ready 0ms
+   ✓ Stage 2 quality loop > builds and tests subject/ at the target sha, not the judge sample 1ms
+   ✓ Stage 2 quality loop > does not dispatch again while a check is still appearing 5ms
+   ✓ Stage 2 quality loop > ignores a planted github run id and refuses ready_for_review from update_request 5ms
+   ✓ Stage 2 quality loop > clears ready_for_review when the commit under check changes 5ms
+   ✓ Stage 2 quality loop > refuses another bot setting done, and fake evidence cannot skip the checker 5ms
+   ✓ Stage 2 quality loop > allows done after a checker pass on the current sha, then blocks it after a sha change 6ms
+   ✓ Stage 2 quality loop > limits assign to the CEO and lets the CEO update a request 3ms
+   ✓ done is tied to the request's own PR or branch head > refuses done after a pass on an arbitrary sha that is not the bound PR head 3ms
+   ✓ done is tied to the request's own PR or branch head > allows done when the passing check is on the bound PR head 3ms
+   ✓ done is tied to the request's own PR or branch head > binds a branch on the first request_checks and compares against that branch head 5ms
+   ✓ done is tied to the request's own PR or branch head > refuses to rebind a request to a different PR or branch 6ms
+   ✓ done is tied to the request's own PR or branch head > refuses an invalid binding at open_request 3ms
+   ✓ done is tied to the request's own PR or branch head > fails closed when no PR or branch is bound 3ms
+   ✓ done is tied to the request's own PR or branch head > fails closed when the GitHub head lookup fails or is unavailable 12ms
+   ✓ done is tied to the request's own PR or branch head > reopening after done clears the pass, so done again needs a fresh check 4ms
+   ✓ done is tied to the request's own PR or branch head > unassigned request: owner bots are refused, the CEO may update, done still needs a check 2ms
+   ✓ done is tied to the request's own PR or branch head > CEO-claim fields in the arguments do not grant CEO rights 2ms
+   ✓ done is tied to the request's own PR or branch head > rejects status variants that are not exact request states 3ms
+   ✓ done is tied to the request's own PR or branch head > looks up the PR head and the branch head through the checker's GitHub token 3ms
+   × done is tied to the request's own PR or branch head > times out a hung GitHub head lookup, so done fails closed 13ms
+     → expected undefined to be an instance of AbortSignal
+   × done is tied to the request's own PR or branch head > does not overwrite a check that lands while the head lookup is in flight 7ms
+     → expected false to be true // Object.is equality
+   × done is tied to the request's own PR or branch head > keeps a concurrent evidence change when done goes through 6ms
+     → expected [] to include 'concurrent-notice'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/quality-loop.test.ts > done is tied to the request's own PR or branch head > times out a hung GitHub head lookup, so done fails closed
+AssertionError: expected undefined to be an instance of AbortSignal
+ ❯ tests/unit/quality-loop.test.ts:1266:24
+    1264|     });
+    1265|     await expect(checker.head?.({ repo: "owner/demo", pullRequest: "27…
+    1266|     expect(signals[0]).toBeInstanceOf(AbortSignal);
+       |                        ^
+    1267|     expect(signals[0]?.aborted).toBe(true);
+    1268|     expect(HEAD_LOOKUP_TIMEOUT_MS).toBe(10_000);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/unit/quality-loop.test.ts > done is tied to the request's own PR or branch head > does not overwrite a check that lands while the head lookup is in flight
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/quality-loop.test.ts:1291:26
+    1289|     };
+    1290|     const done = await callConnectorTool(deps, auth, "update_request",…
+    1291|     expect(done.isError).toBe(true);
+       |                          ^
+    1292|     expect(done.structuredContent).toMatchObject({ status: "refused", …
+    1293|     const after = await store.getRequest(requestId);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/unit/quality-loop.test.ts > done is tied to the request's own PR or branch head > keeps a concurrent evidence change when done goes through
+AssertionError: expected [] to include 'concurrent-notice'
+ ❯ tests/unit/quality-loop.test.ts:1320:28
+    1318|     expect(done.structuredContent).toMatchObject({ status: "updated", …
+    1319|     const after = await store.getRequest(requestId);
+    1320|     expect(after?.notices).toContain("concurrent-notice");
+       |                            ^
+    1321|     expect(after?.status).toBe("done");
+    1322|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 30 passed (33)
+   Start at  01:31:31
+   Duration  1.07s (transform 349ms, setup 0ms, collect 551ms, tests 215ms, environment 0ms, prepare 68ms)
+

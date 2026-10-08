@@ -12,6 +12,8 @@ import { REQUEST_STATES, type PlanCard, type RoleSheet, type RunHandle, type Run
 import {
   CONNECTOR_TOOLS,
   createMemoryConnectorStore,
+  isActiveAgent,
+  withoutFollowupClaim,
   type ConnectorAgent,
   type ConnectorAuth,
   type ConnectorRequest,
@@ -36,6 +38,7 @@ import {
 import { decisionTrail } from "./decision-trail.ts";
 import { launchBlockedByDesignGate } from "./design-gate.ts";
 import { composeLaunchBrief } from "./personas.ts";
+import { closeIfTerminal, runHandleFor } from "./reconcile.ts";
 
 export { CONNECTOR_TOOLS, createMemoryConnectorStore };
 export type { ConnectorAuth, ConnectorStore, ConnectorToolName };
@@ -43,8 +46,10 @@ export type { ConnectorAuth, ConnectorStore, ConnectorToolName };
 export const STUB_OWNER_ID = "00000000-0000-4000-8000-000000000000";
 export const AGENT_SURGE_CAP = 6;
 export const PER_REPO_CAP = 2;
+export const PER_REQUEST_LAUNCH_CAP = 5;
+export const COUNCIL_WEEKLY_SEAT_CAP = 40;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 export const STOP_EXEMPT = new Set<string>(["whoami", "heartbeat", "approval_status"]);
-const ACTIVE_AGENT = new Set(["launched", "running", "starting", "CREATING", "RUNNING", "queued"]);
 const KNOWN_HOSTS = ["github.com", "api.github.com"];
 
 export type CursorGateway = Runtime & {
@@ -146,7 +151,7 @@ async function record(
 }
 
 function capsLeft(agents: ConnectorAgent[], repo: string | null): { agents: number; perRepo: number } {
-  const active = agents.filter((item) => ACTIVE_AGENT.has(item.status));
+  const active = agents.filter((item) => isActiveAgent(item.status));
   const repoActive = repo ? active.filter((item) => item.repo === repo).length : 0;
   return {
     agents: Math.max(0, SANDBOX_SLOT_CAP - active.length),
@@ -187,13 +192,7 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     return toolResult(body, true);
   }
   const existing = await deps.store.findLaunch(auth.id, idempotencyKey);
-  if (existing?.result) {
-    await record(deps, auth, "launch_agent", existing.cursorHandle ?? existing.id, {
-      status: "idempotent",
-      ...existing.result,
-    });
-    return toolResult({ status: "idempotent", ...existing.result }, existing.status === "not-configured" || existing.status === "refused");
-  }
+  if (existing && existing.status !== "launch_failed") return launchReplay(deps, auth, existing);
   const family = familyForRole(deps.sheet, role);
   if (!family) {
     const body = { status: "refused", reason: "unknown_role" };
@@ -230,37 +229,10 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
-  const agents = await deps.store.listAgents();
-  const active = agents.filter((item) => ACTIVE_AGENT.has(item.status));
-  let surge = false;
-  if (approvalId) {
-    const approval = await deps.store.getApproval(approvalId);
-    surge = approval?.status === "approved" && approval.action === "surge";
-  }
-  const cap = surge ? AGENT_SURGE_CAP : SANDBOX_SLOT_CAP;
-  if (active.length >= cap) {
-    const body = { status: "refused", reason: surge ? "surge_cap" : "agent_cap", cap };
-    await record(deps, auth, "launch_agent", idempotencyKey, body);
-    return toolResult(body, true);
-  }
-  if (repo) {
-    const repoActive = active.filter((item) => item.repo === repo).length;
-    if (repoActive >= PER_REPO_CAP) {
-      const body = { status: "refused", reason: "per_repo_cap", cap: PER_REPO_CAP };
-      await record(deps, auth, "launch_agent", repo, body);
-      return toolResult(body, true);
-    }
-  }
-  if (!deps.cursorConfigured || !deps.cursor) {
-    const composed = composeLaunchBrief(role, brief);
-    const body = {
-      status: "not-configured",
-      configured: false,
-      launched: false,
-      persona: composed.persona,
-      requestId,
-    };
-    const row: ConnectorAgent = {
+  const { surge, cap } = await agentCap(deps, approvalId);
+  // Atomic: the caps are checked and a `reserving` row inserted in one step, so two launches cannot both pass.
+  const reservation = await deps.store.reserveLaunch({
+    agent: {
       id: randomUUID(),
       ownerId: auth.ownerId,
       botId: auth.id,
@@ -268,15 +240,40 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
       repo,
       role,
       family,
-      status: "not-configured",
+      status: "reserving",
       idempotencyKey,
-      result: body,
-    };
-    await deps.store.saveAgent(row);
+      result: null,
+      createdAt: (deps.now ?? (() => new Date().toISOString()))(),
+    },
+    requestId,
+    caps: { global: cap, perRepo: PER_REPO_CAP, perRequest: PER_REQUEST_LAUNCH_CAP },
+  });
+  if (!reservation.ok && reservation.reason === "duplicate") {
+    if (reservation.existing) return launchReplay(deps, auth, reservation.existing);
+    const body = { status: "refused", reason: "launch_in_progress" };
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
+  if (!reservation.ok) {
+    const reason = reservation.reason === "agent_cap" && surge ? "surge_cap" : reservation.reason;
+    const body = { status: "refused", reason, cap: reservation.cap };
+    await record(deps, auth, "launch_agent", reason === "per_repo_cap" && repo ? repo : idempotencyKey, body);
+    return toolResult(body, true);
+  }
+  const reserved = reservation.agent;
   const composed = composeLaunchBrief(role, brief);
+  if (!deps.cursorConfigured || !deps.cursor) {
+    const body = {
+      status: "not-configured",
+      configured: false,
+      launched: false,
+      persona: composed.persona,
+      requestId,
+    };
+    await deps.store.saveAgent({ ...reserved, status: "not-configured", result: body });
+    await record(deps, auth, "launch_agent", idempotencyKey, body);
+    return toolResult(body, true);
+  }
   try {
     const handle = await deps.cursor.start({ idempotencyKey, taskId: idempotencyKey, brief: composed.text });
     const body = {
@@ -288,26 +285,34 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
       persona: composed.persona,
       requestId,
     };
-    const row: ConnectorAgent = {
-      id: randomUUID(),
-      ownerId: auth.ownerId,
-      botId: auth.id,
-      cursorHandle: handle.id,
-      repo,
-      role,
-      family,
-      status: "launched",
-      idempotencyKey,
-      result: body,
-    };
-    await deps.store.saveAgent(row);
+    await deps.store.saveAgent({ ...reserved, cursorHandle: handle.id, status: "launched", result: body });
     await record(deps, auth, "launch_agent", handle.id, body);
     return toolResult(body);
   } catch {
-    const body = { status: "error", launched: false, reason: "launch_failed" };
+    const body = { status: "error", launched: false, reason: "launch_failed", requestId };
+    // The failed row frees its slot and lets the same idempotency key retry.
+    await deps.store.saveAgent({ ...reserved, status: "launch_failed", result: body });
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
+}
+
+async function agentCap(deps: ConnectorDeps, approvalId: string | null): Promise<{ surge: boolean; cap: number }> {
+  const approval = approvalId ? await deps.store.getApproval(approvalId) : null;
+  const surge = approval?.status === "approved" && approval.action === "surge";
+  return { surge, cap: surge ? AGENT_SURGE_CAP : SANDBOX_SLOT_CAP };
+}
+
+async function launchReplay(deps: ConnectorDeps, auth: ConnectorAuth, existing: ConnectorAgent): Promise<ToolResult> {
+  if (existing.status === "reserving") {
+    const body = { status: "refused", reason: "launch_in_progress" };
+    await record(deps, auth, "launch_agent", existing.idempotencyKey, body);
+    return toolResult(body, true);
+  }
+  // A replay says what it is; the stored launch status travels as agentStatus.
+  const body = { ...existing.result, status: "idempotent", agentStatus: existing.status };
+  await record(deps, auth, "launch_agent", existing.cursorHandle ?? existing.id, body);
+  return toolResult(body, existing.status === "not-configured" || existing.status === "refused");
 }
 
 async function ownAgent(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ConnectorAgent | null> {
@@ -343,7 +348,8 @@ async function handleAgentTool(
   const handle = { id: agent.cursorHandle, runtime: "cursor-cloud" };
   try {
     if (name === "agent_status") {
-      const status = await deps.cursor.status(handle);
+      const status = await deps.cursor.status({ id: runHandleFor(agent) ?? handle.id, runtime: handle.runtime });
+      await closeIfTerminal(deps.store, agent, status, (deps.now ?? (() => new Date().toISOString()))());
       const body = { status: status.state, usage: status.usage, agentId: handle.id };
       await record(deps, auth, name, handle.id, { status: status.state });
       return toolResult(body);
@@ -362,7 +368,35 @@ async function handleAgentTool(
       await record(deps, auth, name, handle.id, body);
       return toolResult(body, true);
     }
-    const next = await deps.cursor.followup(handle, text);
+    // Atomic, under the launch lock: an active agent is claimed; a finished one reopens only within the caps;
+    // a cancelled one is refused. The claim also stops the tick from closing the run while Cursor answers.
+    const approvalId = textArg(args, "approvalId") ?? textArg(args, "approval_id");
+    const { surge, cap } = await agentCap(deps, approvalId);
+    const claim = await deps.store.reserveFollowup({
+      id: agent.id,
+      caps: { global: cap, perRepo: PER_REPO_CAP },
+      at: (deps.now ?? (() => new Date().toISOString()))(),
+    });
+    if (!claim.ok) {
+      const reason = claim.reason === "agent_cap" && surge ? "surge_cap" : claim.reason;
+      const body = "cap" in claim ? { status: "refused", reason, cap: claim.cap } : { status: "refused", reason };
+      await record(deps, auth, name, handle.id, body);
+      return toolResult(body, true);
+    }
+    const previous = claim.previous;
+    let next: RunHandle;
+    try {
+      next = await deps.cursor.followup(handle, text);
+    } catch (error) {
+      await deps.store.setAgentStatus({ id: agent.id, from: ["reserving"], status: previous.status, result: previous.result });
+      throw error;
+    }
+    await deps.store.setAgentStatus({
+      id: agent.id,
+      from: ["reserving"],
+      status: "running",
+      result: { ...withoutFollowupClaim(previous.result), latestRunHandle: next.id },
+    });
     const body = { status: "followed_up", agentId: next.id };
     await record(deps, auth, name, next.id, body);
     return toolResult(body);
@@ -430,7 +464,7 @@ async function handleOpenRequest(deps: ConnectorDeps, auth: ConnectorAuth, args:
 async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, args: Record<string, unknown>): Promise<ToolResult> {
   const id = textArg(args, "requestId") ?? textArg(args, "request_id");
   const status = textArg(args, "status");
-  const row = id ? await deps.store.getRequest(id) : null;
+  let row = id ? await deps.store.getRequest(id) : null;
   if (!row) {
     const body = { status: "refused", reason: "unknown_request" };
     await record(deps, auth, "update_request", id ?? "missing", body);
@@ -451,7 +485,7 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
     await record(deps, auth, "update_request", row.id, body);
     return toolResult(body, true);
   }
-  const evidence = Array.isArray(args.evidence)
+  let evidence = Array.isArray(args.evidence)
     ? sanitizeBotEvidence(args.evidence.map((item) => String(item)))
     : row.evidence;
   if (status === "done" && evidence.length === 0) {
@@ -471,6 +505,15 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
       await record(deps, auth, "update_request", row.id, body);
       return toolResult(body, true);
     }
+    // The head lookup awaited GitHub; a request_checks may have saved meanwhile. Write onto a fresh read, never the stale row.
+    const fresh = await deps.store.getRequest(row.id);
+    if (!fresh || fresh.status !== row.status || !sameCheckRun(fresh.checkRun, row.checkRun)) {
+      const body = { status: "refused", reason: "request_changed", requestId: row.id };
+      await record(deps, auth, "update_request", row.id, body);
+      return toolResult(body, true);
+    }
+    if (!Array.isArray(args.evidence)) evidence = fresh.evidence;
+    row = fresh;
   }
   // Reopening a done request drops its pass, so returning to done needs a fresh check.
   if (row.status === "done" && status && status !== "done") row.checkRun = null;
@@ -480,6 +523,11 @@ async function handleUpdateRequest(deps: ConnectorDeps, auth: ConnectorAuth, arg
   const body = { status: "updated", requestId: row.id, requestStatus: row.status };
   await record(deps, auth, "update_request", row.id, body);
   return toolResult(body);
+}
+
+function sameCheckRun(left: ConnectorRequest["checkRun"], right: ConnectorRequest["checkRun"]): boolean {
+  if (!left || !right) return !left && !right;
+  return left.nonce === right.nonce && left.sha === right.sha && left.repo === right.repo && left.passed === right.passed;
 }
 
 /** Fail closed: done needs a bound PR/branch whose GitHub head is the sha the Checker passed. */
@@ -562,6 +610,18 @@ async function handleCouncil(deps: ConnectorDeps, auth: ConnectorAuth, args: Rec
   const configured = deps.councilConfigured ?? pathBCouncilConfigured();
   if (!configured && !deps.runCouncilSeat) {
     const body = { status: "not-configured", reason: "path_b_login_unavailable", configured: false };
+    await record(deps, auth, "request_council", target, body);
+    return toolResult(body, true);
+  }
+  // dexter-shortcut: the seat cap counts a rolling 7 days, not the PT calendar week; upgrade path: share the PT ISO week boundary with the U5 fleet report.
+  const at = (deps.now ?? (() => new Date().toISOString()))();
+  const seat = await deps.store.reserveCouncilSeat({
+    event: { ownerId: auth.ownerId, actor: auth.name, action: "council_seat", target, result: { seat: "critic" }, at },
+    since: new Date(Date.parse(at) - WEEK_MS).toISOString(),
+    cap: COUNCIL_WEEKLY_SEAT_CAP,
+  });
+  if (!seat.ok) {
+    const body = { status: "refused", reason: "council_weekly_cap", cap: COUNCIL_WEEKLY_SEAT_CAP, used: seat.used };
     await record(deps, auth, "request_council", target, body);
     return toolResult(body, true);
   }
