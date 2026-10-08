@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createCursorCloud, terminalAgentStatus } from "../adapters/cursor-cloud.ts";
 import { SHIPPED_CREWS } from "./crews.ts";
+import { createGhHandoffSource, type HandoffRepoSource } from "./handoff.ts";
+import { isHandoffRequest, planHandoffLaunch, type HandoffLaunchPlan } from "./handoff-launch.ts";
 import { bundledRoleSheet } from "./bundled-assets.ts";
 import { PlanCardSchema, VerdictSchema } from "../kernel/schemas.ts";
 import { validatePlanCard } from "../kernel/plan-card.ts";
@@ -110,6 +112,8 @@ export type ConnectorDeps = {
   runCouncilSeat?: CouncilSeatFn;
   /** Token police usage receipts: Cursor's usage endpoint with HQ's key. Null when no key. */
   usage?: CursorUsageFn | null;
+  /** Reads a venture repo for a handoff launch (GitHub with GH_HQ_TOKEN). Null fails handoff launches closed. */
+  handoffSource?: HandoffRepoSource | null;
 };
 
 /**
@@ -323,6 +327,29 @@ async function handleLaunch(
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
+  // A handoff request's launches carry the maintenance bundle: built and checked here, before any slot is reserved.
+  const request = requestId ? await deps.store.getRequest(requestId) : null;
+  let handoff: HandoffLaunchPlan | null = null;
+  if (request && repo && isHandoffRequest(request)) {
+    const planned = await planHandoffLaunch({
+      store: deps.store,
+      sheet: deps.sheet,
+      source: deps.handoffSource,
+      auth,
+      request,
+      repo,
+      ref: startingRef,
+      family,
+      brief,
+      now: (deps.now ?? (() => new Date().toISOString()))(),
+    });
+    if (!planned.ok) {
+      const body = { ...planned.body, requestId };
+      await record(deps, auth, "launch_agent", idempotencyKey, body);
+      return toolResult(body, true);
+    }
+    handoff = planned.plan;
+  }
   const { surge, cap, surgeExpired } = await agentCap(deps, approvalId);
   // Atomic: the caps are checked and a `reserving` row inserted in one step, so two launches cannot both pass.
   const reservation = await deps.store.reserveLaunch({
@@ -355,7 +382,7 @@ async function handleLaunch(
     return toolResult(body, true);
   }
   const reserved = reservation.agent;
-  const composed = composeLaunchBrief(role, brief);
+  const composed = composeLaunchBrief(role, handoff?.brief ?? brief);
   if (!deps.cursorConfigured || !deps.cursor) {
     const body = {
       status: "not-configured",
@@ -369,6 +396,7 @@ async function handleLaunch(
     return toolResult(body, true);
   }
   try {
+    if (handoff) await handoff.commit();
     const handle = await deps.cursor.start({ idempotencyKey, taskId: idempotencyKey, brief: composed.text, repo, startingRef, modelId });
     const body = {
       status: "launched",
@@ -380,6 +408,7 @@ async function handleLaunch(
       repo,
       persona: composed.persona,
       requestId,
+      ...(handoff ? { handoff: handoff.summary } : {}),
     };
     await deps.store.saveAgent({ ...reserved, cursorHandle: handle.id, status: "launched", result: body });
     await record(deps, auth, "launch_agent", handle.id, body);
@@ -1304,10 +1333,18 @@ export function createDefaultConnectorDeps(overrides?: Partial<ConnectorDeps>): 
     councilConfigured: overrides?.councilConfigured ?? pathBCouncilConfigured(),
     runCouncilSeat: overrides?.runCouncilSeat,
     usage: overrides && "usage" in overrides ? (overrides.usage ?? null) : key ? createCursorUsage({ apiKey: key }) : null,
+    handoffSource:
+      overrides && "handoffSource" in overrides
+        ? (overrides.handoffSource ?? null)
+        : ghToken
+          ? createGhHandoffSource({ token: ghToken })
+          : null,
   };
 }
 
 const BOARD_TOOL_DESCRIPTIONS: Record<string, string> = {
+  launch_agent:
+    "Launch one cloud agent for a role (callers never name a model). Args: role, brief, idempotencyKey, optional requestId, repo, approvalId. On a handoff request HQ builds the maintenance bundle from the repo at the bound branch, stores it as an artifact behind a mission handoff note (page it with get_context artifactId), and appends a short pointer to the brief; a secret file among the sources, a secret that survives redaction, or a brief over the token police word cap refuses the launch. Dexter does not drive the agent after launch.",
   post:
     "Save one board note. Args: type (finding | dead_end | shortcut | handoff | verdict), body (<=2000 chars, secrets are redacted), optional repo, scope (shared | project | mission; a lead defaults to project on its own repo, shared must be explicit), requestId (required for mission), agentId, runId, sha, link, idempotencyKey, approach (lowercase slug naming the method, for the reuse scan), output (raw tool output: over 200 chars it is stored in full as an artifact and the reply returns artifactId plus the first 200 chars). dead_end needs conditions and gets expiresAt or expiresInDays (default 30, max 180). verdict needs verdict (pass | fail), sha, and runId or requestId, and never judges your own work (own_work). Findings, shortcuts and verdicts start claimed.",
   verify_post:

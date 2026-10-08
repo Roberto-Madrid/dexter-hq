@@ -3,10 +3,8 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { bundledCrews } from "./bundled-assets.ts";
 
-// dexter-shortcut: crews/handoff.yaml ships but is not in SHIPPED_CREWS, so a plan card cannot pick it yet. Launching it
-// needs the rendered bundle (hq/handoff.ts + kernel/handoff-bundle.ts) in the launch brief, which hq/connector.ts builds;
-// upgrade path: add "handoff" here once launch_agent attaches renderHandoffBundle() for handoff requests.
-export const SHIPPED_CREWS = ["answer", "research", "change", "custom", "venture-check", "job-scan"] as const;
+// handoff: launch_agent attaches the bundle (hq/handoff-launch.ts) to every launch on a handoff request.
+export const SHIPPED_CREWS = ["answer", "research", "change", "custom", "venture-check", "job-scan", "handoff"] as const;
 
 export type CrewTask = {
   persona: string;
@@ -18,10 +16,12 @@ export type CrewTask = {
 export type CrewFile = {
   name: string;
   tasks: CrewTask[];
+  /** What the crew's agents may do (crews/*.yaml `capabilities`); empty when the file lists none. */
+  capabilities: string[];
 };
 
 type RawTask = { persona?: string; role?: string; artifact?: string; depends_on?: string | string[] };
-type RawCrew = { name?: string; tasks?: RawTask[] };
+type RawCrew = { name?: string; tasks?: RawTask[]; capabilities?: unknown };
 
 function crewsFrom(entries: Iterable<[string, string]>): Map<string, CrewFile> {
   const crews = new Map<string, CrewFile>();
@@ -34,7 +34,8 @@ function crewsFrom(entries: Iterable<[string, string]>): Map<string, CrewFile> {
       artifact: String(task.artifact ?? ""),
       dependsOn: Array.isArray(task.depends_on) ? task.depends_on : task.depends_on ? [task.depends_on] : [],
     }));
-    crews.set(String(raw.name ?? name.replace(/\.yaml$/, "")), { name: String(raw.name), tasks });
+    const capabilities = Array.isArray(raw.capabilities) ? raw.capabilities.map(String) : [];
+    crews.set(String(raw.name ?? name.replace(/\.yaml$/, "")), { name: String(raw.name), tasks, capabilities });
   }
   return crews;
 }
