@@ -283,6 +283,12 @@ export type RunSpec = {
   taskId: string;
   checkpoint?: string | null;
   brief?: string;
+  /** `owner/name`; null or absent starts a no-repo run. */
+  repo?: string | null;
+  /** Branch or ref to start from; absent uses the repo's default branch. */
+  startingRef?: string | null;
+  /** A pinned model id from the runtime's catalog; absent uses the account default. */
+  modelId?: string | null;
 };
 
 export type RunHandle = {

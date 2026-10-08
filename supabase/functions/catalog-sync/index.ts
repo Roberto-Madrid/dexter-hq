@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { holdVersionChanges } from "../_shared/kernel.js";
 
+// dexter-shortcut: this function stays unscheduled; the daily check runs in the HQ tick (hq/pins.ts resolveDailyPins); upgrade path: schedule this only if the check must leave the Vercel app, reusing pinsFromIds + holdVersionChanges.
 type Pin = { family: string; version: string };
 
 function sameToken(left: string, right: string): boolean {

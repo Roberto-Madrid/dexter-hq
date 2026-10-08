@@ -15,6 +15,7 @@ import { resumeAll, stopAll } from "../../hq/stop.ts";
 import { createScriptedCeo } from "../../hq/scripted-ceo.ts";
 import { SHIPPED_CREWS } from "../../hq/crews.ts";
 import type { RunRow } from "../../hq/model.ts";
+import { pinRows } from "./pin-fixtures.ts";
 
 const sheet = parseRoleSheet(readFileSync("gateway/role-sheet.yaml", "utf8"));
 const OWNER = "11111111-1111-4111-8111-111111111111";
@@ -39,6 +40,7 @@ function hqDeps(extra?: Partial<HqDeps>): HqDeps {
 
 function connectorSeed(suspended = false) {
   return createMemoryConnectorStore({
+    modelResolutions: pinRows(OWNER),
     bots: [
       {
         id: BOT,

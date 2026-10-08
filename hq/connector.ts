@@ -56,6 +56,7 @@ const KNOWN_HOSTS = ["github.com", "api.github.com"];
 
 export type CursorGateway = Runtime & {
   followup?(handle: RunHandle, text: string): Promise<RunHandle>;
+  listModels?(): Promise<string[]>;
 };
 
 export type CouncilSeatFn = (input: { packet: string }) => Promise<Verdict>;
@@ -188,7 +189,7 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
   const role = textArg(args, "role");
   const brief = textArg(args, "brief");
   const idempotencyKey = textArg(args, "idempotencyKey") ?? textArg(args, "idempotency_key");
-  const repo = textArg(args, "repo");
+  const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
   if (!role || !brief || !idempotencyKey) {
     const body = { status: "refused", reason: "role_brief_and_idempotency_key_required" };
     await record(deps, auth, "launch_agent", "refused", body);
@@ -202,17 +203,24 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     await record(deps, auth, "launch_agent", role, body);
     return toolResult(body, true);
   }
+  const target = await launchTarget(deps.store, args, requestId);
+  if ("reason" in target) {
+    const body = { status: "refused", reason: target.reason, requestId };
+    await record(deps, auth, "launch_agent", requestId ?? role, body);
+    return toolResult(body, true);
+  }
+  const { repo, startingRef } = target;
   if (repo && !auth.repos.includes(repo)) {
     const body = { status: "refused", reason: "repo_out_of_scope" };
     await record(deps, auth, "launch_agent", repo, body);
     return toolResult(body, true);
   }
-  if (!repo && auth.repos.length > 0 && auth.kind !== "scout") {
+  // Only a scout's research runs without a repo; every other launch is repo work and fails closed.
+  if (!repo && auth.kind !== "scout") {
     const body = { status: "refused", reason: "repo_required" };
     await record(deps, auth, "launch_agent", role, body);
     return toolResult(body, true);
   }
-  const requestId = textArg(args, "requestId") ?? textArg(args, "request_id");
   const approvalId = textArg(args, "approvalId") ?? textArg(args, "approval_id");
   const gate = await launchBlockedByDesignGate(deps.store, auth, {
     role,
@@ -229,6 +237,13 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
   const findings = preflight(brief, deps.knownHosts ?? KNOWN_HOSTS);
   if (findings.length > 0) {
     const body = { status: "needs_you", reason: "preflight", findings, requestId };
+    await record(deps, auth, "launch_agent", idempotencyKey, body);
+    return toolResult(body, true);
+  }
+  // Bots never name a model: the role's family resolves to the owner's current pin. No pin fails closed.
+  const modelId = (await deps.store.currentPins(auth.ownerId)).find((pin) => pin.family === family)?.version;
+  if (!modelId) {
+    const body = { status: "refused", reason: "model_held", family, requestId };
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
@@ -278,13 +293,15 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     return toolResult(body, true);
   }
   try {
-    const handle = await deps.cursor.start({ idempotencyKey, taskId: idempotencyKey, brief: composed.text });
+    const handle = await deps.cursor.start({ idempotencyKey, taskId: idempotencyKey, brief: composed.text, repo, startingRef, modelId });
     const body = {
       status: "launched",
       launched: true,
       agentId: handle.id,
       role,
       family,
+      model: modelId,
+      repo,
       persona: composed.persona,
       requestId,
     };
@@ -298,6 +315,20 @@ async function handleLaunch(deps: ConnectorDeps, auth: ConnectorAuth, args: Reco
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
+}
+
+/** The launch's repo (from the call or its request) and the request's bound branch as the starting ref. */
+async function launchTarget(
+  store: ConnectorStore,
+  args: Record<string, unknown>,
+  requestId: string | null,
+): Promise<{ repo: string | null; startingRef: string | null } | { reason: string }> {
+  const named = textArg(args, "repo");
+  const request = requestId ? await store.getRequest(requestId) : null;
+  if (named && request?.repo && named !== request.repo) return { reason: "repo_mismatch" };
+  const repo = named ?? request?.repo ?? null;
+  const startingRef = repo && request?.repo === repo && request.branch ? request.branch : null;
+  return { repo, startingRef };
 }
 
 async function agentCap(deps: ConnectorDeps, approvalId: string | null): Promise<{ surge: boolean; cap: number }> {

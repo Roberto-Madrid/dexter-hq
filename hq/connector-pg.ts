@@ -6,12 +6,16 @@ import {
   followupClaim,
   followupRefusal,
   launchCapRefusal,
+  MODEL_UPGRADE_ACTION,
+  modelUpgradeTarget,
+  PIN_FAILURE_ACTION,
   type ConnectorAgent,
   type ConnectorApproval,
   type ConnectorBot,
   type ConnectorPost,
   type ConnectorRequest,
   type ConnectorStore,
+  type ModelResolutionRow,
 } from "./connector-store.ts";
 import { ventureMetaFrom, type RosterRow } from "./connector-store.ts";
 
@@ -19,6 +23,7 @@ const AGENT_COLUMNS = "id, owner_id, bot_id, cursor_handle, repo, role, family, 
 // One lock for every launch: the global cap spans all repos, so a per-repo key would not be enough.
 const LAUNCH_LOCK = "select pg_advisory_xact_lock(hashtext('dexter.connector.launch'))";
 const COUNCIL_LOCK = "select pg_advisory_xact_lock(hashtext('dexter.connector.council_seat'))";
+const PINS_LOCK = "select pg_advisory_xact_lock(hashtext('dexter.connector.pins'))";
 
 async function inTransaction<T>(client: pg.Client, fn: () => Promise<T>): Promise<T> {
   await client.query("begin");
@@ -634,6 +639,108 @@ export function createPgConnectorStore(url: string): ConnectorStore {
             { leadName: bot.name, revoked: removed.rowCount ?? 0 },
           ]);
           return { commit: true, value: { ok: true as const, bot } };
+        }),
+      );
+    },
+    async currentPins(ownerId) {
+      return withClient(url, async (client) => {
+        const found = await client.query<{ family: string; version: string }>(
+          `select distinct on (family) family, version
+           from public.model_resolutions
+           where owner_id = $1 and not held
+           order by family, resolved_at desc, id desc`,
+          [ownerId],
+        );
+        return found.rows.map((row) => ({ family: row.family, version: row.version }));
+      });
+    },
+    async listModelResolutions(ownerId) {
+      return withClient(url, async (client) => {
+        const found = await client.query<{
+          owner_id: string;
+          family: string;
+          version: string;
+          held: boolean;
+          reason: string | null;
+          resolved_at: Date | string;
+        }>(
+          `select owner_id, family, version, held, reason, resolved_at
+           from public.model_resolutions where owner_id = $1 order by resolved_at asc, family asc`,
+          [ownerId],
+        );
+        return found.rows.map(
+          (row): ModelResolutionRow => ({
+            ownerId: row.owner_id,
+            family: row.family,
+            version: row.version,
+            held: row.held,
+            reason: row.reason ?? "",
+            resolvedAt: new Date(row.resolved_at).toISOString(),
+          }),
+        );
+      });
+    },
+    async pinsResolvedSince(ownerId, since) {
+      return withClient(url, async (client) => {
+        const found = await client.query(
+          "select 1 from public.model_resolutions where owner_id = $1 and resolved_at >= $2::timestamptz limit 1",
+          [ownerId, since],
+        );
+        return found.rows.length > 0;
+      });
+    },
+    async lastPinFailureAt(ownerId) {
+      return withClient(url, async (client) => {
+        const found = await client.query<{ at: Date | string | null }>(
+          "select max(at) as at from public.events where owner_id = $1 and action = $2",
+          [ownerId, PIN_FAILURE_ACTION],
+        );
+        const at = found.rows[0]?.at;
+        return at ? new Date(at).toISOString() : null;
+      });
+    },
+    async recordPinResolutions({ ownerId, since, at, rows }) {
+      return withClient(url, async (client) =>
+        inTransaction(client, async () => {
+          await client.query(PINS_LOCK);
+          const done = await client.query(
+            "select 1 from public.model_resolutions where owner_id = $1 and resolved_at >= $2::timestamptz limit 1",
+            [ownerId, since],
+          );
+          if (done.rows.length > 0) return { recorded: false, approvals: [] };
+          for (const row of rows) {
+            await client.query(
+              `insert into public.model_resolutions (owner_id, family, version, held, reason, resolved_at)
+               values ($1,$2,$3,$4,$5,$6::timestamptz)`,
+              [ownerId, row.family, row.version, row.held, row.reason, at],
+            );
+          }
+          const raised: ConnectorApproval[] = [];
+          for (const row of rows.filter((item) => item.held)) {
+            const target = modelUpgradeTarget(row);
+            const seen = await client.query(
+              `select 1 from public.approvals
+               where owner_id = $1 and target = $2 and (action = $3 or action like '%:' || $3)
+               limit 1`,
+              [ownerId, target, MODEL_UPGRADE_ACTION],
+            );
+            if (seen.rows.length > 0) continue;
+            const approval: ConnectorApproval = {
+              id: randomUUID(),
+              ownerId,
+              action: MODEL_UPGRADE_ACTION,
+              target,
+              status: "pending",
+              requestId: null,
+            };
+            await client.query(
+              `insert into public.approvals (id, owner_id, request_id, action, target, plan_version)
+               values ($1,$2,null,$3,$4,1)`,
+              [approval.id, ownerId, `pending:${MODEL_UPGRADE_ACTION}`, target],
+            );
+            raised.push(approval);
+          }
+          return { recorded: true, approvals: raised };
         }),
       );
     },

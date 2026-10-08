@@ -316,6 +316,35 @@ export async function botRoster(store: ConnectorStore, now: Date): Promise<Roste
   });
 }
 
+/** One role-sheet family's model id. */
+export type ModelPin = { family: string; version: string };
+
+/** One `model_resolutions` row the daily check appends. A `held` row is a version waiting on the owner, never a pin. */
+export type PinResolution = ModelPin & { held: boolean; reason: string };
+
+export type ModelResolutionRow = PinResolution & { ownerId: string; resolvedAt: string };
+
+/** The event the daily check appends when it cannot read the catalog. */
+export const PIN_FAILURE_ACTION = "pins_resolve_failed";
+
+/** The Needs-you card a held version raises. Its target is `<family>:<version>`. */
+export const MODEL_UPGRADE_ACTION = "model_upgrade";
+
+export function modelUpgradeTarget(row: ModelPin): string {
+  return `${row.family}:${row.version}`;
+}
+
+/** The latest non-held row per family, from rows in any order. */
+export function latestPins(rows: readonly ModelResolutionRow[]): ModelPin[] {
+  const latest = new Map<string, ModelResolutionRow>();
+  for (const row of rows) {
+    if (row.held) continue;
+    const seen = latest.get(row.family);
+    if (!seen || row.resolvedAt >= seen.resolvedAt) latest.set(row.family, row);
+  }
+  return [...latest.values()].map((row) => ({ family: row.family, version: row.version }));
+}
+
 export interface ConnectorStore {
   stopped(): Promise<boolean>;
   setStopped(value: boolean): Promise<void>;
@@ -365,12 +394,30 @@ export interface ConnectorStore {
    * A token rotated during STOP ALL is written suspended, so Resume restores it like the others.
    */
   rotateToken(input: RotateTokenInput): Promise<{ ok: true; bot: ConnectorBot } | { ok: false; reason: "unknown_venture" }>;
+  /** The pins launches use: the latest non-held `model_resolutions` row per family for this owner. */
+  currentPins(ownerId: string): Promise<ModelPin[]>;
+  listModelResolutions(ownerId: string): Promise<ModelResolutionRow[]>;
+  /** True once the daily check wrote any row for this owner at or after `since`. */
+  pinsResolvedSince(ownerId: string, since: string): Promise<boolean>;
+  /** When the daily check last failed to reach the catalog for this owner, or null. */
+  lastPinFailureAt(ownerId: string): Promise<string | null>;
+  /**
+   * Atomic, under one lock: appends `rows` (stamped `at`) only if none were written at or after `since`, and raises one
+   * pending `model_upgrade` approval per held version that never had one. A second call the same day writes nothing.
+   */
+  recordPinResolutions(input: {
+    ownerId: string;
+    since: string;
+    at: string;
+    rows: PinResolution[];
+  }): Promise<{ recorded: boolean; approvals: ConnectorApproval[] }>;
 }
 
 export function createMemoryConnectorStore(seed?: {
   stopped?: boolean;
   bots?: ConnectorBot[];
   tokens?: { tokenHash: string; botId: string; scopes: string[]; suspended?: boolean; createdAt?: string }[];
+  modelResolutions?: (PinResolution & { ownerId: string; resolvedAt?: string })[];
 }): ConnectorStore {
   let stopped = seed?.stopped ?? false;
   const bots = new Map<string, ConnectorBot>();
@@ -392,6 +439,10 @@ export function createMemoryConnectorStore(seed?: {
   const requests = new Map<string, ConnectorRequest>();
   const approvals = new Map<string, ConnectorApproval>();
   const posts = new Map<string, ConnectorPost>();
+  const resolutions: ModelResolutionRow[] = (seed?.modelResolutions ?? []).map((row) => ({
+    ...row,
+    resolvedAt: row.resolvedAt ?? new Date(0).toISOString(),
+  }));
 
   return {
     async stopped() {
@@ -560,6 +611,46 @@ export function createMemoryConnectorStore(seed?: {
         at: input.at,
       });
       return { ok: true, bot: { ...bot } };
+    },
+    async currentPins(ownerId) {
+      return latestPins(resolutions.filter((row) => row.ownerId === ownerId));
+    },
+    async listModelResolutions(ownerId) {
+      return resolutions.filter((row) => row.ownerId === ownerId).map((row) => ({ ...row }));
+    },
+    async pinsResolvedSince(ownerId, since) {
+      return resolutions.some((row) => row.ownerId === ownerId && row.resolvedAt >= since);
+    },
+    async lastPinFailureAt(ownerId) {
+      const times = events
+        .filter((row) => row.ownerId === ownerId && row.action === PIN_FAILURE_ACTION)
+        .map((row) => row.at)
+        .sort();
+      return times.at(-1) ?? null;
+    },
+    // No await between the check and the writes, so this is atomic on one event loop.
+    async recordPinResolutions({ ownerId, since, at, rows }) {
+      if (resolutions.some((row) => row.ownerId === ownerId && row.resolvedAt >= since)) return { recorded: false, approvals: [] };
+      for (const row of rows) resolutions.push({ ...row, ownerId, resolvedAt: at });
+      const raised: ConnectorApproval[] = [];
+      for (const row of rows.filter((item) => item.held)) {
+        const target = modelUpgradeTarget(row);
+        const seen = [...approvals.values()].some(
+          (item) => item.ownerId === ownerId && item.action === MODEL_UPGRADE_ACTION && item.target === target,
+        );
+        if (seen) continue;
+        const approval: ConnectorApproval = {
+          id: randomUUID(),
+          ownerId,
+          action: MODEL_UPGRADE_ACTION,
+          target,
+          status: "pending",
+          requestId: null,
+        };
+        approvals.set(approval.id, approval);
+        raised.push({ ...approval });
+      }
+      return { recorded: true, approvals: raised };
     },
   };
 }
