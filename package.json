@@ -12,7 +12,8 @@
     "test:live": "node scripts/run-live.mjs",
     "check:vendor": "bash scripts/check-vendor-neutral.sh",
     "check:briefs": "bash scripts/check-briefs.sh",
-    "check:bundle": "bash scripts/check-bundle-fresh.sh",
+    "check:bundle": "bash scripts/check-bundle-fresh.sh && bash scripts/check-build.sh",
+    "check:build": "bash scripts/check-build.sh",
     "scan:secrets": "node scripts/scan-secrets.mjs"
   },
   "dependencies": {
