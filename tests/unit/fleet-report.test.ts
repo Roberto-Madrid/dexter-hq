@@ -79,6 +79,7 @@ function fixtureEvents(): ConnectorEvent[] {
     ev("hq-dev", "post", "p2", { status: "posted", postId: "p2", verified: false }),
     ev("hq-dev", "verify_post", "p1", { status: "verified", postId: "p1" }),
     ev("barber-lead", "heartbeat", "b-barber", { status: "ok" }),
+    ev("owner", "add_venture", "b-barber", { status: "created", repo: BARBER }),
     // Outside the PT week: one millisecond before it starts, and exactly at its end.
     ev("barber-lead", "launch_agent", "bc-early", { status: "launched", agentId: "bc-early" }, "2026-09-28T06:59:59.999Z"),
     ev("hq-dev", "launch_agent", "bc-late", { status: "launched", agentId: "bc-late" }, "2026-10-05T07:00:00.000Z"),
@@ -178,6 +179,7 @@ describe("fleet report aggregation", () => {
     expect(report.neverSeenBots).toEqual(["scout"]);
     expect(report.idleBots).toEqual(["scout"]);
     expect(report.bots.map((line) => line.bot)).not.toContain("hq");
+    expect(report.bots.map((line) => line.bot)).not.toContain("owner");
   });
 
   it("reports zeros for an empty week and lists every bot as idle", () => {

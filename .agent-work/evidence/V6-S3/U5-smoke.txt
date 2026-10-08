@@ -1,4 +1,4 @@
-# U5 bundled smoke, 2026-10-08 02:06 PDT, after merging origin/main f4fddd9; local throwaway DB dexter_u5_smoke (not production)
+# U5 bundled smoke, 2026-10-08 02:12 PDT, after merging origin/main d0f7e89; local throwaway DB dexter_u5_smoke (not production)
 tick wrong secret -> 401
 tick 1 -> 200 {"status":"written","week":"2026-W40","postId":"8311eb5e-97fc-5483-bf58-2b6cff02efe1"}
 tick 2 -> 200 {"status":"exists","week":"2026-W40","postId":"8311eb5e-97fc-5483-bf58-2b6cff02efe1"}
@@ -19,6 +19,7 @@ Stale (no heartbeat in 24h): barber-lead.
 Never seen: scout.
 Idle this week: scout.
 Not tracked yet: tick gaps, self-test failures, Cursor usage per agent.
+chat -> status modelCalls 0 | Fleet report 2026-W40, Mon Sep 28 to Sun Oct 4 (PT).
 ## SQL reconcile
  report_posts | report_events | launched_sql | refused_sql 
 --------------+---------------+--------------+-------------

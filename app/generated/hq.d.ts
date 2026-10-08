@@ -83,3 +83,4 @@ export function getFleetView(
   week: string | null,
 ): Promise<{ status: number; body: { week: string | null; text: string; report: unknown } | { error: string } }>;
 export function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }>;
+export function venturesHttp(request: Request): Promise<Response>;

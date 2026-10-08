@@ -23,6 +23,8 @@ export const CAP_REASONS: ReadonlySet<string> = new Set([
 export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 export const WEEK_KEY = /^\d{4}-W\d{2}$/;
 const SYSTEM_ACTOR = "hq";
+/** Actors that are not bots: HQ itself and the owner (add_venture, rotate_token). */
+const NON_BOT_ACTORS = new Set([SYSTEM_ACTOR, "owner"]);
 const PASSIVE_ACTIONS = new Set(["heartbeat", "whoami"]);
 const NO_REPORT = "No fleet report yet. HQ writes one on the first tick after Monday 07:00 PT.";
 const HOUR_MS = 60 * 60 * 1000;
@@ -279,7 +281,7 @@ export function buildFleetReport(input: {
       event.action === "agent_finished"
         ? (botNames.get(text(event.result?.botId) ?? "") ?? text(event.result?.botId) ?? event.actor)
         : event.actor;
-    if (owner === SYSTEM_ACTOR) continue;
+    if (NON_BOT_ACTORS.has(owner)) continue;
     const line = acc(owner);
     if (!PASSIVE_ACTIONS.has(event.action)) line.active = true;
 
