@@ -1,4 +1,4 @@
-SUPABASE_DB_URL=<unset> SUPABASE_URL=<unset> DATABASE_URL=<unset> CURSOR_API_KEY=<unset> (run via /tmp/u1-safe.sh; EXIT=0)
+SUPABASE_DB_URL=<unset> SUPABASE_URL=<unset> DATABASE_URL=<unset> CURSOR_API_KEY=<unset> (run via /tmp/u1-safe.sh, after rebase onto d0f7e89)
 
 > typecheck
 > tsc --noEmit && tsc --noEmit -p tsconfig.app.json
@@ -14,29 +14,30 @@ SUPABASE_DB_URL=<unset> SUPABASE_URL=<unset> DATABASE_URL=<unset> CURSOR_API_KEY
 
  RUN  v3.2.4 /workspace/hq-stage3-u1
 
- ✓ tests/unit/ceo-run.test.ts (4 tests) 220ms
- ✓ tests/unit/caps.test.ts (10 tests) 62ms
- ✓ tests/unit/followup.test.ts (18 tests) 93ms
- ✓ tests/unit/pins.test.ts (19 tests) 174ms
- ✓ tests/unit/mcp.test.ts (7 tests) 198ms
- ✓ tests/unit/g3.test.ts (12 tests) 175ms
- ✓ tests/unit/quality-loop.test.ts (33 tests) 331ms
- ✓ tests/unit/checks.test.ts (2 tests) 66ms
- ✓ tests/unit/approval.test.ts (5 tests) 65ms
- ✓ tests/unit/tower.test.ts (12 tests) 45ms
- ✓ tests/unit/connector-council.test.ts (3 tests) 73ms
- ✓ tests/unit/stop.test.ts (13 tests) 38ms
- ✓ tests/unit/kernel.test.ts (20 tests) 36ms
- ✓ tests/unit/reconcile.test.ts (8 tests) 24ms
- ✓ tests/security/injection.test.ts (2 tests) 6ms
- ✓ tests/unit/council-seat.test.ts (2 tests) 14ms
- ✓ tests/unit/snapshot-db.test.ts (2 tests) 4ms
- ✓ tests/unit/ceo-command.test.ts (4 tests) 7ms
+ ✓ tests/unit/ceo-run.test.ts (4 tests) 217ms
+ ✓ tests/unit/approval.test.ts (5 tests) 48ms
+ ✓ tests/unit/mcp.test.ts (7 tests) 180ms
+ ✓ tests/unit/quality-loop.test.ts (33 tests) 239ms
+ ✓ tests/unit/g3.test.ts (12 tests) 129ms
+ ✓ tests/unit/pins.test.ts (19 tests) 182ms
+ ✓ tests/unit/ventures.test.ts (25 tests) 98ms
+ ✓ tests/unit/checks.test.ts (2 tests) 71ms
+ ✓ tests/unit/followup.test.ts (18 tests) 69ms
+ ✓ tests/unit/tower.test.ts (12 tests) 38ms
+ ✓ tests/unit/connector-council.test.ts (3 tests) 49ms
+ ✓ tests/unit/kernel.test.ts (20 tests) 33ms
+ ✓ tests/unit/stop.test.ts (13 tests) 29ms
+ ✓ tests/unit/caps.test.ts (10 tests) 52ms
+ ✓ tests/unit/reconcile.test.ts (8 tests) 21ms
+ ✓ tests/security/injection.test.ts (2 tests) 5ms
+ ✓ tests/unit/council-seat.test.ts (2 tests) 18ms
+ ✓ tests/unit/snapshot-db.test.ts (2 tests) 5ms
+ ✓ tests/unit/ceo-command.test.ts (4 tests) 6ms
 
- Test Files  18 passed (18)
-      Tests  176 passed (176)
-   Start at  02:04:00
-   Duration  2.46s (transform 1.62s, setup 0ms, collect 6.28s, tests 1.63s, environment 5ms, prepare 1.68s)
+ Test Files  19 passed (19)
+      Tests  201 passed (201)
+   Start at  02:11:22
+   Duration  2.28s (transform 1.64s, setup 0ms, collect 6.11s, tests 1.49s, environment 4ms, prepare 1.65s)
 
 
 > check:vendor
@@ -63,7 +64,7 @@ check:build: running next build
    Using tsconfig file: tsconfig.app.json
    Using tsconfig file: tsconfig.app.json
    Using tsconfig file: tsconfig.app.json
- ✓ Compiled successfully in 4.8s
+ ✓ Compiled successfully in 2.7s
    Linting and checking validity of types ...
 
  ⚠ The Next.js plugin was not detected in your ESLint configuration. See https://nextjs.org/docs/app/api-reference/config/eslint#migrating-existing-config
@@ -113,15 +114,17 @@ local integration database ready
 
  RUN  v3.2.4 /workspace/hq-stage3-u1
 
- ✓ tests/integration/events.test.ts (1 test) 77ms
- ✓ tests/integration/pool.test.ts (2 tests) 114ms
- ✓ tests/integration/rls.test.ts (1 test) 146ms
- ✓ tests/integration/claim.test.ts (4 tests) 257ms
- ✓ tests/integration/pins.test.ts (5 tests) 333ms
- ✓ tests/integration/connector-caps.test.ts (10 tests) 558ms
+ ✓ tests/integration/events.test.ts (1 test) 55ms
+ ✓ tests/integration/rls.test.ts (1 test) 113ms
+ ✓ tests/integration/pool.test.ts (2 tests) 108ms
+ ✓ tests/integration/claim.test.ts (4 tests) 233ms
+ ✓ tests/integration/pins.test.ts (5 tests) 280ms
+ ✓ tests/integration/connector-caps.test.ts (10 tests) 484ms
+ ✓ tests/integration/ventures.test.ts (6 tests) 532ms
 
- Test Files  6 passed (6)
-      Tests  23 passed (23)
-   Start at  02:04:34
-   Duration  1.37s (transform 481ms, setup 0ms, collect 1.70s, tests 1.48s, environment 1ms, prepare 687ms)
+ Test Files  7 passed (7)
+      Tests  29 passed (29)
+   Start at  02:11:51
+   Duration  1.71s (transform 803ms, setup 0ms, collect 2.71s, tests 1.81s, environment 2ms, prepare 755ms)
 
+EXIT=0
