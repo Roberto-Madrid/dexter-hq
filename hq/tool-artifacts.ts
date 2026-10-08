@@ -61,12 +61,14 @@ export async function spillToolOutput(
     scope: PostScope | null;
     requestId: string | null;
     at: string;
+    /** Stored-text cap; defaults to TOOL_OUTPUT_MAX_CHARS. Handoff bundles pass a larger one. */
+    maxChars?: number;
   },
 ): Promise<OutputRef> {
   const chars = input.text.length;
   if (chars <= TOOL_OUTPUT_INLINE_CHARS) return { kind: "inline", text: input.text, chars };
   const id = artifactIdFor(input.postId);
-  const stored = input.text.slice(0, TOOL_OUTPUT_MAX_CHARS);
+  const stored = input.text.slice(0, input.maxChars ?? TOOL_OUTPUT_MAX_CHARS);
   const truncated = stored.length < chars;
   const existing = await readToolArtifact(store, id);
   if (!existing) {

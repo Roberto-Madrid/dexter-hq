@@ -208,8 +208,11 @@ describe("handoff crew", () => {
     expect(raw.capabilities?.length).toBeGreaterThan(0);
   });
 
-  it("is not yet a crew a plan card can pick (launch wiring lives in the connector)", () => {
-    expect(SHIPPED_CREWS as readonly string[]).not.toContain(HANDOFF_CREW);
+  it("is a crew a plan card can pick (launch wiring lives in hq/handoff-launch.ts)", () => {
+    expect(SHIPPED_CREWS as readonly string[]).toContain(HANDOFF_CREW);
+    expect(loadCrews().get(HANDOFF_CREW)?.capabilities).toEqual(
+      (parse(readFileSync("crews/handoff.yaml", "utf8")) as { capabilities: string[] }).capabilities,
+    );
   });
 });
 
@@ -226,7 +229,7 @@ describe("handoff from this repository", () => {
     expect(result.bundle.charter.source).toBe("AGENTS.md");
     expect(result.bundle.runbook.length).toBeGreaterThan(0);
     expect(result.bundle.shortcutDebt.length).toBeGreaterThan(5);
-    expect(result.bundle.shortcutDebt.some((row) => row.path === "hq/crews.ts")).toBe(true);
+    expect(result.bundle.shortcutDebt.some((row) => row.path === "hq/handoff-launch.ts")).toBe(true);
     expect(result.bundle.shortcutDebt.every((row) => !row.path.startsWith("tests/") && !row.path.includes("generated"))).toBe(true);
     expect(result.bundle.capabilities).toEqual((parse(readFileSync("crews/handoff.yaml", "utf8")) as { capabilities: string[] }).capabilities);
     expect(result.bundle.tests.commands).toContain("npm run typecheck");
