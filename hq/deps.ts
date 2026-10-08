@@ -1,5 +1,6 @@
 import type { ModelRow, RoleSheet, Runtime } from "../kernel/types.ts";
 import type { ConnectorStore } from "./connector-store.ts";
+import type { FleetReportStore } from "./fleet-report.ts";
 import type { CeoClient } from "./scripted-ceo.ts";
 
 export type ListedRuntime = Runtime & {
@@ -18,6 +19,7 @@ export type HqDeps = {
   runtimes: Record<string, ListedRuntime>;
   controlReachable: boolean;
   connector?: ConnectorStore;
+  fleetReports?: FleetReportStore;
 };
 
 export function runtimeNameForPool(pool: string): string | null {
