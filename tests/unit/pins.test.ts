@@ -285,3 +285,66 @@ describe("daily version check", () => {
     expect(cursor.modelCalls).toBe(1);
   });
 });
+
+describe("tick order: reconcile, then fleet report, then pins, each failing soft", () => {
+  it("runs the three steps in order", async () => {
+    const { deps } = await capsDeps({ pins: false });
+    const { connectorTick } = await import("../../hq/pins.ts");
+    const order: string[] = [];
+    const store = deps.store;
+    const traced = {
+      ...store,
+      async listAgents() {
+        order.push("reconcile");
+        return store.listAgents();
+      },
+      async pinsResolvedSince(ownerId: string, since: string) {
+        order.push("pins");
+        return store.pinsResolvedSince(ownerId, since);
+      },
+    };
+    const result = await connectorTick({ ...deps, store: traced, now: () => DAY1 }, sheetText, {
+      fleet: async () => {
+        order.push("fleet");
+        return { status: "written" };
+      },
+    });
+    expect(order).toEqual(["reconcile", "fleet", "pins"]);
+    expect(result.fleet).toEqual({ status: "written" });
+    expect(result.pins.owners[0]?.status).toBe("recorded");
+  });
+
+  it("keeps going when reconcile and the fleet report throw", async () => {
+    const { deps, store } = await capsDeps({ pins: false });
+    const { connectorTick } = await import("../../hq/pins.ts");
+    const broken = {
+      ...store,
+      async listAgents(): Promise<never> {
+        throw new Error("db down postgres://user:pw@host/db");
+      },
+    };
+    const result = await connectorTick({ ...deps, store: broken, now: () => DAY1 }, sheetText, {
+      fleet: async () => {
+        throw new Error("fleet down");
+      },
+    });
+    expect(result.reconcile).toEqual({ error: "reconcile_failed" });
+    expect(result.fleet).toEqual({ status: "error" });
+    expect(result.pins.owners[0]?.status).toBe("recorded");
+    expect(JSON.stringify(result)).not.toContain("postgres://");
+  });
+
+  it("keeps the tick result when the pins check throws", async () => {
+    const { deps, store } = await capsDeps({ pins: false });
+    const { connectorTick } = await import("../../hq/pins.ts");
+    const broken = {
+      ...store,
+      async listBots(): Promise<never> {
+        throw new Error("db down");
+      },
+    };
+    const result = await connectorTick({ ...deps, store: broken, now: () => DAY1 }, sheetText);
+    expect(result.reconcile).toMatchObject({ configured: true });
+    expect(result.pins).toMatchObject({ error: "pins_check_failed" });
+  });
+});

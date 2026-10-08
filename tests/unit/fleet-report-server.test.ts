@@ -66,3 +66,12 @@ describe("the per-minute tick writes the weekly report once", () => {
     expect(JSON.stringify(result.body)).not.toContain("postgres://");
   });
 });
+
+describe("the tick also reports the daily pins check", () => {
+  it("returns reconcile, fleet and pins in one body", async () => {
+    const { db } = await seeded();
+    const result = await postTick("unit-test-tick-secret", { fleetReports: db, now: new Date("2026-10-08T09:00:00.000Z") });
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ ok: true, reconcile: {}, fleet: { status: "written" }, pins: { configured: false } });
+  });
+});

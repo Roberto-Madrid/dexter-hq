@@ -1,0 +1,29 @@
+SUPABASE_DB_URL=<unset> CURSOR_API_KEY=<unset> base=c6db493
+   ✓ cursor-cloud start() carries repo and model > sends repos[{url,startingRef}] and model.id 8ms
+   ✓ cursor-cloud start() carries repo and model > omits startingRef without a branch, and repos for a no-repo launch 2ms
+   ✓ cursor-cloud start() carries repo and model > lists model ids from GET /v1/models and throws when Cursor refuses 2ms
+   ✓ launch_agent resolves repo and the pinned model > builder gets the grok pin and the request's repo 6ms
+   ✓ launch_agent resolves repo and the pinned model > quick_edit gets the composer pin 2ms
+   ✓ launch_agent resolves repo and the pinned model > refuses model_held when the family has no pin, and reserves nothing 2ms
+   ✓ launch_agent resolves repo and the pinned model > keeps launching on the old pin while a newer version is held 9ms
+   ✓ launch_agent resolves repo and the pinned model > takes the repo from the request and the request's bound branch as startingRef 1ms
+   ✓ launch_agent resolves repo and the pinned model > refuses repo_mismatch when the call names a different repo than the request 1ms
+   ✓ launch_agent resolves repo and the pinned model > fails closed for repo work without a repo, even for a bot with no repos 1ms
+   ✓ launch_agent resolves repo and the pinned model > lets a scout launch without a repo, still on a pinned model 3ms
+   ✓ daily version check > adopts the first pins as the baseline, ignoring fast/max/preview 17ms
+   ✓ daily version check > writes nothing on a second run the same day and does not call Cursor again 6ms
+   ✓ daily version check > only one of two simultaneous runs records 14ms
+   ✓ daily version check > same version the next day is a no-op for the pins 17ms
+   ✓ daily version check > holds a new version: held row + one pending approval, current pin unchanged, no repeat card 9ms
+   ✓ daily version check > keeps the pins and posts one alert when Cursor is unreachable, retrying at most hourly 8ms
+   ✓ daily version check > does nothing without a Cursor key 0ms
+   ✓ daily version check > runs from the tick next to reconcile 3ms
+   × tick order: reconcile, then fleet report, then pins, each failing soft > runs the three steps in order 11ms
+     → expected [ 'reconcile', 'pins' ] to deeply equal [ 'reconcile', 'fleet', 'pins' ]
+   × tick order: reconcile, then fleet report, then pins, each failing soft > keeps going when reconcile and the fleet report throw 1ms
+     → db down postgres://user:pw@host/db
+   ✓ tick order: reconcile, then fleet report, then pins, each failing soft > keeps the tick result when the pins check throws 1ms
+ ✓ tests/unit/fleet-report-server.test.ts (4 tests) 65ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 failed | 24 passed (26)
