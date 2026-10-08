@@ -181,6 +181,8 @@ export type ConnectorApproval = {
   target: string;
   status: "pending" | "approved" | "denied";
   requestId: string | null;
+  /** When the owner approved or denied it; null while pending or unknown. A surge's TTL runs from here. */
+  decidedAt?: string | null;
 };
 
 export type PostScope = "shared" | "project" | "mission";
@@ -440,9 +442,11 @@ export interface ConnectorStore {
   listRequests(): Promise<ConnectorRequest[]>;
   saveApproval(row: ConnectorApproval): Promise<void>;
   getApproval(id: string): Promise<ConnectorApproval | null>;
+  /** Atomic: decides a pending approval once, stamping `decidedAt` (default now). */
   claimApproval(
     id: string,
     status: "approved" | "denied",
+    decidedAt?: string,
   ): Promise<{ claimed: boolean; row: ConnectorApproval | null }>;
   listApprovals(): Promise<ConnectorApproval[]>;
   savePost(row: ConnectorPost): Promise<void>;
@@ -648,11 +652,11 @@ export function createMemoryConnectorStore(seed?: {
     async getApproval(id) {
       return approvals.get(id) ?? null;
     },
-    async claimApproval(id, status) {
+    async claimApproval(id, status, decidedAt) {
       const row = approvals.get(id);
       if (!row) return { claimed: false, row: null };
       if (row.status !== "pending") return { claimed: false, row: { ...row } };
-      const next = { ...row, status };
+      const next = { ...row, status, decidedAt: decidedAt ?? new Date().toISOString() };
       approvals.set(id, next);
       return { claimed: true, row: { ...next } };
     },

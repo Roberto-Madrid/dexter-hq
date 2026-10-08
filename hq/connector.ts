@@ -23,6 +23,7 @@ import {
   type ConnectorStore,
   type ConnectorToolName,
 } from "./connector-store.ts";
+import { surgeActive, surgeExpiresAt } from "./surge.ts";
 import { parseCouncilVerdict, runCriticSeat } from "./council-seat.ts";
 import {
   PINNED_CHECKER_WORKFLOW,
@@ -296,7 +297,7 @@ async function handleLaunch(
     await record(deps, auth, "launch_agent", idempotencyKey, body);
     return toolResult(body, true);
   }
-  const { surge, cap } = await agentCap(deps, approvalId);
+  const { surge, cap, surgeExpired } = await agentCap(deps, approvalId);
   // Atomic: the caps are checked and a `reserving` row inserted in one step, so two launches cannot both pass.
   const reservation = await deps.store.reserveLaunch({
     agent: {
@@ -323,7 +324,7 @@ async function handleLaunch(
   }
   if (!reservation.ok) {
     const reason = reservation.reason === "agent_cap" && surge ? "surge_cap" : reservation.reason;
-    const body = { status: "refused", reason, cap: reservation.cap };
+    const body = { status: "refused", reason, cap: reservation.cap, ...(reason === "agent_cap" && surgeExpired ? { surgeExpired: true } : {}) };
     await record(deps, auth, "launch_agent", reason === "per_repo_cap" && repo ? repo : idempotencyKey, body);
     return toolResult(body, true);
   }
@@ -380,10 +381,34 @@ async function launchTarget(
   return { repo, startingRef };
 }
 
-async function agentCap(deps: ConnectorDeps, approvalId: string | null): Promise<{ surge: boolean; cap: number }> {
+/**
+ * The global agent cap for this launch: AGENT_SURGE_CAP only while the named surge approval is approved and unexpired.
+ * Expiry needs no write to revert: the next read simply falls back to SANDBOX_SLOT_CAP. The first read that finds a
+ * lapsed surge records one `surge_lapsed` event.
+ */
+async function agentCap(
+  deps: ConnectorDeps,
+  approvalId: string | null,
+): Promise<{ surge: boolean; cap: number; surgeExpired: boolean }> {
   const approval = approvalId ? await deps.store.getApproval(approvalId) : null;
-  const surge = approval?.status === "approved" && approval.action === "surge";
-  return { surge, cap: surge ? AGENT_SURGE_CAP : SANDBOX_SLOT_CAP };
+  if (!approval) return { surge: false, cap: SANDBOX_SLOT_CAP, surgeExpired: false };
+  const now = (deps.now ?? (() => new Date().toISOString()))();
+  if (surgeActive(approval, now)) return { surge: true, cap: AGENT_SURGE_CAP, surgeExpired: false };
+  const expiresAt = surgeExpiresAt(approval);
+  if (!expiresAt) return { surge: false, cap: SANDBOX_SLOT_CAP, surgeExpired: false };
+  // dexter-shortcut: the lapse event is written on the first launch read after expiry, not by the tick, and two racing reads may both write it; upgrade path: record lapses in the tick under a unique (action, target) key.
+  const lapsed = await deps.store.listEventsByAction(["surge_lapsed"]);
+  if (!lapsed.some((event) => event.target === approval.id)) {
+    await deps.store.appendEvent({
+      ownerId: approval.ownerId,
+      actor: "hq",
+      action: "surge_lapsed",
+      target: approval.id,
+      result: { expiresAt, cap: SANDBOX_SLOT_CAP },
+      at: now,
+    });
+  }
+  return { surge: false, cap: SANDBOX_SLOT_CAP, surgeExpired: true };
 }
 
 async function launchReplay(deps: ConnectorDeps, auth: ConnectorAuth, existing: ConnectorAgent): Promise<ToolResult> {
