@@ -1,4 +1,4 @@
-import { emailFromCookie, getBoard, getBoardNotes, getFleetView, venturesHttp } from "../../generated/hq.js";
+import { emailFromCookie, getBoard, getBoardNotes, getFleetView, getSelftestView, venturesHttp } from "../../generated/hq.js";
 
 export const runtime = "nodejs";
 
@@ -7,6 +7,11 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   if (params.get("view") === "ventures") return venturesHttp(request);
+  // Daily self-test (U6): GET ?view=selftest, owner only (getSelftestView checks the session).
+  if (params.get("view") === "selftest") {
+    const view = await getSelftestView(request.headers.get("cookie"));
+    return Response.json(view.body, { status: view.status, headers: { "cache-control": "no-store" } });
+  }
   const cookie = request.headers.get("cookie");
   if (!emailFromCookie(cookie)) return new Response("unauthorized", { status: 401 });
   // The weekly fleet report (U5) reads here too: GET ?view=fleet[&week=2026-W40], owner only.
