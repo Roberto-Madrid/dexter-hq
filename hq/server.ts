@@ -15,10 +15,23 @@ import { ownerBoardView } from "./board-notes.ts";
 import { readFleetView, runFleetReportTick, type FleetDb, type FleetTickResult, type FleetView } from "./fleet-report.ts";
 import { createPgFleetReports } from "./fleet-report-pg.ts";
 import { createGhRepoCheck, handleVenturesHttp } from "./ventures.ts";
+import {
+  isSelftestQuestion,
+  runDailySelftest,
+  selftestChatAnswer,
+  selftestHealth,
+  watchdogSecretMatches,
+  SELFTEST_STALE_HOURS,
+  type SelftestDb,
+  type SelftestHealth,
+  type SelftestRecord,
+  type SelftestTickResult,
+} from "./selftest.ts";
+import { createPgSelftestDb } from "./selftest-pg.ts";
 import { resumeAll, stopAll } from "./stop.ts";
 import { createDefaultConnectorDeps, loadConnectorSheetText } from "./connector.ts";
 import { connectorTick } from "./pins.ts";
-import { advanceUpgradeChecks, type UpgradeTickResult } from "./upgrade-check.ts";
+import { advanceUpgradeChecks, upgradeTickStep } from "./upgrade-check.ts";
 import { snapshot, type BoardSnapshot } from "./board.ts";
 import { SHIPPED_CREWS } from "./crews.ts";
 import type { HqDeps } from "./deps.ts";
@@ -331,6 +344,7 @@ export async function postChat(
   const live = current();
   pathBBilling = false;
   trace = { stages: {}, model: null, effort: null, loginHashChanged: false };
+  if (isSelftestQuestion(text)) return selftestChat(text);
   const deps = { ...live.deps, fleetReports: fleetFromEnv(), connector: live.deps.connector ?? connectorFromEnv() };
   const result = await withStore((store) => handleChat(store, deps, text, undefined, onDelta));
   const billing = pathBBilling && result.kind === "plan" ? ("chatgpt-plan" as const) : undefined;
@@ -426,25 +440,17 @@ export async function postTick(
   const expected = process.env.DEXTER_TICK_SECRET ?? "";
   if (!expected || !header || !tokenMatch(header, expected)) return { status: 401 };
   // The tick no longer dispatches. In order, each failing soft: close finished connector agents so their cap
-  // slots free up, write the weekly fleet report when due, run the once-a-day model version check, then advance
-  // upgrade checks the owner started (their runs go through the connector's capped launch path).
+  // slots free up, write the weekly fleet report when due, run the once-a-day model version check, the daily
+  // self-test, then advance upgrade checks the owner started (their runs go through the connector's capped launch path).
   const deps = createDefaultConnectorDeps({ store: connectorFromEnv() });
-  const { reconcile, fleet, pins, upgrade } = await connectorTick(deps, loadConnectorSheetText(), {
+  const { reconcile, fleet, pins } = await connectorTick(deps, loadConnectorSheetText(), {
     fleet: () => fleetTick(options.fleetReports ?? fleetFromEnv(), options.now ?? new Date()),
-    upgrade: () => upgradeTick(deps),
   });
-  return { status: 200, body: { ok: true, reconcile, fleet, pins, upgrade } };
-}
-
-/** Advance open upgrade checks on the per-minute tick. A failure is logged (no DB URL) and never fails the tick. */
-async function upgradeTick(deps: ReturnType<typeof createDefaultConnectorDeps>): Promise<UpgradeTickResult | { status: "error" }> {
-  try {
-    return await advanceUpgradeChecks({ deps, env: process.env });
-  } catch (error) {
-    const raw = error instanceof Error ? error.message : "upgrade_check_failed";
-    console.error(raw.replace(/postgres(?:ql)?:\/\/\S+/gi, "[db]").slice(0, 180));
-    return { status: "error" };
-  }
+  // Daily self-test (U6): read-only checks, once per PT day after 07:00; soft-fails like the rest.
+  const selftest = await selftestTick(options.now ?? new Date());
+  // Upgrade checks (U7): soft-fails like the rest; a throw becomes { status: "error" }.
+  const upgrade = await upgradeTickStep(() => advanceUpgradeChecks({ deps, env: process.env }));
+  return { status: 200, body: { ok: true, reconcile, fleet, pins, selftest, upgrade } };
 }
 
 function fleetFromEnv(): FleetDb | undefined {
@@ -472,6 +478,58 @@ export async function getFleetView(
 ): Promise<{ status: number; body: FleetView | { error: string } }> {
   if (!emailFromCookie(cookie)) return { status: 401, body: { error: "unauthorized" } };
   return { status: 200, body: await readFleetView(db, week) };
+}
+
+function selftestDbFromEnv(): SelftestDb | undefined {
+  const url = process.env.SUPABASE_DB_URL?.trim();
+  return url ? createPgSelftestDb(url) : undefined;
+}
+
+/** Daily self-test on the per-minute tick (once per PT day after 07:00). A failure never fails the tick. */
+async function selftestTick(now: Date): Promise<SelftestTickResult> {
+  const db = selftestDbFromEnv();
+  const connector = connectorFromEnv();
+  if (!db || !connector) return { status: "not_configured" };
+  try {
+    return await runDailySelftest({ db, connector, env: process.env, now });
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : "selftest_failed";
+    console.error(raw.replace(/postgres(?:ql)?:\/\/\S+/gi, "[db]").slice(0, 180));
+    return { status: "error" };
+  }
+}
+
+async function selftestChat(text: string): Promise<ChatResult & { trace: CeoTrace }> {
+  const body = await selftestChatAnswer(selftestDbFromEnv(), new Date());
+  return withStore(async (store) => {
+    await store.addMessage("owner", text, null);
+    await store.addMessage("dexter", body, null);
+    return { kind: "status" as const, text: body, modelCalls: 0, card: null, notices: [], requestId: null, asOf: store.now(), trace };
+  });
+}
+
+/** Watchdog read for `GET /api/tick-now`. Its own secret (never the tick secret), compared in constant time; fails closed. */
+export async function getTickHealth(
+  header: string | null,
+  db: SelftestDb | undefined = selftestDbFromEnv(),
+): Promise<{ status: number; body?: SelftestHealth | { ok: false; reasons: string[] } }> {
+  current();
+  if (!watchdogSecretMatches(header, process.env.DEXTER_WATCHDOG_SECRET?.trim() ?? "")) return { status: 401 };
+  if (!db) return { status: 503, body: { ok: false, reasons: ["not_configured"] } };
+  const body = await selftestHealth(db, new Date());
+  return { status: 200, body };
+}
+
+/** Owner-only read for `GET /api/board?view=selftest`. Reads the stored result; never runs a check. */
+export async function getSelftestView(
+  cookie: string | null,
+  db: SelftestDb | undefined = selftestDbFromEnv(),
+): Promise<{ status: number; body: { latest: SelftestRecord | null; stale: boolean } | { error: string } }> {
+  if (!emailFromCookie(cookie)) return { status: 401, body: { error: "unauthorized" } };
+  if (!db) return { status: 200, body: { latest: null, stale: true } };
+  const latest = await db.latest();
+  const stale = !latest || Date.now() - Date.parse(latest.at) >= SELFTEST_STALE_HOURS * 3_600_000;
+  return { status: 200, body: { latest, stale } };
 }
 
 export async function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }> {

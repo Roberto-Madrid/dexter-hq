@@ -124,18 +124,16 @@ export type TickStepError = { error: string };
 
 /**
  * The per-minute tick: close finished agents, then the weekly fleet report (when given), then the daily version
- * check, then advance open upgrade checks (when given). Each step fails soft: a throw becomes a short error code and
- * the next step still runs.
+ * check. Each step fails soft: a throw becomes a short error code and the next step still runs.
  */
-export async function connectorTick<F = never, U = never>(
+export async function connectorTick<F = never>(
   deps: Pick<ConnectorDeps, "store" | "cursor" | "cursorConfigured" | "now">,
   sheetText: string,
-  steps: { fleet?: () => Promise<F>; upgrade?: () => Promise<U> } = {},
+  steps: { fleet?: () => Promise<F> } = {},
 ): Promise<{
   reconcile: ReconcileResult | TickStepError;
   fleet?: F | { status: "error" };
   pins: PinsResult | (TickStepError & { configured: boolean; owners: [] });
-  upgrade?: U | { status: "error" };
 }> {
   let reconcile: ReconcileResult | TickStepError;
   try {
@@ -158,13 +156,5 @@ export async function connectorTick<F = never, U = never>(
   } catch {
     pins = { configured: true, owners: [], error: "pins_check_failed" };
   }
-  let upgrade: U | { status: "error" } | undefined;
-  if (steps.upgrade) {
-    try {
-      upgrade = await steps.upgrade();
-    } catch {
-      upgrade = { status: "error" };
-    }
-  }
-  return { reconcile, ...(steps.fleet ? { fleet } : {}), pins, ...(steps.upgrade ? { upgrade } : {}) };
+  return { reconcile, ...(steps.fleet ? { fleet } : {}), pins };
 }

@@ -43,7 +43,7 @@ import { decisionTrail } from "./decision-trail.ts";
 import { launchBlockedByDesignGate } from "./design-gate.ts";
 import { composeLaunchBrief } from "./personas.ts";
 import { closeIfTerminal, runHandleFor } from "./reconcile.ts";
-import { approvalGate, gateAfterFail, gateBlockedRefusal, recordGateBlocked } from "./token-police.ts";
+import { approvalGate, gateAfterFail, gateBlockedRefusal, normalizeAction, recordGateBlocked } from "./token-police.ts";
 import { createCursorUsage, recordUsageReceipt, type CursorUsageFn } from "./usage-receipts.ts";
 
 export { CONNECTOR_TOOLS, createMemoryConnectorStore };
@@ -989,7 +989,7 @@ export async function callConnectorTool(
     const action = textArg(args, "action") ?? "unknown";
     const target = textArg(args, "target") ?? action;
     // Upgrade cards come only from HQ (daily pins check, upgrade check): approving one starts runs or moves a pin.
-    if (HQ_ONLY_APPROVAL_ACTIONS.has(action)) {
+    if (HQ_ONLY_APPROVAL_ACTIONS.has(normalizeAction(action))) {
       const body = { status: "refused", reason: "hq_only_action", action };
       await record(deps, auth, name, action, body);
       return toolResult(body, true);

@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { decideApproval } from "../../hq/approval.ts";
 import { callConnectorTool, type ConnectorDeps } from "../../hq/connector.ts";
 import { UPGRADE_BOT_NAME, type ConnectorAgent, type ConnectorAuth, type ConnectorStore } from "../../hq/connector-store.ts";
-import { connectorTick, resolveDailyPins } from "../../hq/pins.ts";
+import { resolveDailyPins } from "../../hq/pins.ts";
+import { postTick } from "../../hq/server.ts";
 import { reconcileConnector } from "../../hq/reconcile.ts";
 import {
   COUNCIL_UPGRADE_ACTION,
@@ -15,6 +16,7 @@ import {
   defaultUpgradeGrader,
   loadUpgradeTasks,
   upgradeRunKey,
+  upgradeTickStep,
   type UpgradeTickResult,
 } from "../../hq/upgrade-check.ts";
 import { readCatalogMatch } from "../../gateway/catalog.ts";
@@ -464,23 +466,35 @@ describe("U7 injected runner and grader", () => {
 });
 
 describe("U7 the tick", () => {
-  it("runs the upgrade step after pins, and a throw there fails soft", async () => {
-    const ctx = await setup();
-    const order: string[] = [];
-    const result = await connectorTick(ctx.deps, sheetText, {
-      fleet: async () => {
-        order.push("fleet");
-        return { status: "skipped" };
-      },
-      upgrade: async () => {
-        order.push("upgrade");
-        throw new Error("boom postgres://user:secret@host/db");
-      },
+  it("the tick runs the upgrade step last (reconcile -> fleet -> pins -> selftest -> upgrade) and answers 200", async () => {
+    const previous = process.env.DEXTER_TICK_SECRET;
+    process.env.DEXTER_TICK_SECRET = "unit-upgrade-tick-secret";
+    try {
+      const result = await postTick("unit-upgrade-tick-secret");
+      expect(result.status).toBe(200);
+      expect(Object.keys(result.body as Record<string, unknown>)).toEqual(["ok", "reconcile", "fleet", "pins", "selftest", "upgrade"]);
+      expect((result.body as Record<string, unknown>).upgrade).toEqual({ checks: [] });
+    } finally {
+      if (previous === undefined) delete process.env.DEXTER_TICK_SECRET;
+      else process.env.DEXTER_TICK_SECRET = previous;
+    }
+  });
+
+  it("a throw in the upgrade step fails soft and never leaks a database URL", async () => {
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((line: unknown) => {
+      logged.push(String(line));
     });
-    expect(order).toEqual(["fleet", "upgrade"]);
-    expect(result.upgrade).toEqual({ status: "error" });
-    expect(result.pins.configured).toBe(true);
-    expect(JSON.stringify(result)).not.toContain("secret");
+    try {
+      const result = await upgradeTickStep(async () => {
+        throw new Error("boom postgres://user:secret@host/db");
+      });
+      expect(result).toEqual({ status: "error" });
+      expect(logged.join(" ")).not.toContain("secret");
+      expect(logged.join(" ")).toContain("[db]");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("an upgrade switch row before the daily check does not count as today's check", async () => {
@@ -498,7 +512,7 @@ describe("U7 the tick", () => {
 describe("U7 upgrade cards come only from HQ", () => {
   it("a bot cannot raise a model_upgrade, upgrade_rollback or council_upgrade card", async () => {
     const ctx = await setup();
-    for (const action of ["model_upgrade", "upgrade_rollback", "council_upgrade"]) {
+    for (const action of ["model_upgrade", "upgrade_rollback", "council_upgrade", "Model-Upgrade", " upgrade rollback "]) {
       const result = await callConnectorTool(ctx.deps, capsAuth, "request_approval", { action, target: "grok:grok-4.8->grok-4.6" });
       expect(result.structuredContent).toMatchObject({ status: "refused", reason: "hq_only_action" });
     }

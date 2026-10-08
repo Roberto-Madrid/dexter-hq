@@ -259,6 +259,17 @@ export async function advanceUpgradeChecks(input: {
   return { checks };
 }
 
+/** The tick step: never throws. A failure is logged without any database URL and becomes `{ status: "error" }`. */
+export async function upgradeTickStep(run: () => Promise<UpgradeTickResult>): Promise<UpgradeTickResult | { status: "error" }> {
+  try {
+    return await run();
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : "upgrade_check_failed";
+    console.error(raw.replace(/postgres(?:ql)?:\/\/\S+/gi, "[db]").slice(0, 180));
+    return { status: "error" };
+  }
+}
+
 async function advanceOne(ctx: AdvanceContext, check: OpenCheck): Promise<UpgradeCheckSummary> {
   const { store } = ctx.deps;
   const base = { checkId: check.checkId, family: check.family, incoming: check.incoming, current: check.current, launched: 0, graded: 0 };
