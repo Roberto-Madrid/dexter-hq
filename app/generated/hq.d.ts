@@ -82,6 +82,11 @@ export function getFleetView(
   cookie: string | null,
   week: string | null,
 ): Promise<{ status: number; body: { week: string | null; text: string; report: unknown } | { error: string } }>;
+/** Weekly job scan brief (owner only). Reads the stored brief; never generates one. */
+export function getJobScanView(
+  cookie: string | null,
+  week: string | null,
+): Promise<{ status: number; body: { week: string | null; text: string; brief: unknown } | { error: string } }>;
 export function postCallback(raw: string, signature: string | null): Promise<{ status: number; duplicate?: boolean }>;
 export function venturesHttp(request: Request): Promise<Response>;
 export function getBoardNotes(cookie: string | null, search: string | URLSearchParams): Promise<{ status: number; body: unknown }>;

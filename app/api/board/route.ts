@@ -1,4 +1,14 @@
-import { emailFromCookie, getArtifactView, getBoard, getBoardNotes, getFleetView, getSelftestView, getUsageView, venturesHttp } from "../../generated/hq.js";
+import {
+  emailFromCookie,
+  getArtifactView,
+  getBoard,
+  getBoardNotes,
+  getFleetView,
+  getJobScanView,
+  getSelftestView,
+  getUsageView,
+  venturesHttp,
+} from "../../generated/hq.js";
 
 export const runtime = "nodejs";
 
@@ -18,6 +28,11 @@ export async function GET(request: Request) {
   if (params.get("view") === "fleet") {
     const view = await getFleetView(cookie, params.get("week"));
     return Response.json(view.body, { status: view.status });
+  }
+  // The weekly job scan brief (Stage 4 C1): GET ?view=jobs[&week=2026-W40], owner only.
+  if (params.get("view") === "jobs") {
+    const view = await getJobScanView(cookie, params.get("week"));
+    return Response.json(view.body, { status: view.status, headers: { "cache-control": "no-store" } });
   }
   if (params.get("view") === "notes") {
     // Owner JSON read of the agent board (no screen yet): type, scope, repo, status, limit filters.
