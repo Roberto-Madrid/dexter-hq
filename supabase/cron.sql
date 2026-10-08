@@ -22,7 +22,7 @@ select cron.schedule(
     ),
     params := '{}'::jsonb,
     headers := '{"Content-Type":"application/json"}'::jsonb,
-    timeout_milliseconds := 5000
+    timeout_milliseconds := 30000
   );
   $cron$
 );
