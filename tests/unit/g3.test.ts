@@ -12,7 +12,7 @@ import type { HqDeps, ListedRuntime } from "../../hq/deps.ts";
 import { MemoryStore } from "../../hq/memory.ts";
 import { compileResearch } from "../../hq/research.ts";
 import { createRejectingCeo, createScriptedCeo } from "../../hq/scripted-ceo.ts";
-import { expireLease, tick } from "../../hq/tick.ts";
+import { expireLease, tick } from "../../legacy/hq/tick.ts";
 import { stopAll } from "../../hq/stop.ts";
 import { pinsFromIds, readCatalogMatch } from "../../gateway/catalog.ts";
 import { SHIPPED_CREWS } from "../../hq/crews.ts";

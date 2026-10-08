@@ -114,10 +114,14 @@ describe("U1 caps", () => {
 
   it("starts once when the same idempotency key arrives twice at the same time", async () => {
     const { deps, cursor } = await capsDeps({ cursor: fakeCursor({ delayMs: 5 }) });
-    await Promise.all([launch(deps, "same", "owner/a", "req-0-1"), launch(deps, "same", "owner/a", "req-0-1")]);
+    const both = await Promise.all([launch(deps, "same", "owner/a", "req-0-1"), launch(deps, "same", "owner/a", "req-0-1")]);
     expect(cursor.starts).toHaveLength(1);
+    expect(both.map((item) => item.structuredContent.reason ?? item.structuredContent.status).sort()).toEqual([
+      "launch_in_progress",
+      "launched",
+    ]);
     const again = await launch(deps, "same", "owner/a", "req-0-1");
-    expect(again.structuredContent.status).toBe("idempotent");
+    expect(again.structuredContent.agentId).toBe(both.find((item) => item.structuredContent.status === "launched")?.structuredContent.agentId);
     expect(cursor.starts).toHaveLength(1);
   });
 

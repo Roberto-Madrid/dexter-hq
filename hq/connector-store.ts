@@ -58,7 +58,42 @@ export type ConnectorAgent = {
   status: string;
   idempotencyKey: string;
   result: Record<string, unknown> | null;
+  createdAt?: string;
 };
+
+/** Rows that hold a cap slot. `reserving` is the placeholder a launch inserts before it calls Cursor. */
+export const ACTIVE_AGENT_STATUSES = ["reserving", "launched", "running", "starting", "CREATING", "RUNNING", "queued"] as const;
+const ACTIVE = new Set<string>(ACTIVE_AGENT_STATUSES);
+/** Rows that never reached Cursor; they do not count against the per-request launch cap. */
+const NOT_LAUNCHED = new Set(["not-configured", "launch_failed"]);
+
+export type LaunchCaps = { global: number; perRepo: number; perRequest: number };
+export type LaunchRefusalReason = "agent_cap" | "per_repo_cap" | "request_cap";
+export type LaunchReservation =
+  | { ok: true; agent: ConnectorAgent }
+  | { ok: false; reason: LaunchRefusalReason; cap: number }
+  | { ok: false; reason: "duplicate"; existing: ConnectorAgent | null };
+
+export function isActiveAgent(status: string): boolean {
+  return ACTIVE.has(status);
+}
+
+/** One rule for both stores. The caller must hold the launch lock while it reads `rows` and inserts. */
+export function launchCapRefusal(
+  rows: readonly ConnectorAgent[],
+  input: { repo: string | null; requestId: string | null; caps: LaunchCaps },
+): { reason: LaunchRefusalReason; cap: number } | null {
+  const active = rows.filter((row) => ACTIVE.has(row.status));
+  if (active.length >= input.caps.global) return { reason: "agent_cap", cap: input.caps.global };
+  if (input.repo && active.filter((row) => row.repo === input.repo).length >= input.caps.perRepo) {
+    return { reason: "per_repo_cap", cap: input.caps.perRepo };
+  }
+  if (input.requestId) {
+    const launched = rows.filter((row) => row.result?.requestId === input.requestId && !NOT_LAUNCHED.has(row.status));
+    if (launched.length >= input.caps.perRequest) return { reason: "request_cap", cap: input.caps.perRequest };
+  }
+  return null;
+}
 
 export type ConnectorCheckRun = {
   nonce: string;
@@ -118,6 +153,21 @@ export interface ConnectorStore {
   getAgent(id: string): Promise<ConnectorAgent | null>;
   findLaunch(botId: string, idempotencyKey: string): Promise<ConnectorAgent | null>;
   saveAgent(agent: ConnectorAgent): Promise<void>;
+  /** Atomic: checks the caps and inserts a `reserving` row in one step, so two launches cannot both pass. */
+  reserveLaunch(input: { agent: ConnectorAgent; requestId: string | null; caps: LaunchCaps }): Promise<LaunchReservation>;
+  /** Conditional: moves the row only while its status is one of `from`. Returns false when nothing changed. */
+  setAgentStatus(
+    id: string,
+    from: readonly string[],
+    status: string,
+    result?: Record<string, unknown> | null,
+  ): Promise<boolean>;
+  /** Atomic: appends a `council_seat` event only while fewer than `cap` exist since `since`. */
+  reserveCouncilSeat(input: {
+    event: Omit<ConnectorEvent, "id">;
+    since: string;
+    cap: number;
+  }): Promise<{ ok: boolean; used: number }>;
   saveRequest(row: ConnectorRequest): Promise<void>;
   getRequest(id: string): Promise<ConnectorRequest | null>;
   listRequests(): Promise<ConnectorRequest[]>;
@@ -204,6 +254,34 @@ export function createMemoryConnectorStore(seed?: {
     },
     async saveAgent(agent) {
       agents.set(agent.id, { ...agent });
+    },
+    // No await between the check and the insert, so this is atomic on one event loop.
+    async reserveLaunch({ agent, requestId, caps }) {
+      const rows = [...agents.values()];
+      const existing = rows.find((row) => row.botId === agent.botId && row.idempotencyKey === agent.idempotencyKey);
+      if (existing && existing.status !== "launch_failed") return { ok: false, reason: "duplicate", existing };
+      const refusal = launchCapRefusal(rows, { repo: agent.repo, requestId, caps });
+      if (refusal) return { ok: false, ...refusal };
+      const row: ConnectorAgent = {
+        ...agent,
+        id: existing?.id ?? agent.id,
+        status: "reserving",
+        result: { ...agent.result, requestId },
+      };
+      agents.set(row.id, row);
+      return { ok: true, agent: { ...row } };
+    },
+    async setAgentStatus(id, from, status, result) {
+      const row = agents.get(id);
+      if (!row || !from.includes(row.status)) return false;
+      agents.set(id, { ...row, status, result: result === undefined ? row.result : result });
+      return true;
+    },
+    async reserveCouncilSeat({ event, since, cap }) {
+      const used = events.filter((row) => row.action === "council_seat" && row.at >= since).length;
+      if (used >= cap) return { ok: false, used };
+      events.push({ ...event, id: randomUUID() });
+      return { ok: true, used: used + 1 };
     },
     async saveRequest(row) {
       requests.set(row.id, { ...row });
