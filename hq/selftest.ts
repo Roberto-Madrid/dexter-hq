@@ -148,6 +148,7 @@ export async function runSelftestChecks(input: {
       cursor: null,
       checker: null,
       councilConfigured: false,
+      usage: null,
     });
     const whoami = await callConnectorTool(deps, null, "whoami", {});
     const kind = whoami.structuredContent.kind;
