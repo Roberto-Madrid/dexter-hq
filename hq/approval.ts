@@ -1,4 +1,5 @@
 import type { ConnectorApproval, ConnectorStore } from "./connector-store.ts";
+import { surgeExpiresAt } from "./surge.ts";
 import { UPGRADE_APPROVAL_ACTIONS, executeUpgradeApproval } from "./upgrade-check.ts";
 
 export type ApprovalDecision = "approved" | "denied";
@@ -17,6 +18,8 @@ export type DecideApprovalResult = {
   ran: boolean;
   reason?: string;
   execution?: DeployAttempt;
+  /** An approved surge counts until this time (hq/surge.ts). */
+  expiresAt?: string;
 };
 
 type DeployFn = (input: { target: string; token: string }) => Promise<DeployAttempt>;
@@ -102,11 +105,12 @@ export async function decideApproval(
   },
 ): Promise<DecideApprovalResult> {
   const at = (input.now ?? (() => new Date().toISOString()))();
-  const claimed = await store.claimApproval(input.approvalId, input.decision);
+  const claimed = await store.claimApproval(input.approvalId, input.decision, at);
   if (!claimed.row) {
     return { status: "unknown", ran: false, reason: "unknown_approval" };
   }
   const row = claimed.row;
+  const expiresAt = claimed.claimed ? surgeExpiresAt(row) : null;
   if (!claimed.claimed) {
     await store.appendEvent({
       ownerId: row.ownerId,
@@ -132,7 +136,7 @@ export async function decideApproval(
     actor: "owner",
     action: "approval",
     target: row.id,
-    result: { status: row.status, action: row.action, target: row.target },
+    result: { status: row.status, action: row.action, target: row.target, ...(expiresAt ? { expiresAt } : {}) },
     at,
   });
   if (input.decision === "denied") {
@@ -185,5 +189,6 @@ export async function decideApproval(
     action: row.action,
     ran: execution.ran,
     execution,
+    ...(expiresAt ? { expiresAt } : {}),
   };
 }

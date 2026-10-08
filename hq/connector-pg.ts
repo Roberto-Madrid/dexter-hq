@@ -101,6 +101,7 @@ function approvalFromRow(row: {
   request_id: string | null;
   action: string;
   target: string;
+  approved_at?: Date | string | null;
 }): ConnectorApproval {
   const split = row.action.includes(":") ? row.action.split(":") : ["pending", row.action];
   const status = split[0] === "approved" || split[0] === "denied" || split[0] === "pending" ? split[0] : "pending";
@@ -112,6 +113,8 @@ function approvalFromRow(row: {
     action,
     target: row.target,
     status: status as ConnectorApproval["status"],
+    // approved_at is stamped when the approval is decided (it is the insert time on rows decided before that).
+    decidedAt: status === "pending" || !row.approved_at ? null : new Date(row.approved_at).toISOString(),
   };
 }
 
@@ -531,12 +534,13 @@ export function createPgConnectorStore(url: string): ConnectorStore {
           request_id: string | null;
           action: string;
           target: string;
-        }>("select id, owner_id, request_id, action, target from public.approvals where id = $1", [id]);
+          approved_at: Date | null;
+        }>("select id, owner_id, request_id, action, target, approved_at from public.approvals where id = $1", [id]);
         const row = found.rows[0];
         return row ? approvalFromRow(row) : null;
       });
     },
-    async claimApproval(id, status) {
+    async claimApproval(id, status, decidedAt) {
       return withClient(url, async (client) => {
         const updated = await client.query<{
           id: string;
@@ -544,17 +548,19 @@ export function createPgConnectorStore(url: string): ConnectorStore {
           request_id: string | null;
           action: string;
           target: string;
+          approved_at: Date | null;
         }>(
           `update public.approvals
            set action = $2 || case
              when action like 'pending:%' then substr(action, 9)
              else action
-           end
+           end,
+           approved_at = coalesce($3::timestamptz, now())
            where id = $1
              and action not like 'approved:%'
              and action not like 'denied:%'
-           returning id, owner_id, request_id, action, target`,
-          [id, `${status}:`],
+           returning id, owner_id, request_id, action, target, approved_at`,
+          [id, `${status}:`, decidedAt ?? null],
         );
         if (updated.rows[0]) return { claimed: true, row: approvalFromRow(updated.rows[0]) };
         const found = await client.query<{
@@ -563,7 +569,8 @@ export function createPgConnectorStore(url: string): ConnectorStore {
           request_id: string | null;
           action: string;
           target: string;
-        }>("select id, owner_id, request_id, action, target from public.approvals where id = $1", [id]);
+          approved_at: Date | null;
+        }>("select id, owner_id, request_id, action, target, approved_at from public.approvals where id = $1", [id]);
         const row = found.rows[0];
         return { claimed: false, row: row ? approvalFromRow(row) : null };
       });
@@ -576,7 +583,8 @@ export function createPgConnectorStore(url: string): ConnectorStore {
           request_id: string | null;
           action: string;
           target: string;
-        }>("select id, owner_id, request_id, action, target from public.approvals order by approved_at asc");
+          approved_at: Date | null;
+        }>("select id, owner_id, request_id, action, target, approved_at from public.approvals order by approved_at asc");
         return found.rows.map(approvalFromRow);
       });
     },
