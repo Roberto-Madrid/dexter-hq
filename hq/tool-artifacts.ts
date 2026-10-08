@@ -119,7 +119,7 @@ function artifactFromEvent(event: ConnectorEvent | undefined): ToolArtifact | nu
 
 export async function readToolArtifact(store: ConnectorStore, id: string): Promise<ToolArtifact | null> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
-  const found = await store.listEventsByAction(TOOL_OUTPUT_ACTION, { target: artifactTarget(id), limit: 1 });
+  const found = await store.listRecentEvents(TOOL_OUTPUT_ACTION, { target: artifactTarget(id), limit: 1 });
   return artifactFromEvent(found[0]);
 }
 

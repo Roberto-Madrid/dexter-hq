@@ -317,7 +317,7 @@ export function createPgConnectorStore(url: string): ConnectorStore {
         }));
       });
     },
-    async listEventsByAction(action, options) {
+    async listRecentEvents(action, options) {
       return withClient(url, async (client) => {
         // dexter-shortcut: no (action, target) index on events; the log is small. upgrade path: an index on (action, target, at) once events pass ~100k rows.
         const found = await client.query<{

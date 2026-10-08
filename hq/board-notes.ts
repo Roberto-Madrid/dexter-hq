@@ -446,7 +446,7 @@ export async function verifyNote(
 
 async function failedCheckOn(store: ConnectorStore, request: ConnectorRequest, sha: string): Promise<{ sha: string; nonce: string | null } | null> {
   const prefix = sha.toLowerCase();
-  for (const event of await store.listEventsByAction("request_checks", { target: request.id, limit: 200 })) {
+  for (const event of await store.listRecentEvents("request_checks", { target: request.id, limit: 200 })) {
     const result = event.result;
     if (event.ownerId === request.ownerId && result?.status === "failed" && typeof result.sha === "string" && result.sha.toLowerCase().startsWith(prefix)) {
       return { sha: result.sha, nonce: typeof result.nonce === "string" ? result.nonce : null };

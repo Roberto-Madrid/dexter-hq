@@ -63,7 +63,7 @@ async function successes(store: ConnectorStore, ownerId: string, approach: strin
   }
   // dexter-shortcut: reads the newest 5000 request_checks events; upgrade path: an (action, result->>'approach') index or a reuse table.
   const seen = new Set<string>();
-  for (const event of await store.listEventsByAction("request_checks", { limit: 5000 })) {
+  for (const event of await store.listRecentEvents("request_checks", { limit: 5000 })) {
     const r = event.result;
     if (event.ownerId !== ownerId || r?.status !== "ready" || r.approach !== approach || typeof r.nonce !== "string") continue;
     if (seen.has(r.nonce)) continue;

@@ -65,7 +65,7 @@ export async function handleChat(
     let receipts = null;
     let bots: Awaited<ReturnType<NonNullable<HqDeps["connector"]>["listBots"]>> = [];
     try {
-      receipts = deps.connector ? await deps.connector.listEventsByAction(USAGE_RECEIPT_ACTION, { limit: USAGE_SCAN_LIMIT }) : null;
+      receipts = deps.connector ? await deps.connector.listRecentEvents(USAGE_RECEIPT_ACTION, { limit: USAGE_SCAN_LIMIT }) : null;
       bots = deps.connector ? await deps.connector.listBots() : [];
     } catch {
       receipts = null;

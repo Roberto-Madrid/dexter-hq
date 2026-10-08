@@ -389,7 +389,7 @@ export async function getUsageView(
   let receipts;
   let bots;
   try {
-    receipts = await source.listEventsByAction(USAGE_RECEIPT_ACTION, { limit: USAGE_SCAN_LIMIT });
+    receipts = await source.listRecentEvents(USAGE_RECEIPT_ACTION, { limit: USAGE_SCAN_LIMIT });
     bots = await source.listBots();
   } catch {
     return { status: 503, body: { status: "error", reason: "usage_unavailable" } };

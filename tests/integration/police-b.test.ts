@@ -129,7 +129,7 @@ describe("token police part B on Postgres", () => {
     expect(events.rows).toHaveLength(1);
     expect(events.rows[0]?.actor).toBe("hq");
     expect(events.rows[0]?.result?.text).toBe(text);
-    const found = await store.listEventsByAction("tool_output", { target: `artifact:${output.artifactId}`, limit: 1 });
+    const found = await store.listRecentEvents("tool_output", { target: `artifact:${output.artifactId}`, limit: 1 });
     expect(found).toHaveLength(1);
     const page = await call(lead, "get_context", { artifactId: output.artifactId });
     expect(page).toMatchObject({ status: "ok", artifact: { chars: text.length, text } });
@@ -146,7 +146,7 @@ describe("token police part B on Postgres", () => {
       result: { status: "recorded", agentId: target.split(":")[0], runId: "run-1", botId: lead.id, requestId: null, repo, role: "builder", runStatus: "finished", input_tokens: 70, output_tokens: 7, cache_read_tokens: 0, cost_cents: null, charged_cents: null },
       at: new Date().toISOString(),
     });
-    const receipts = await store.listEventsByAction("usage_receipt", { limit: 1000 });
+    const receipts = await store.listRecentEvents("usage_receipt", { limit: 1000 });
     const card = usageCard(receipts, await store.listBots(), new URLSearchParams(`repo=${encodeURIComponent(repo)}`), new Date().toISOString());
     expect(card.status).toBe(200);
     expect(card.body).toMatchObject({ count: 1, recorded: 1, totals: { input_tokens: 70, output_tokens: 7 } });

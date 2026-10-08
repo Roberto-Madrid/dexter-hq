@@ -417,7 +417,7 @@ export interface ConnectorStore {
   appendEvent(event: Omit<ConnectorEvent, "id"> & { id?: string }): Promise<ConnectorEvent>;
   listEvents(): Promise<ConnectorEvent[]>;
   /** Newest first: events with this action (and target, when given), at most `limit` (default 200). */
-  listEventsByAction(action: string, options?: { target?: string; limit?: number }): Promise<ConnectorEvent[]>;
+  listRecentEvents(action: string, options?: { target?: string; limit?: number }): Promise<ConnectorEvent[]>;
   listBots(): Promise<ConnectorBot[]>;
   listAgents(): Promise<ConnectorAgent[]>;
   getAgent(id: string): Promise<ConnectorAgent | null>;
@@ -570,7 +570,7 @@ export function createMemoryConnectorStore(seed?: {
     async listEvents() {
       return [...events];
     },
-    async listEventsByAction(action, options) {
+    async listRecentEvents(action, options) {
       const limit = options?.limit ?? 200;
       return events
         .filter((row) => row.action === action && (options?.target === undefined || row.target === options.target))
