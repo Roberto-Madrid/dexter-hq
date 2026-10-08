@@ -1,0 +1,321 @@
+
+ RUN  v3.2.4 /workspace/hq-stage3-u1
+
+ ❯ tests/integration/connector-caps.test.ts (6 tests | 6 failed) 31ms
+   × connector caps under concurrency (Postgres) > lets exactly 2 of 3 simultaneous launches on one repo through 6ms
+     → store.reserveLaunch is not a function
+   × connector caps under concurrency (Postgres) > holds the global cap across repos 1ms
+     → ACTIVE_AGENT_STATUSES is not iterable
+   × connector caps under concurrency (Postgres) > holds the per-request cap, counting finished launches 1ms
+     → store.reserveLaunch is not a function
+   × connector caps under concurrency (Postgres) > reserves one row when the same key arrives twice, and re-reserves only a failed launch 0ms
+     → store.reserveLaunch is not a function
+   × connector caps under concurrency (Postgres) > moves an agent to terminal once; a second move changes nothing 1ms
+     → store.reserveLaunch is not a function
+   × connector caps under concurrency (Postgres) > holds the Council seat cap under concurrency 3ms
+     → store.reserveCouncilSeat is not a function
+ ❯ tests/unit/caps.test.ts (10 tests | 9 failed) 78ms
+   × U1 one dispatch path > a chat plan with a wired runtime starts nothing 26ms
+     → expected [ { …(4) } ] to have a length of +0 but got 1
+   × U1 caps > uses the owner defaults 4ms
+     → expected undefined to be 5 // Object.is equality
+   ✓ U1 caps > refuses a 3rd launch on repo A while repo B is allowed 8ms
+   × U1 caps > lets exactly 2 of 3 simultaneous launches on one repo through 9ms
+     → expected [ 'launched', 'launched', 'launched' ] to have a length of 2 but got 3
+   × U1 caps > lets exactly 3 of 4 simultaneous launches on four repos through 8ms
+     → expected [ …(4) ] to have a length of 3 but got 4
+   × U1 caps > starts once when the same idempotency key arrives twice at the same time 8ms
+     → expected [ …(2) ] to have a length of 1 but got 2
+   × U1 caps > frees the slot when Cursor refuses the start, and the same key can retry 4ms
+     → expected [] to deeply equal [ 'launch_failed' ]
+   × U1 caps > caps one request at 5 launches 4ms
+     → expected { status: 'launched', …(6) } to match object { status: 'refused', …(2) }
+(6 matching properties omitted from actual)
+   × U1 caps > agent_status saves a finished run and frees the repo slot 4ms
+     → expected 'launched' to be 'finished' // Object.is equality
+   × U1 caps > caps Council seat runs at 40 per 7 days 2ms
+     → expected { status: 'verdict', …(4) } to match object { status: 'refused', …(2) }
+(4 matching properties omitted from actual)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/reconcile.test.ts [ tests/unit/reconcile.test.ts ]
+Error: Cannot find module '../../hq/reconcile.ts' imported from '/workspace/hq-stage3-u1/tests/unit/reconcile.test.ts'
+ ❯ tests/unit/reconcile.test.ts:4:1
+      2| import { terminalAgentStatus } from "../../adapters/cursor-cloud.ts";
+      3| import { callConnectorTool } from "../../hq/connector.ts";
+      4| import { reconcileConnector } from "../../hq/reconcile.ts";
+       | ^
+      5| import { BOT, OWNER, capsAuth as auth, capsDeps, launch } from "./caps…
+      6| 
+
+Caused by: Error: Failed to load url ../../hq/reconcile.ts (resolved id: ../../hq/reconcile.ts) in /workspace/hq-stage3-u1/tests/unit/reconcile.test.ts. Does the file exist?
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/config.js:22739:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/16]⎯
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 15 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > lets exactly 2 of 3 simultaneous launches on one repo through
+TypeError: store.reserveLaunch is not a function
+ ❯ tests/integration/connector-caps.test.ts:52:34
+     50|     const caps = { global: 1000, perRepo: 2, perRequest: 5 };
+     51|     const results = await Promise.all(
+     52|       [1, 2, 3].map((n) => store.reserveLaunch({ agent: row(`repo-${re…
+       |                                  ^
+     53|     );
+     54|     expect(results.filter((item) => item.ok)).toHaveLength(2);
+ ❯ tests/integration/connector-caps.test.ts:52:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/16]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > holds the global cap across repos
+TypeError: ACTIVE_AGENT_STATUSES is not iterable
+ ❯ activeCount tests/integration/connector-caps.test.ts:31:10
+     29|   const found = await pool.query<{ n: string }>(
+     30|     "select count(*)::text as n from public.connector_agents where sta…
+     31|     [[...ACTIVE_AGENT_STATUSES]],
+       |          ^
+     32|   );
+     33|   return Number(found.rows[0]?.n ?? 0);
+ ❯ tests/integration/connector-caps.test.ts:61:35
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/16]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > holds the per-request cap, counting finished launches
+TypeError: store.reserveLaunch is not a function
+ ❯ tests/integration/connector-caps.test.ts:72:31
+     70|     const requestId = randomUUID();
+     71|     const caps = { global: 1000, perRepo: 2, perRequest: 3 };
+     72|     const first = await store.reserveLaunch({ agent: row(`req-${reques…
+       |                               ^
+     73|     expect(first.ok).toBe(true);
+     74|     if (first.ok) expect(await store.setAgentStatus(first.agent.id, ["…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/16]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > reserves one row when the same key arrives twice, and re-reserves only a failed launch
+TypeError: store.reserveLaunch is not a function
+ ❯ tests/integration/connector-caps.test.ts:88:62
+     86|     const caps = { global: 1000, perRepo: 2, perRequest: 5 };
+     87|     const key = `dup-${randomUUID()}`;
+     88|     const results = await Promise.all([1, 2].map(() => store.reserveLa…
+       |                                                              ^
+     89|     expect(results.filter((item) => item.ok)).toHaveLength(1);
+     90|     expect(results.filter((item) => !item.ok && item.reason === "dupli…
+ ❯ tests/integration/connector-caps.test.ts:88:46
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/16]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > moves an agent to terminal once; a second move changes nothing
+TypeError: store.reserveLaunch is not a function
+ ❯ tests/integration/connector-caps.test.ts:102:34
+    100|     const repo = `it/${randomUUID()}`;
+    101|     const caps = { global: 1000, perRepo: 2, perRequest: 5 };
+    102|     const reserved = await store.reserveLaunch({ agent: row(`term-${ra…
+       |                                  ^
+    103|     if (!reserved.ok) throw new Error("no reservation");
+    104|     await store.saveAgent({ ...reserved.agent, cursorHandle: `bc-${ran…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/16]⎯
+
+ FAIL  tests/integration/connector-caps.test.ts > connector caps under concurrency (Postgres) > holds the Council seat cap under concurrency
+TypeError: store.reserveCouncilSeat is not a function
+ ❯ tests/integration/connector-caps.test.ts:121:65
+    119|     const cap = Number(used.rows[0]?.n ?? 0) + 1;
+    120|     const event = { ownerId: owner, actor: "it-lead", action: "council…
+    121|     const results = await Promise.all([1, 2, 3].map(() => store.reserv…
+       |                                                                 ^
+    122|     expect(results.filter((item) => item.ok)).toHaveLength(1);
+    123|   });
+ ❯ tests/integration/connector-caps.test.ts:121:49
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/16]⎯
+
+ FAIL  tests/unit/caps.test.ts > U1 one dispatch path > a chat plan with a wired runtime starts nothing
+AssertionError: expected [ { …(4) } ] to have a length of +0 but got 1
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/unit/caps.test.ts:66:20
+     64|     const result = await handleChat(store, deps, "Fix the stale lease …
+     65|     expect(result.kind).toBe("plan");
+     66|     expect(starts).toHaveLength(0);
+       |                    ^
+     67|     expect(await store.listRuns()).toHaveLength(0);
+     68|     expect((await store.listTasks()).length).toBeGreaterThan(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/16]⎯
+
+ FAIL  tests/unit/caps.test.ts > U1 caps > uses the owner defaults
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ tests/unit/caps.test.ts:78:36
+     76|     expect(AGENT_SURGE_CAP).toBe(6);
+     77|     expect(PER_REPO_CAP).toBe(2);
+     78|     expect(PER_REQUEST_LAUNCH_CAP).toBe(5);
+       |                                    ^
+     79|     expect(COUNCIL_WEEKLY_SEAT_CAP).toBe(40);
+     80|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/16]⎯
+
+ FAIL  tests/unit/caps.test.ts > U1 caps > lets exactly 2 of 3 simultaneous launches on one repo through
+AssertionError: expected [ 'launched', 'launched', 'launched' ] to have a length of 2 but got 3
+
+- Expected
++ Received
+
+- 2
++ 3
+
+ ❯ tests/unit/caps.test.ts:101:64
+     99|     ]);
+    100|     const statuses = results.map((item) => item.structuredContent.stat…
+    101|     expect(statuses.filter((status) => status === "launched")).toHaveL…
+       |                                                                ^
+    102|     expect(results.filter((item) => item.structuredContent.reason === …
+    103|     expect(cursor.starts).toHaveLength(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/16]⎯
+
+ FAIL  tests/unit/caps.test.ts > U1 caps > lets exactly 3 of 4 simultaneous launches on four repos through
+AssertionError: expected [ …(4) ] to have a length of 3 but got 4
+
+- Expected
++ Received
+
+- 3
++ 4
+
+ ❯ tests/unit/caps.test.ts:110:84
+    108|     const { deps, cursor } = await capsDeps({ cursor: fakeCursor({ del…
+    109|     const results = await Promise.all(REPOS.map((repo, index) => launc…
+    110|     expect(results.filter((item) => item.structuredContent.status === …
+       |                                                                                    ^
+    111|     expect(results.filter((item) => item.structuredContent.reason === …
+    112|     expect(cursor.starts).toHaveLength(3);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/16]⎯
+
+ FAIL  tests/unit/caps.test.ts > U1 caps > starts once when the same idempotency key arrives twice at the same time
+AssertionError: expected [ …(2) ] to have a length of 1 but got 2
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/unit/caps.test.ts:118:27
+    116|     const { deps, cursor } = await capsDeps({ cursor: fakeCursor({ del…
+    117|     await Promise.all([launch(deps, "same", "owner/a", "req-0-1"), lau…
+    118|     expect(cursor.starts).toHaveLength(1);
+       |                           ^
+    119|     const again = await launch(deps, "same", "owner/a", "req-0-1");
+    120|     expect(again.structuredContent.status).toBe("idempotent");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/16]⎯
+
+ FAIL  tests/unit/caps.test.ts > U1 caps > frees the slot when Cursor refuses the start, and the same key can retry
+AssertionError: expected [] to deeply equal [ 'launch_failed' ]
+
+- Expected
++ Received
+
+- [
+-   "launch_failed",
+- ]
++ []
+
+ ❯ tests/unit/caps.test.ts:129:43
+    127|     expect(first.structuredContent).toMatchObject({ status: "error", r…
+    128|     const rows = await failing.store.listAgents();
+    129|     expect(rows.map((row) => row.status)).toEqual(["launch_failed"]);
+       |                                           ^
+    130|     const whoami = await callConnectorTool(failing.deps, auth, "whoami…
+    131|     expect(whoami.structuredContent.capsLeft).toMatchObject({ agents: …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/16]⎯
+
+ FAIL  tests/unit/caps.test.ts > U1 caps > caps one request at 5 launches
+AssertionError: expected { status: 'launched', …(6) } to match object { status: 'refused', …(2) }
+(6 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "cap": 5,
+-   "reason": "request_cap",
+-   "status": "refused",
++   "status": "launched",
+  }
+
+ ❯ tests/unit/caps.test.ts:147:37
+    145|     }
+    146|     const sixth = await launch(deps, "req-cap-6", "owner/a", "req-0-0"…
+    147|     expect(sixth.structuredContent).toMatchObject({ status: "refused",…
+       |                                     ^
+    148|     expect((await launch(deps, "other-request", "owner/a", "req-0-2"))…
+    149|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/16]⎯
+
+ FAIL  tests/unit/caps.test.ts > U1 caps > agent_status saves a finished run and frees the repo slot
+AssertionError: expected 'launched' to be 'finished' // Object.is equality
+
+Expected: "finished"
+Received: "launched"
+
+ ❯ tests/unit/caps.test.ts:159:53
+    157|     const status = await callConnectorTool(deps, auth, "agent_status",…
+    158|     expect(status.structuredContent.status).toBe("FINISHED");
+    159|     expect((await store.getAgent(agentId))?.status).toBe("finished");
+       |                                                     ^
+    160|     expect((await launch(deps, "s3", "owner/a")).structuredContent.sta…
+    161|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/16]⎯
+
+ FAIL  tests/unit/caps.test.ts > U1 caps > caps Council seat runs at 40 per 7 days
+AssertionError: expected { status: 'verdict', …(4) } to match object { status: 'refused', …(2) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "cap": 40,
+-   "reason": "council_weekly_cap",
+-   "status": "refused",
++   "status": "verdict",
+  }
+
+ ❯ tests/unit/caps.test.ts:187:36
+    185|     expect(fortieth.structuredContent.status).toBe("verdict");
+    186|     const over = await callConnectorTool(deps, auth, "request_council"…
+    187|     expect(over.structuredContent).toMatchObject({ status: "refused", …
+       |                                    ^
+    188|     expect(seats).toBe(1);
+    189|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/16]⎯
+
+
+ Test Files  3 failed (3)
+      Tests  15 failed | 1 passed (16)
+   Start at  01:30:29
+   Duration  949ms (transform 448ms, setup 0ms, collect 790ms, tests 109ms, environment 1ms, prepare 217ms)
+
