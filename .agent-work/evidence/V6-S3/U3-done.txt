@@ -1,3 +1,4 @@
+# U3 done-command, 2026-10-08 01:58 PDT at 7f536df, SUPABASE_DB_URL/DATABASE_URL unset (local Postgres 16 on :54329)
 
 > typecheck
 > tsc --noEmit && tsc --noEmit -p tsconfig.app.json
@@ -13,26 +14,26 @@
 
  RUN  v3.2.4 /workspace/hq-stage3-u3
 
- ✓ tests/unit/tower.test.ts (12 tests) 34ms
- ✓ tests/unit/kernel.test.ts (20 tests) 32ms
- ✓ tests/unit/stop.test.ts (13 tests) 37ms
- ✓ tests/unit/mcp.test.ts (7 tests) 136ms
- ✓ tests/unit/g3.test.ts (12 tests) 138ms
- ✓ tests/unit/ventures.test.ts (24 tests) 108ms
- ✓ tests/unit/quality-loop.test.ts (30 tests) 272ms
- ✓ tests/unit/approval.test.ts (5 tests) 61ms
- ✓ tests/unit/connector-council.test.ts (3 tests) 56ms
- ✓ tests/unit/checks.test.ts (2 tests) 60ms
- ✓ tests/security/injection.test.ts (2 tests) 6ms
- ✓ tests/unit/ceo-run.test.ts (4 tests) 216ms
+ ✓ tests/unit/checks.test.ts (2 tests) 53ms
+ ✓ tests/unit/ceo-run.test.ts (4 tests) 224ms
+ ✓ tests/unit/connector-council.test.ts (3 tests) 55ms
+ ✓ tests/unit/mcp.test.ts (7 tests) 158ms
+ ✓ tests/unit/quality-loop.test.ts (30 tests) 228ms
+ ✓ tests/unit/g3.test.ts (12 tests) 166ms
+ ✓ tests/unit/ventures.test.ts (24 tests) 97ms
+ ✓ tests/unit/approval.test.ts (5 tests) 79ms
+ ✓ tests/unit/tower.test.ts (12 tests) 49ms
+ ✓ tests/unit/kernel.test.ts (20 tests) 38ms
+ ✓ tests/security/injection.test.ts (2 tests) 5ms
  ✓ tests/unit/council-seat.test.ts (2 tests) 15ms
- ✓ tests/unit/ceo-command.test.ts (4 tests) 13ms
- ✓ tests/unit/snapshot-db.test.ts (2 tests) 4ms
+ ✓ tests/unit/stop.test.ts (13 tests) 35ms
+ ✓ tests/unit/ceo-command.test.ts (4 tests) 9ms
+ ✓ tests/unit/snapshot-db.test.ts (2 tests) 5ms
 
  Test Files  15 passed (15)
       Tests  142 passed (142)
-   Start at  01:50:30
-   Duration  1.87s (transform 1.58s, setup 0ms, collect 4.97s, tests 1.19s, environment 3ms, prepare 1.30s)
+   Start at  01:58:25
+   Duration  1.75s (transform 1.37s, setup 0ms, collect 4.71s, tests 1.22s, environment 4ms, prepare 1.40s)
 
 
 > check:vendor
@@ -60,14 +61,15 @@ local integration database ready
 
  RUN  v3.2.4 /workspace/hq-stage3-u3
 
- ✓ tests/integration/events.test.ts (1 test) 64ms
- ✓ tests/integration/pool.test.ts (2 tests) 98ms
- ✓ tests/integration/rls.test.ts (1 test) 97ms
- ✓ tests/integration/claim.test.ts (4 tests) 177ms
- ✓ tests/integration/ventures.test.ts (6 tests) 565ms
+ ✓ tests/integration/events.test.ts (1 test) 48ms
+ ✓ tests/integration/pool.test.ts (2 tests) 71ms
+ ✓ tests/integration/rls.test.ts (1 test) 93ms
+ ✓ tests/integration/claim.test.ts (4 tests) 158ms
+ ✓ tests/integration/ventures.test.ts (6 tests) 534ms
 
  Test Files  5 passed (5)
       Tests  14 passed (14)
-   Start at  01:50:35
-   Duration  1.56s (transform 614ms, setup 0ms, collect 1.50s, tests 1.00s, environment 1ms, prepare 452ms)
+   Start at  01:58:31
+   Duration  1.39s (transform 469ms, setup 0ms, collect 1.21s, tests 905ms, environment 1ms, prepare 403ms)
 
+exit=0
