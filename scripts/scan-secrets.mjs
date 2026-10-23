@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const skipDir = new Set(["node_modules", ".git", ".omc", ".omx", ".temp", "tmp"]);
+const skipDir = new Set(["node_modules", ".git", ".omc", ".omx", ".temp", "tmp", ".agent-work"]);
 const skipFile = new Set([".env", ".env.local", ".env.development.local", ".env.test.local", ".env.production.local"]);
 const rules = [
   { id: "private_key", source: "-----BEGIN [A-Z ]*PRIVATE KEY-----" },

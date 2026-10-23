@@ -36,9 +36,9 @@ Endpoint schema was confirmed against https://cursor.com/docs/cloud-agent/api/en
 Identity the key resolves to (**supported**):
 
 - `apiKeyName`: `DEXTER_CURSOR_API_KEY`
-- `userId`: `431080337`
-- `userEmail`: `robbtm40@gmail.com`
-- `userFirstName`: `4Poyo`
+- `userId`: `[redacted]`
+- `userEmail`: `[redacted]`
+- `userFirstName`: `[redacted]`
 - `createdAt`: `2026-09-19T04:45:37.078Z`
 
 Because `userId`/`userEmail` are populated, this is a **user-scoped key**, not a service-account or team key — the documented response for a service-account key omits those fields. **supported** for the observed fields; the user-vs-service-account distinction is **reported** from the documented field semantics.
@@ -52,15 +52,9 @@ Practical consequence: the key carries this individual's access and its usage bi
 9 repositories returned (**supported**):
 
 ```
-https://github.com/Roberto-Madrid/demo2
-https://github.com/Roberto-Madrid/voyporti
 https://github.com/Roberto-Madrid/dexter-barber      <-- required
 https://github.com/Roberto-Madrid/dexter-hq          <-- required
-https://github.com/elbmin79/BandiRutas
-https://github.com/elbmin79/-BandeeRutas
-https://github.com/elbmin79/MiaMotel
-https://github.com/elbmin79/MiaMotelAssistant
-https://github.com/elbmin79/Discovery-Sistema
+[redacted] (7 other permitted repositories, unrelated to this project)
 ```
 
 **Both `dexter-barber` and `dexter-hq` are present.** Cross-repository dispatch is possible as far as repository permissions are concerned. **supported**
@@ -175,7 +169,7 @@ No `POST` request of any kind was issued. Only `GET` requests were made: `/v1/me
 | --- | --- | --- |
 | 1 | `DEXTER_CURSOR_API_KEY` present in this run's environment | supported |
 | 2 | Key authenticates — `GET /v1/me` HTTP 200 | supported |
-| 3 | Key is user-scoped (`robbtm40@gmail.com`, userId 431080337), not a service account | supported |
+| 3 | Key is user-scoped (`[redacted]`, userId `[redacted]`), not a service account | supported |
 | 4 | `dexter-barber` and `dexter-hq` both in the permitted repository list (9 total) | supported |
 | 5 | 38 live model IDs recorded from `GET /v1/models` | supported |
 | 6 | Repository owner casing differs between API (`Roberto-Madrid`) and agent records (`roberto-madrid`) | supported |

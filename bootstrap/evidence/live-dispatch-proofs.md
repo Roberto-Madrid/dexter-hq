@@ -47,8 +47,8 @@ literal key value (**supported**).
   "identity": {
     "apiKeyName": "DEXTER_CURSOR_API_KEY",
     "keyScope": "user",
-    "userId": 431080337,
-    "userEmail": "robbtm40@gmail.com",
+    "userId": "[redacted]",
+    "userEmail": "[redacted]",
     "createdAt": "2026-09-19T04:45:37.078Z"
   }
 }
@@ -95,13 +95,7 @@ endpoint was called exactly once in this session and the response cached to
 | --- | --- |
 | `Roberto-Madrid/dexter-barber` | yes |
 | `Roberto-Madrid/dexter-hq` | yes |
-| `Roberto-Madrid/demo2` | no |
-| `Roberto-Madrid/voyporti` | no |
-| `elbmin79/BandiRutas` | no |
-| `elbmin79/-BandeeRutas` | no |
-| `elbmin79/MiaMotel` | no |
-| `elbmin79/MiaMotelAssistant` | no |
-| `elbmin79/Discovery-Sistema` | no |
+| `[redacted]` (7 other permitted repositories) | no |
 
 Owner-casing, **supported**: the API reports `Roberto-Madrid` while git remotes and agent
 records use `roberto-madrid`. `normalizeRepoUrl` lowercases host and path, so both target
