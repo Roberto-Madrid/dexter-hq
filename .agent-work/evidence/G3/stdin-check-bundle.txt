@@ -1,5 +1,0 @@
-
-> check:bundle
-> bash scripts/check-bundle-fresh.sh
-
-kernel bundle is stale: supabase/functions/_shared/kernel.js

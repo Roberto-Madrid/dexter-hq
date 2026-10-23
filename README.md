@@ -1,66 +1,48 @@
-# Dexter. HQ
+# Dexter HQ
 
-Dexter is the business and product headquarters for turning ideas into working applications through delegated agent work.
+Dexter HQ is a personal, model-agnostic headquarters for an AI agent fleet. You talk to one coordinator; it turns work into plan cards, dispatches isolated workers, and tracks results on a Command Center. Outbound changes go through PR gates. Token usage and spend are recorded so cost stays visible.
 
-This repository holds Dexter's operating instructions, project records, and orchestration tools. Each application lives in its own repository.
+This repository is the headquarters: kernel, HQ APIs, Command Center UI, dispatch client, and operating files. Product applications live in their own repositories.
 
-## Operating model
+## What is here
 
-- **Dexter HQ** works with the owner on ideas, priorities, scope, and acceptance. It dispatches project work and tracks results.
-- **Project leads** coordinate one application's mission, dependencies, workers, and integration.
-- **Workers** handle design, bounded implementation, and independent verification. Independent tasks can run in parallel with isolated checkouts.
-
-Roles are reusable instructions, not permanently running agents. Creating an agent definition file does not prove that a worker was invoked.
-
-## Bootstrap status
-
-This README initializes the HQ repository. The dispatch client and operating files have not yet been installed or verified here.
-
-To begin:
-
-1. Start a fresh Cursor Cloud Agent on `Roberto-Madrid/dexter-hq`.
-2. Attach `Dexter_HQ_Plan_v2.md` (master plan revision 2.1) and use its section 19 bootstrap prompt.
-3. Extract short operating instructions from the plan and establish durable project/task records.
-4. Verify access to the existing configured Cursor API secret without displaying its value. Availability in this environment and successful authentication still need confirmation.
-5. Prove cross-repository dispatch, result retrieval, follow-up, fresh-session recovery, correct starting commits, and safe integration before assigning application work.
-
-The master plan is supplied separately; it is not included in this initial commit. Read it once for setup and keep it as a reference rather than loading the entire document into every task.
-
-## Planned repository layout
-
-The following paths are planned, not a claim that these files already exist:
-
-| Path | Responsibility |
+| Path | Role |
 | --- | --- |
-| `AGENTS.md` | Short HQ identity, startup instructions, and boundaries |
-| `portfolio.json` | Project repositories, active missions, and status references |
-| `missions/` | Approved briefs, scope changes, dispatch records, and result references |
-| `roles/` | Project lead, designer, builder, integrator, and verifier contracts |
-| `config/dispatch-policy.json` | Allowed repositories, models, concurrency, and retry limits |
-| `tools/dispatch/` | Small authenticated client for launching and managing project agents |
-| `bootstrap/` | Capability evidence, setup status, and remaining blockers |
-| `handoff.md` | Concise entry point for a fresh HQ session |
+| `kernel/` | Vendor-neutral orchestration: leases, plan cards, preflight, redaction, token police |
+| `hq/` | HQ server: connector, board, usage receipts, ventures, safety controls |
+| `app/` | Next.js Command Center (owner login, request board, swarm, STOP ALL) |
+| `adapters/` | Runtimes that actually run work (cloud agents, GitHub runners, inline/fake) |
+| `gateway/role-sheet.yaml` | The only place model names live |
+| `tools/dispatch/` | Small CLI for launching and recovering cloud agents |
+| `personas/` · `crews/` | Role contracts and task-graph recipes |
+| `supabase/migrations/` | HQ persistence |
+| `tests/` | Unit, security, integration, and Playwright checks |
 
-Application code, technical task details, design assets, and application tests belong in the corresponding product repository. HQ retains authoritative business scope and references to execution evidence.
+Workers are disposable. Requests, artifacts, decisions, and spend records persist. A live URL is not completion; deployment, verification, and owner acceptance are tracked separately.
 
-## Delivery workflow
+## Checks
 
-Discovery → approved brief → visual mockups and owner approval → delegated implementation → integration → independent verification → owner acceptance → authorized release.
+Use the repo's package manager. Commands run without live secrets; integration tests expect a local database (see `scripts/ensure-integration-db.mjs` and CI).
 
-For fixes within an approved design, skip unnecessary design work. Record explicit scope changes before dispatching affected tasks.
+```
+npm run typecheck
+npm run lint
+npm run test
+npm run test:integration
+npm run test:e2e
+npm run check:vendor
+npm run check:briefs
+npm run check:bundle
+npm run scan:secrets
+```
 
-Every worker must verify the assigned repository and exact base commit before substantive work. Every result must identify its actual execution, resulting revision, checks performed, and remaining limitations.
+`npm run test:live` is opt-in (`LIVE=1`) and talks to real services.
 
-Track deployment, verification, and owner acceptance separately. A live URL does not mean the application is complete.
+Local agent ledgers and command transcripts go under `.agent-work/` and are gitignored.
 
 ## Boundaries
 
-- Keep application implementation delegated; HQ remains the coordinator.
-- Begin with at most two concurrent implementation workers and parallelize only independent tasks.
 - Keep credentials out of Git, prompts, logs, and worker result files.
-- Verify billing and spending controls; do not silently enable paid overage or unauthorized model fallbacks.
-- Keep production changes, paid provisioning, releases, and client communications within explicit owner authorization.
-- Preserve the existing barber application during HQ setup. Its recovery is a separate mission activated after bootstrap.
-- Store decisions and execution references durably so work can resume without the original conversation.
-
-The target workflow runs in Cursor-hosted environments without requiring the owner's laptop to stay on. Continuous unattended HQ operation is a separate capability that must be demonstrated, not assumed.
+- Do not silently enable paid overage or unauthorized model fallbacks.
+- Production changes, paid provisioning, releases, and client communications need explicit owner authorization.
+- Kernel code stays vendor-neutral; do not put model product names there.

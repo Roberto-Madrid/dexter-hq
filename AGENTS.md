@@ -4,7 +4,7 @@ Dexter HQ V5.1: a personal, model-agnostic headquarters (CEO chat, Command Cente
 Spec: docs/MASTER_PLAN_V5.md. Build plan: DEXTER_V5_ACTION_PLAN.md. Constitution: docs/CONSTITUTION.md.
 
 ## Before you work
-Read .agent-work/ledger.jsonl (last 30 lines), the newest .agent-work/handoffs/*.md, and your task in .agent-work/tasks/.
+If a local `.agent-work/` tree exists, read ledger.jsonl (last 30 lines), the newest handoffs, and your task in tasks/. That directory is gitignored; it is working state, not source.
 
 ## Commands (use the repo's package manager)
 typecheck · lint · test · test:integration · test:e2e · test:live (LIVE=1 only) · check:vendor · check:briefs · check:bundle · scan:secrets

@@ -1,5 +1,6 @@
-# V5 build scratch (DEXTER_V5_ACTION_PLAN.md §3.1). Ledger, tasks, handoffs, and evidence stay tracked.
-.agent-work/tmp/
+# Local agent ledger, lane notes, and command evidence. Recreated by workers and by
+# scripts such as ensure-integration-db.mjs (writes .agent-work/tmp/).
+.agent-work/
 
 # Secret values. Names live in .env.example only.
 .env
